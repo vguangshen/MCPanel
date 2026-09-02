@@ -53,3 +53,29 @@ choose another location. The script replaces program files while preserving
 already exist in the release directory. Older `StoreData\Runtime`,
 `StoreData\Downloads`, `StoreData\Tools`, and `StoreData\ProductIcons`
 directories are migrated on startup.
+
+## Private GitHub Release updates
+
+MCPanel can check the latest private GitHub Release from the repository named
+by `GitHubUpdateRepository` in `MCPanel.exe.config`. The distributed default is
+`vguangshen/MCPanel`.
+
+On each computer, click **Settings → Software update → Configure GitHub** once
+and save a fixed fine-grained GitHub token that is limited to that repository
+and has only **Contents: read** permission. The token is protected with Windows
+DPAPI for the current Windows user under `StoreData`; it is not written into
+`MCPanel.exe.config`, logs, source control, or update packages. A cloud computer
+therefore needs its own one-time token setup, but subsequent checks and downloads
+run automatically.
+
+For a GitHub Release, create its artifacts with:
+
+```powershell
+.\Build-UpdatePackage.ps1 -Version 1.1.20 -GitHubRelease -ReleaseNotes '修复说明'
+```
+
+Publish the ZIP, its `.sha256` sidecar, and `update-manifest.json` as assets of
+the matching `v1.1.20` GitHub Release. MCPanel retrieves the release and assets
+through the GitHub API over HTTPS, sends the token only to `api.github.com`,
+follows signed asset redirects without forwarding the token, and verifies the
+ZIP SHA-256 before any extraction or replacement.

@@ -2,11 +2,14 @@ using System.Diagnostics;
 using System.Configuration;
 using System.IO;
 using System.IO.Compression;
+using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Xml.Linq;
 
 namespace MCPanel;
@@ -29,6 +32,40 @@ public sealed class PreparedApplicationUpdate
     public bool DeletePackageFileAfterApply { get; set; }
 }
 
+internal sealed class GitHubReleaseUpdate
+{
+    public OnlineUpdateManifest Manifest { get; init; } = new();
+    public GitHubReleaseUpdateSource Source { get; init; } = new(string.Empty, string.Empty);
+    public long PackageAssetId { get; init; }
+}
+
+internal sealed class GitHubReleaseResponse
+{
+    [JsonPropertyName("tag_name")]
+    public string TagName { get; set; } = string.Empty;
+    public string Body { get; set; } = string.Empty;
+    public bool Draft { get; set; }
+    public bool Prerelease { get; set; }
+    public List<GitHubReleaseAsset> Assets { get; set; } = [];
+}
+
+internal sealed class GitHubReleaseAsset
+{
+    public long Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Digest { get; set; } = string.Empty;
+}
+
+internal sealed class GitHubReleaseManifest
+{
+    public string Format { get; set; } = string.Empty;
+    public string Version { get; set; } = string.Empty;
+    public string PackageName { get; set; } = string.Empty;
+    public string Sha256 { get; set; } = string.Empty;
+    public string ReleaseNotes { get; set; } = string.Empty;
+    public bool Mandatory { get; set; }
+}
+
 internal sealed class ApplicationUpdatePlan
 {
     public string InstallDirectory { get; set; } = string.Empty;
@@ -44,11 +81,19 @@ internal sealed class ApplicationUpdatePlan
 public sealed class ApplicationUpdateService
 {
     private const int MaxManifestBytes = 1024 * 1024;
+    internal const string GitHubReleaseManifestFormat = "mcpanel-github-release-v1";
+    internal const string GitHubUpdateRepositoryConfigKey = "GitHubUpdateRepository";
+    private const string GitHubApiVersion = "2022-11-28";
 
     private const long MaxExpandedBytes = 20L * 1024 * 1024 * 1024;
     private const int MaxArchiveEntries = 200000;
     private static readonly HttpClient Client = new() { Timeout = TimeSpan.FromMinutes(30) };
+    private static readonly HttpClient GitHubClient = new(new HttpClientHandler { AllowAutoRedirect = false })
+    {
+        Timeout = TimeSpan.FromMinutes(30)
+    };
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true, PropertyNameCaseInsensitive = true };
+    private readonly GitHubUpdateCredentialStore _gitHubUpdateCredentials = new();
     private int _updaterCleanupStarted;
     private static readonly HashSet<string> PreservedTopLevelNames = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -69,6 +114,41 @@ public sealed class ApplicationUpdateService
         {
             return string.Empty;
         }
+    }
+
+    public string LoadGitHubUpdateRepository()
+    {
+        try
+        {
+            return (ConfigurationManager.AppSettings[GitHubUpdateRepositoryConfigKey] ?? string.Empty).Trim();
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    public bool HasStoredGitHubUpdateToken() => _gitHubUpdateCredentials.HasStoredCredential();
+
+    public void SaveGitHubUpdateToken(string accessToken) => _gitHubUpdateCredentials.SaveAccessToken(accessToken);
+
+    public void ClearGitHubUpdateToken() => _gitHubUpdateCredentials.ClearAccessToken();
+
+    internal GitHubReleaseUpdateSource LoadGitHubReleaseUpdateSource()
+    {
+        var repository = NormalizeGitHubRepository(LoadGitHubUpdateRepository());
+        if (repository.Length == 0)
+        {
+            throw new InvalidOperationException("尚未配置 GitHub 更新仓库。");
+        }
+
+        var accessToken = _gitHubUpdateCredentials.LoadAccessToken();
+        if (accessToken.Length == 0)
+        {
+            throw new InvalidOperationException("尚未配置 GitHub 私有更新访问令牌。");
+        }
+
+        return new GitHubReleaseUpdateSource(repository, accessToken);
     }
 
     public string ConsumeLastUpdateResult()
@@ -126,6 +206,94 @@ public sealed class ApplicationUpdateService
         return manifest;
     }
 
+    internal async Task<GitHubReleaseUpdate> CheckGitHubReleaseAsync(
+        GitHubReleaseUpdateSource source,
+        CancellationToken cancellationToken)
+    {
+        if (source is null)
+        {
+            throw new ArgumentNullException(nameof(source));
+        }
+
+        var repository = NormalizeGitHubRepository(source.Repository);
+        var accessToken = GitHubUpdateCredentialStore.NormalizeAccessToken(source.AccessToken);
+        if (repository.Length == 0 || accessToken.Length == 0)
+        {
+            throw new InvalidOperationException("GitHub 私有更新源未完成配置。");
+        }
+
+        GitHubReleaseResponse? release;
+        using (var response = await SendGitHubApiRequestAsync(
+                   CreateGitHubLatestReleaseUri(repository),
+                   accessToken,
+                   acceptBinary: false,
+                   cancellationToken))
+        {
+            EnsureGitHubResponse(response, "最新正式发行版");
+            var json = await ReadResponseTextAsync(response.Content, cancellationToken);
+            release = JsonSerializer.Deserialize<GitHubReleaseResponse>(json, JsonOptions);
+        }
+
+        if (release is null || release.Draft || release.Prerelease)
+        {
+            throw new InvalidDataException("GitHub 更新仓库未返回可用的正式发行版。");
+        }
+
+        var releaseAssets = release.Assets ?? [];
+        var manifestAsset = releaseAssets.FirstOrDefault(asset =>
+            asset.Id > 0 && string.Equals(asset.Name, "update-manifest.json", StringComparison.OrdinalIgnoreCase));
+        if (manifestAsset is null)
+        {
+            throw new InvalidDataException("GitHub 正式发行版缺少 update-manifest.json。");
+        }
+
+        GitHubReleaseManifest? releaseManifest;
+        using (var response = await DownloadGitHubAssetAsync(repository, accessToken, manifestAsset.Id, cancellationToken))
+        {
+            EnsureGitHubResponse(response, "更新清单");
+            var json = await ReadResponseTextAsync(response.Content, cancellationToken);
+            releaseManifest = JsonSerializer.Deserialize<GitHubReleaseManifest>(json, JsonOptions);
+        }
+
+        var manifest = ValidateGitHubReleaseManifest(releaseManifest);
+        if (!string.IsNullOrWhiteSpace(release.TagName) &&
+            !string.Equals(NormalizeVersionText(release.TagName), manifest.Version, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException("GitHub Release 标签与更新清单版本号不一致。");
+        }
+
+        var packageAsset = releaseAssets.FirstOrDefault(asset =>
+            asset.Id > 0 && string.Equals(asset.Name, manifest.PackageName, StringComparison.OrdinalIgnoreCase));
+        if (packageAsset is null)
+        {
+            throw new InvalidDataException($"GitHub 正式发行版缺少更新包 {manifest.PackageName}。");
+        }
+
+        var assetDigest = NormalizeGitHubAssetDigest(packageAsset.Digest);
+        if (assetDigest.Length > 0 &&
+            (assetDigest.Length != 64 || !assetDigest.Equals(manifest.Sha256, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidDataException("GitHub Release 记录的更新包摘要与清单不一致。");
+        }
+
+        var onlineManifest = new OnlineUpdateManifest
+        {
+            Version = manifest.Version,
+            PackageUrl = CreateGitHubReleaseAssetUri(repository, packageAsset.Id).AbsoluteUri,
+            Sha256 = manifest.Sha256,
+            ReleaseNotes = string.IsNullOrWhiteSpace(manifest.ReleaseNotes) ? release.Body ?? string.Empty : manifest.ReleaseNotes,
+            Mandatory = manifest.Mandatory
+        };
+        ValidateManifest(onlineManifest, null);
+
+        return new GitHubReleaseUpdate
+        {
+            Manifest = onlineManifest,
+            Source = new GitHubReleaseUpdateSource(repository, accessToken),
+            PackageAssetId = packageAsset.Id
+        };
+    }
+
     public async Task<PreparedApplicationUpdate> PrepareOnlineAsync(
         OnlineUpdateManifest manifest,
         IProgress<double>? progress,
@@ -134,6 +302,59 @@ public sealed class ApplicationUpdateService
     {
         ValidateManifest(manifest, null);
         var packageUri = ValidateHttpsUrl(manifest.PackageUrl, "更新包地址");
+        return await PrepareRemotePackageAsync(
+            manifest,
+            token => Client.GetAsync(packageUri, HttpCompletionOption.ResponseHeadersRead, token),
+            response => response.EnsureSuccessStatusCode(),
+            progress,
+            status,
+            cancellationToken);
+    }
+
+    internal Task<PreparedApplicationUpdate> PrepareGitHubReleaseAsync(
+        GitHubReleaseUpdate update,
+        IProgress<double>? progress,
+        IProgress<string>? status,
+        CancellationToken cancellationToken)
+    {
+        if (update is null)
+        {
+            throw new ArgumentNullException(nameof(update));
+        }
+
+        ValidateManifest(update.Manifest, null);
+        if (update.PackageAssetId <= 0)
+        {
+            throw new InvalidDataException("GitHub 更新包资产编号无效。");
+        }
+
+        var repository = NormalizeGitHubRepository(update.Source.Repository);
+        var accessToken = GitHubUpdateCredentialStore.NormalizeAccessToken(update.Source.AccessToken);
+        if (repository.Length == 0 || accessToken.Length == 0)
+        {
+            throw new InvalidOperationException("GitHub 私有更新源未完成配置。");
+        }
+
+        return PrepareRemotePackageAsync(
+            update.Manifest,
+            token => DownloadGitHubAssetAsync(repository, accessToken, update.PackageAssetId, token),
+            response => EnsureGitHubResponse(response, "更新包"),
+            progress,
+            status,
+            cancellationToken);
+    }
+
+    private async Task<PreparedApplicationUpdate> PrepareRemotePackageAsync(
+        OnlineUpdateManifest manifest,
+        Func<CancellationToken, Task<HttpResponseMessage>> download,
+        Action<HttpResponseMessage> ensureResponse,
+        IProgress<double>? progress,
+        IProgress<string>? status,
+        CancellationToken cancellationToken)
+    {
+        if (download is null) throw new ArgumentNullException(nameof(download));
+        if (ensureResponse is null) throw new ArgumentNullException(nameof(ensureResponse));
+
         var downloadRoot = Path.Combine(UpdatesRoot, "Downloads");
         Directory.CreateDirectory(downloadRoot);
         var safeVersion = SafeName(manifest.Version);
@@ -142,8 +363,8 @@ public sealed class ApplicationUpdateService
         status?.Report("正在下载更新包...");
         try
         {
-            using var response = await Client.GetAsync(packageUri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            response.EnsureSuccessStatusCode();
+            using var response = await download(cancellationToken);
+            ensureResponse(response);
             var length = response.Content.Headers.ContentLength;
             using var source = await response.Content.ReadAsStreamAsync();
             using var target = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None, 1024 * 1024, true);
@@ -418,7 +639,8 @@ public sealed class ApplicationUpdateService
         var existingConfigFile = Path.Combine(installRoot, "MCPanel.exe.config");
         var preservedAppSettings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            ["UpdateManifestUrl"] = ReadAppSetting(existingConfigFile, "UpdateManifestUrl")
+            ["UpdateManifestUrl"] = ReadAppSetting(existingConfigFile, "UpdateManifestUrl"),
+            [GitHubUpdateRepositoryConfigKey] = ReadAppSetting(existingConfigFile, GitHubUpdateRepositoryConfigKey)
         };
         foreach (var key in EnvironmentDownloadSettings.ConfigKeys)
         {
@@ -859,6 +1081,208 @@ public sealed class ApplicationUpdateService
         document.Save(configFile, SaveOptions.DisableFormatting);
     }
 
+    internal static string NormalizeGitHubRepository(string? value)
+    {
+        var repository = (value ?? string.Empty).Trim();
+        if (repository.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var parts = repository.Split('/');
+        if (parts.Length != 2 || parts.Any(part => !IsValidGitHubRepositoryPart(part)))
+        {
+            throw new InvalidDataException("GitHub 更新仓库必须使用 owner/repository 格式。");
+        }
+
+        return $"{parts[0]}/{parts[1]}";
+    }
+
+    private static bool IsValidGitHubRepositoryPart(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value is "." or ".." || value.Length > 100)
+        {
+            return false;
+        }
+
+        return value.All(ch =>
+            (ch is >= 'a' and <= 'z') ||
+            (ch is >= 'A' and <= 'Z') ||
+            (ch is >= '0' and <= '9') ||
+            ch is '-' or '_' or '.');
+    }
+
+    internal static GitHubReleaseManifest ValidateGitHubReleaseManifest(GitHubReleaseManifest? manifest)
+    {
+        if (manifest is null ||
+            !string.Equals(manifest.Format, GitHubReleaseManifestFormat, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException("GitHub 更新清单格式无效。");
+        }
+
+        var version = NormalizeVersionText(manifest.Version);
+        if (!Version.TryParse(version, out _))
+        {
+            throw new InvalidDataException("GitHub 更新清单版本号无效。");
+        }
+
+        var packageName = (manifest.PackageName ?? string.Empty).Trim();
+        if (packageName.Length == 0 ||
+            packageName.Any(ch => ch is '/' or '\\' || Path.GetInvalidFileNameChars().Contains(ch)) ||
+            !packageName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(packageName, $"MCPanel-{version}.zip", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException("GitHub 更新清单中的更新包名称无效。");
+        }
+
+        var hash = NormalizeSha256(manifest.Sha256);
+        if (hash.Length != 64)
+        {
+            throw new InvalidDataException("GitHub 更新清单必须提供完整的 SHA-256。");
+        }
+
+        return new GitHubReleaseManifest
+        {
+            Format = GitHubReleaseManifestFormat,
+            Version = version,
+            PackageName = packageName,
+            Sha256 = hash,
+            ReleaseNotes = manifest.ReleaseNotes ?? string.Empty,
+            Mandatory = manifest.Mandatory
+        };
+    }
+
+    private static Uri CreateGitHubLatestReleaseUri(string repository) =>
+        CreateGitHubReleaseApiUri(repository, "releases/latest");
+
+    private static Uri CreateGitHubReleaseAssetUri(string repository, long assetId)
+    {
+        if (assetId <= 0)
+        {
+            throw new InvalidDataException("GitHub Release 资产编号无效。");
+        }
+
+        return CreateGitHubReleaseApiUri(repository, $"releases/assets/{assetId}");
+    }
+
+    private static Uri CreateGitHubReleaseApiUri(string repository, string path)
+    {
+        var normalized = NormalizeGitHubRepository(repository);
+        if (normalized.Length == 0)
+        {
+            throw new InvalidDataException("GitHub 更新仓库不能为空。");
+        }
+
+        var parts = normalized.Split('/');
+        return new Uri(
+            $"https://api.github.com/repos/{Uri.EscapeDataString(parts[0])}/{Uri.EscapeDataString(parts[1])}/{path}",
+            UriKind.Absolute);
+    }
+
+    private static async Task<HttpResponseMessage> SendGitHubApiRequestAsync(
+        Uri uri,
+        string accessToken,
+        bool acceptBinary,
+        CancellationToken cancellationToken)
+    {
+        using var request = CreateGitHubRequest(uri, accessToken, acceptBinary, includeAuthorization: true);
+        return await GitHubClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+    }
+
+    private static async Task<HttpResponseMessage> DownloadGitHubAssetAsync(
+        string repository,
+        string accessToken,
+        long assetId,
+        CancellationToken cancellationToken)
+    {
+        var current = CreateGitHubReleaseAssetUri(repository, assetId);
+        for (var redirectCount = 0; redirectCount < 4; redirectCount++)
+        {
+            var includeAuthorization = redirectCount == 0;
+            using var request = CreateGitHubRequest(current, accessToken, acceptBinary: true, includeAuthorization);
+            var response = await GitHubClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            if (!IsRedirect(response.StatusCode))
+            {
+                return response;
+            }
+
+            var location = response.Headers.Location;
+            response.Dispose();
+            if (location is null)
+            {
+                throw new InvalidDataException("GitHub 更新包重定向地址缺失。");
+            }
+
+            current = location.IsAbsoluteUri ? location : new Uri(current, location);
+            if (!string.Equals(current.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException("GitHub 更新包重定向必须使用 HTTPS。");
+            }
+        }
+
+        throw new InvalidDataException("GitHub 更新包重定向次数过多。");
+    }
+
+    private static HttpRequestMessage CreateGitHubRequest(
+        Uri uri,
+        string accessToken,
+        bool acceptBinary,
+        bool includeAuthorization)
+    {
+        if (!string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException("GitHub 更新请求必须使用 HTTPS。");
+        }
+
+        var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        request.Headers.UserAgent.Add(new ProductInfoHeaderValue("MCPanel", CurrentVersionText));
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(
+            acceptBinary ? "application/octet-stream" : "application/vnd.github+json"));
+
+        if (includeAuthorization)
+        {
+            if (!string.Equals(uri.Host, "api.github.com", StringComparison.OrdinalIgnoreCase))
+            {
+                request.Dispose();
+                throw new InvalidDataException("GitHub 更新凭据只能发送给 GitHub API。");
+            }
+
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            request.Headers.TryAddWithoutValidation("X-GitHub-Api-Version", GitHubApiVersion);
+        }
+
+        return request;
+    }
+
+    private static bool IsRedirect(HttpStatusCode statusCode) =>
+        (int)statusCode is >= 300 and <= 399;
+
+    private static void EnsureGitHubResponse(HttpResponseMessage response, string resource)
+    {
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        {
+            throw new InvalidOperationException(
+                "无法访问 GitHub 私有更新源。请重新保存仅限该仓库、Contents: read 权限的访问令牌。");
+        }
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            throw new InvalidDataException($"GitHub 更新仓库中未找到{resource}。");
+        }
+
+        if ((int)response.StatusCode == 429)
+        {
+            throw new InvalidOperationException("GitHub 更新服务请求过多，请稍后重试。");
+        }
+
+        throw new HttpRequestException($"GitHub {resource}请求失败（HTTP {(int)response.StatusCode}）。");
+    }
+
     private static void ValidateManifest(OnlineUpdateManifest manifest, Uri? manifestUri)
     {
         if (!Version.TryParse(NormalizeVersionText(manifest.Version), out _)) throw new InvalidDataException("更新清单版本号无效。");
@@ -916,7 +1340,27 @@ public sealed class ApplicationUpdateService
         return Encoding.UTF8.GetString(buffer.ToArray());
     }
 
-    private static string NormalizeSha256(string value) => new((value ?? string.Empty).Where(Uri.IsHexDigit).ToArray());
+    private static string NormalizeGitHubAssetDigest(string value)
+    {
+        var digest = (value ?? string.Empty).Trim();
+        if (digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase))
+        {
+            digest = digest.Substring("sha256:".Length);
+        }
+
+        return NormalizeSha256(digest);
+    }
+
+    private static string NormalizeSha256(string value)
+    {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase))
+        {
+            normalized = normalized.Substring("sha256:".Length);
+        }
+
+        return new string(normalized.Where(Uri.IsHexDigit).ToArray());
+    }
     private static string NormalizeVersionText(string value)
     {
         var text = (value ?? string.Empty).Trim().TrimStart('v', 'V');

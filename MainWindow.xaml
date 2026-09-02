@@ -2283,16 +2283,19 @@
                                     </StackPanel>
 
                                     <Grid Grid.Row="1" Margin="0,10,0,8">
-                                        <Grid.ColumnDefinitions><ColumnDefinition Width="34"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="34"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                         <TextBlock Text="&#xE896;" FontFamily="Segoe MDL2 Assets" FontSize="18"
                                                    Foreground="{DynamicResource TonalTextBrush}" VerticalAlignment="Center" />
                                         <StackPanel Grid.Column="1">
                                             <TextBlock Text="在线更新" Foreground="{DynamicResource TextBrush}" FontSize="13" FontWeight="SemiBold" />
-                                            <TextBlock Text="读取配置更新源，校验 HTTPS 清单与 SHA-256"
+                                            <TextBlock Text="从 GitHub 私有 Release 读取更新，校验 HTTPS 与 SHA-256"
                                                        Foreground="{DynamicResource MutedBrush}" FontSize="11" Margin="0,3,12,0"
                                                        TextTrimming="CharacterEllipsis" />
                                         </StackPanel>
-                                        <Button Grid.Column="2" Content="检查并更新" Width="112" Height="34" FontSize="11"
+                                        <Button Grid.Column="2" Content="配置 GitHub" Width="92" Height="34" FontSize="11"
+                                                Margin="0,0,8,0" Style="{StaticResource WebsiteActionButton}" IsEnabled="{Binding CanStartUpdate}"
+                                                Click="ConfigureGitHubUpdate_Click" />
+                                        <Button Grid.Column="3" Content="检查并更新" Width="112" Height="34" FontSize="11"
                                                 Style="{StaticResource WebsitePrimaryActionButton}" IsEnabled="{Binding CanStartUpdate}"
                                                 Click="CheckOnlineUpdate_Click" />
                                     </Grid>

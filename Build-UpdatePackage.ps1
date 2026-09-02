@@ -7,7 +7,8 @@ param(
     [string]$ReleaseNotes = '',
     [string]$OutputDirectory,
     [string]$PublishDirectory,
-    [switch]$Mandatory
+    [switch]$Mandatory,
+    [switch]$GitHubRelease
 )
 
 $ErrorActionPreference = 'Stop'
@@ -37,6 +38,9 @@ if (!(Test-Path -LiteralPath $executable)) {
 
 if (![string]::IsNullOrWhiteSpace($PackageBaseUrl) -and $PackageBaseUrl -notmatch '^https://') {
     throw 'PackageBaseUrl must be an HTTPS base URL when provided.'
+}
+if ($GitHubRelease -and ![string]::IsNullOrWhiteSpace($PackageBaseUrl)) {
+    throw 'GitHubRelease and PackageBaseUrl cannot be used together.'
 }
 
 $normalizedVersion = $Version.Trim().TrimStart('v', 'V')
@@ -100,6 +104,19 @@ if (![string]::IsNullOrWhiteSpace($PackageBaseUrl)) {
         $manifestFile,
         ($manifest | ConvertTo-Json -Depth 4),
         [Text.UTF8Encoding]::new($false))
+} elseif ($GitHubRelease) {
+    $manifest = [ordered]@{
+        format = 'mcpanel-github-release-v1'
+        version = $normalizedVersion
+        packageName = $packageName
+        sha256 = $hash
+        releaseNotes = $ReleaseNotes
+        mandatory = [bool]$Mandatory
+    }
+    [IO.File]::WriteAllText(
+        $manifestFile,
+        ($manifest | ConvertTo-Json -Depth 4),
+        [Text.UTF8Encoding]::new($false))
 } elseif (Test-Path -LiteralPath $manifestFile) {
     Remove-Item -LiteralPath $manifestFile -Force
 }
@@ -109,6 +126,9 @@ Write-Host "SHA-256:       $hashFile"
 if (![string]::IsNullOrWhiteSpace($PackageBaseUrl)) {
     Write-Host "Online manifest: $manifestFile"
     Write-Host "Upload the ZIP and update-manifest.json to the HTTPS website."
+} elseif ($GitHubRelease) {
+    Write-Host "GitHub Release manifest: $manifestFile"
+    Write-Host "Upload the ZIP, its .sha256 sidecar, and update-manifest.json as assets of the matching GitHub Release tag."
 } else {
     Write-Host "Online manifest: not generated (provide -PackageBaseUrl for online updates)."
 }

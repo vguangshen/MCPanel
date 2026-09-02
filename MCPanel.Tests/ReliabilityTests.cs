@@ -710,6 +710,67 @@ public sealed class ReliabilityTests
     }
 
     [TestMethod]
+    public void GitHubUpdateTokenIsDpapiProtectedAndCanBeCleared()
+    {
+        var root = CreateTemporaryDirectory();
+        try
+        {
+            var credentialFile = Path.Combine(root, "github-update-credential.json");
+            var store = new GitHubUpdateCredentialStore(credentialFile);
+            const string token = "mcpanel_test_token_0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+            store.SaveAccessToken(token);
+
+            Assert.IsTrue(store.HasStoredCredential());
+            Assert.AreEqual(-1, File.ReadAllText(credentialFile).IndexOf(token, StringComparison.Ordinal));
+            Assert.AreEqual(token, store.LoadAccessToken());
+
+            store.ClearAccessToken();
+            Assert.IsFalse(store.HasStoredCredential());
+            Assert.AreEqual(string.Empty, store.LoadAccessToken());
+        }
+        finally
+        {
+            DeleteTemporaryTree(root);
+        }
+    }
+
+    [TestMethod]
+    public void GitHubReleaseManifestRequiresBoundVersionAndSha256()
+    {
+        const string hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        var manifest = ApplicationUpdateService.ValidateGitHubReleaseManifest(new GitHubReleaseManifest
+        {
+            Format = ApplicationUpdateService.GitHubReleaseManifestFormat,
+            Version = "v1.1.20",
+            PackageName = "MCPanel-1.1.20.zip",
+            Sha256 = "sha256:" + hash,
+            ReleaseNotes = "测试更新"
+        });
+
+        Assert.AreEqual("1.1.20", manifest.Version);
+        Assert.AreEqual(hash, manifest.Sha256);
+        Assert.ThrowsException<InvalidDataException>(() =>
+            ApplicationUpdateService.ValidateGitHubReleaseManifest(new GitHubReleaseManifest
+            {
+                Format = ApplicationUpdateService.GitHubReleaseManifestFormat,
+                Version = "1.1.20",
+                PackageName = "other.zip",
+                Sha256 = hash
+            }));
+    }
+
+    [TestMethod]
+    public void GitHubRepositoryValidationRejectsTraversal()
+    {
+        Assert.AreEqual("vguangshen/MCPanel", ApplicationUpdateService.NormalizeGitHubRepository(" vguangshen/MCPanel "));
+        Assert.ThrowsException<InvalidDataException>(() =>
+            ApplicationUpdateService.NormalizeGitHubRepository("vguangshen/../../other"));
+        Assert.ThrowsException<InvalidDataException>(() =>
+            ApplicationUpdateService.NormalizeGitHubRepository("https://github.com/vguangshen/MCPanel"));
+    }
+
+    [TestMethod]
     public void StorageSizeUsesReadableUnits()
     {
         Assert.AreEqual("0 B", PanelSettingsService.FormatStorageSize(0));
@@ -2345,11 +2406,11 @@ public sealed class ReliabilityTests
             Directory.CreateDirectory(payload);
             File.WriteAllText(Path.Combine(install, "MCPanel.exe"), "old");
             File.WriteAllText(Path.Combine(install, "MCPanel.exe.config"),
-                "<configuration><appSettings><add key=\"UpdateManifestUrl\" value=\"https://updates.example.com/manifest.json\" /><add key=\"Environment.Frp.PackageUrl\" value=\"https://mirror.example.com/frp.zip\" /><add key=\"Ai.Provider\" value=\"OpenAI\" /><add key=\"Ai.Endpoint\" value=\"https://mirror.example.com/v1/chat/completions\" /><add key=\"Ai.Model\" value=\"ops-model\" /><add key=\"Ai.ApiKey\" value=\"old-ai-key\" /></appSettings></configuration>");
+                "<configuration><appSettings><add key=\"UpdateManifestUrl\" value=\"https://updates.example.com/manifest.json\" /><add key=\"GitHubUpdateRepository\" value=\"vguangshen/MCPanel-override\" /><add key=\"Environment.Frp.PackageUrl\" value=\"https://mirror.example.com/frp.zip\" /><add key=\"Ai.Provider\" value=\"OpenAI\" /><add key=\"Ai.Endpoint\" value=\"https://mirror.example.com/v1/chat/completions\" /><add key=\"Ai.Model\" value=\"ops-model\" /><add key=\"Ai.ApiKey\" value=\"old-ai-key\" /></appSettings></configuration>");
             File.WriteAllText(Path.Combine(install, "obsolete.dll"), "obsolete");
             File.WriteAllText(Path.Combine(payload, "MCPanel.exe"), "new");
             File.WriteAllText(Path.Combine(payload, "MCPanel.exe.config"),
-                "<configuration><appSettings><add key=\"UpdateManifestUrl\" value=\"\" /><add key=\"Environment.Frp.PackageUrl\" value=\"https://github.com/fatedier/frp/releases/download/v0.71.0/frp_0.71.0_windows_amd64.zip\" /><add key=\"Ai.Provider\" value=\"GLM\" /><add key=\"Ai.Endpoint\" value=\"https://open.bigmodel.cn/api/paas/v4/chat/completions\" /><add key=\"Ai.Model\" value=\"glm-5.2\" /><add key=\"Ai.ApiKey\" value=\"new-ai-key\" /></appSettings></configuration>");
+                "<configuration><appSettings><add key=\"UpdateManifestUrl\" value=\"\" /><add key=\"GitHubUpdateRepository\" value=\"vguangshen/MCPanel\" /><add key=\"Environment.Frp.PackageUrl\" value=\"https://github.com/fatedier/frp/releases/download/v0.71.0/frp_0.71.0_windows_amd64.zip\" /><add key=\"Ai.Provider\" value=\"GLM\" /><add key=\"Ai.Endpoint\" value=\"https://open.bigmodel.cn/api/paas/v4/chat/completions\" /><add key=\"Ai.Model\" value=\"glm-5.2\" /><add key=\"Ai.ApiKey\" value=\"new-ai-key\" /></appSettings></configuration>");
             File.WriteAllText(Path.Combine(payload, "current.dll"), "current");
 
             foreach (var name in new[] { "StoreData", "AccountApi", "Runtime", "Downloads", "Tools", "web", "Cache", "Frp", "Nginx", "MySQL", "MSSQL", "Tomcat", "SSMS", "Navicat Premium Lite" })
@@ -2374,6 +2435,9 @@ public sealed class ReliabilityTests
             StringAssert.Contains(
                 File.ReadAllText(Path.Combine(install, "MCPanel.exe.config")),
                 "https://updates.example.com/manifest.json");
+            StringAssert.Contains(
+                File.ReadAllText(Path.Combine(install, "MCPanel.exe.config")),
+                "key=\"GitHubUpdateRepository\" value=\"vguangshen/MCPanel-override\"");
             StringAssert.Contains(
                 File.ReadAllText(Path.Combine(install, "MCPanel.exe.config")),
                 "https://mirror.example.com/frp.zip");

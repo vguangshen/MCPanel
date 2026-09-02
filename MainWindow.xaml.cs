@@ -1094,6 +1094,37 @@ public partial class MainWindow : Window
     private async void CheckOnlineUpdate_Click(object sender, RoutedEventArgs e)
     {
         if (!CanStartApplicationUpdate()) return;
+        var githubRepository = _applicationUpdateService.LoadGitHubUpdateRepository();
+        if (!string.IsNullOrWhiteSpace(githubRepository))
+        {
+            if (!_applicationUpdateService.HasStoredGitHubUpdateToken())
+            {
+                MessageBox.Show(
+                    $"已配置 GitHub 私有更新仓库 {githubRepository}，但当前 Windows 用户尚未保存访问令牌。\n\n请先点击“配置 GitHub”，保存一个仅限该仓库、Contents: read 权限的固定访问令牌。",
+                    "软件更新",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            await RunUpdatePreparationAsync(async (progress, status, cancellationToken) =>
+            {
+                status.Report("正在检查 GitHub 私有 Release...");
+                var source = _applicationUpdateService.LoadGitHubReleaseUpdateSource();
+                var update = await _applicationUpdateService.CheckGitHubReleaseAsync(source, cancellationToken);
+                if (!Version.TryParse(update.Manifest.Version, out var targetVersion) || targetVersion <= ApplicationUpdateService.CurrentVersion)
+                {
+                    _model.UpdateStatus = $"当前已是最新版本（{ApplicationUpdateService.CurrentVersionText}）。";
+                    MessageBox.Show(_model.UpdateStatus, "软件更新", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return null;
+                }
+
+                if (!ConfirmOnlineUpdate(update.Manifest)) return null;
+                return await _applicationUpdateService.PrepareGitHubReleaseAsync(update, progress, status, cancellationToken);
+            });
+            return;
+        }
+
         var manifestUrl = _applicationUpdateService.LoadManifestUrl();
         if (string.IsNullOrWhiteSpace(manifestUrl))
         {
@@ -1112,27 +1143,225 @@ public partial class MainWindow : Window
                 return null;
             }
 
-            var notes = string.IsNullOrWhiteSpace(manifest.ReleaseNotes) ? "发布方未提供更新说明。" : manifest.ReleaseNotes.Trim();
-            if (manifest.Mandatory)
-            {
-                MessageBox.Show(
-                    $"发现必须安装的新版本 {manifest.Version}\n\n{notes}\n\nMCPanel 将下载并安装此更新，完成后软件会自动重启。",
-                    "重要软件更新",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Warning);
-            }
-            else
-            {
-                var confirm = MessageBox.Show(
-                    $"发现新版本 {manifest.Version}\n\n{notes}\n\n是否下载并安装？更新完成后软件会自动重启。",
-                    "软件更新",
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Information);
-                if (confirm != MessageBoxResult.Yes) return null;
-            }
-
+            if (!ConfirmOnlineUpdate(manifest)) return null;
             return await _applicationUpdateService.PrepareOnlineAsync(manifest, progress, status, cancellationToken);
         });
+    }
+
+    private static bool ConfirmOnlineUpdate(OnlineUpdateManifest manifest)
+    {
+        var notes = string.IsNullOrWhiteSpace(manifest.ReleaseNotes) ? "发布方未提供更新说明。" : manifest.ReleaseNotes.Trim();
+        if (manifest.Mandatory)
+        {
+            MessageBox.Show(
+                $"发现必须安装的新版本 {manifest.Version}\n\n{notes}\n\nMCPanel 将下载并安装此更新，完成后软件会自动重启。",
+                "重要软件更新",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return true;
+        }
+
+        return MessageBox.Show(
+            $"发现新版本 {manifest.Version}\n\n{notes}\n\n是否下载并安装？更新完成后软件会自动重启。",
+            "软件更新",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Information) == MessageBoxResult.Yes;
+    }
+
+    private void ConfigureGitHubUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        if (!CanStartApplicationUpdate()) return;
+
+        string repository;
+        try
+        {
+            repository = ApplicationUpdateService.NormalizeGitHubRepository(
+                _applicationUpdateService.LoadGitHubUpdateRepository());
+        }
+        catch (Exception error)
+        {
+            MessageBox.Show($"GitHub 更新仓库配置无效：{error.Message}", "软件更新", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (repository.Length == 0)
+        {
+            MessageBox.Show("尚未配置 GitHub 更新仓库。", "软件更新", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var hasStoredToken = _applicationUpdateService.HasStoredGitHubUpdateToken();
+        var dialog = new Window
+        {
+            Title = "配置 GitHub 私有更新",
+            Owner = this,
+            Width = 470,
+            Height = 338,
+            ResizeMode = ResizeMode.NoResize,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            ShowInTaskbar = false,
+            Background = (Brush)FindResource("SurfaceBrush")
+        };
+
+        var token = new PasswordBox
+        {
+            FontSize = 14,
+            Height = 36,
+            Padding = new Thickness(10, 5, 10, 5),
+            VerticalContentAlignment = VerticalAlignment.Center,
+            MaxLength = 256
+        };
+        var savedState = new TextBlock
+        {
+            Text = hasStoredToken
+                ? "当前 Windows 用户已保存固定令牌。输入新令牌后会安全替换旧令牌。"
+                : "尚未保存令牌。首次保存后，MCPanel 会自动使用它检查私有 Release。",
+            FontSize = 11,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)FindResource("MutedBrush"),
+            Margin = new Thickness(0, 6, 0, 0)
+        };
+        var save = new Button
+        {
+            Content = "安全保存",
+            Width = 96,
+            Height = 34,
+            Style = (Style)FindResource("PrimaryButton"),
+            IsDefault = true
+        };
+        var clear = new Button
+        {
+            Content = "移除令牌",
+            Width = 88,
+            Height = 34,
+            Margin = new Thickness(8, 0, 0, 0),
+            Style = (Style)FindResource("TonalButton"),
+            IsEnabled = hasStoredToken
+        };
+        var cancel = new Button
+        {
+            Content = "取消",
+            Width = 72,
+            Height = 34,
+            Margin = new Thickness(8, 0, 0, 0),
+            Style = (Style)FindResource("TonalButton"),
+            IsCancel = true
+        };
+
+        save.Click += (_, _) =>
+        {
+            try
+            {
+                _applicationUpdateService.SaveGitHubUpdateToken(token.Password);
+                _model.UpdateStatus = $"已为当前 Windows 用户安全保存 GitHub 更新令牌（{repository}）。";
+                dialog.DialogResult = true;
+                dialog.Close();
+            }
+            catch (Exception error)
+            {
+                MessageBox.Show($"无法保存 GitHub 更新令牌：{error.Message}", "软件更新", MessageBoxButton.OK, MessageBoxImage.Warning);
+                token.Focus();
+                token.SelectAll();
+            }
+        };
+        clear.Click += (_, _) =>
+        {
+            if (MessageBox.Show(
+                    "移除后，这台云电脑将无法从私有 GitHub Release 检查更新，直到重新保存令牌。是否继续？",
+                    "移除 GitHub 更新令牌",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            try
+            {
+                _applicationUpdateService.ClearGitHubUpdateToken();
+                _model.UpdateStatus = "已移除当前 Windows 用户保存的 GitHub 更新令牌。";
+                dialog.DialogResult = true;
+                dialog.Close();
+            }
+            catch (Exception error)
+            {
+                MessageBox.Show($"无法移除 GitHub 更新令牌：{error.Message}", "软件更新", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        };
+
+        var content = new Grid { Margin = new Thickness(24, 18, 24, 18) };
+        for (var i = 0; i < 7; i++)
+        {
+            content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        }
+        content.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var title = new TextBlock
+        {
+            Text = "GitHub 私有更新",
+            FontSize = 18,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = (Brush)FindResource("TextBrush")
+        };
+        var hint = new TextBlock
+        {
+            Text = "使用一个固定的细粒度访问令牌。仅授予此仓库 Contents: read 权限；令牌不会写入配置文件、日志或更新包。",
+            FontSize = 12,
+            Margin = new Thickness(0, 5, 0, 12),
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)FindResource("MutedBrush")
+        };
+        var repositoryLabel = new TextBlock
+        {
+            Text = "更新仓库",
+            FontSize = 11,
+            Margin = new Thickness(0, 0, 0, 4),
+            Foreground = (Brush)FindResource("MutedBrush")
+        };
+        var repositoryValue = new TextBox
+        {
+            Text = repository,
+            IsReadOnly = true,
+            Height = 32,
+            Padding = new Thickness(10, 4, 10, 4),
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Foreground = (Brush)FindResource("TextBrush")
+        };
+        var tokenLabel = new TextBlock
+        {
+            Text = "固定访问令牌",
+            FontSize = 11,
+            Margin = new Thickness(0, 10, 0, 4),
+            Foreground = (Brush)FindResource("MutedBrush")
+        };
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
+        buttons.Children.Add(save);
+        buttons.Children.Add(clear);
+        buttons.Children.Add(cancel);
+
+        Grid.SetRow(title, 0);
+        Grid.SetRow(hint, 1);
+        Grid.SetRow(repositoryLabel, 2);
+        Grid.SetRow(repositoryValue, 3);
+        Grid.SetRow(tokenLabel, 4);
+        Grid.SetRow(token, 5);
+        Grid.SetRow(savedState, 6);
+        Grid.SetRow(buttons, 8);
+        content.Children.Add(title);
+        content.Children.Add(hint);
+        content.Children.Add(repositoryLabel);
+        content.Children.Add(repositoryValue);
+        content.Children.Add(tokenLabel);
+        content.Children.Add(token);
+        content.Children.Add(savedState);
+        content.Children.Add(buttons);
+        dialog.Content = content;
+        dialog.Loaded += (_, _) => token.Focus();
+        dialog.ShowDialog();
     }
 
     private async void LocalUpdate_Click(object sender, RoutedEventArgs e)
