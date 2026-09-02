@@ -1,0 +1,597 @@
+<UserControl x:Class="MCPanel.AccountApiPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             FontFamily="Segoe UI, Microsoft YaHei UI"
+             Focusable="True"
+             KeyboardNavigation.TabNavigation="Local">
+    <UserControl.Resources>
+        <Style x:Key="AccountMetricValue" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+
+        <Style x:Key="AccountCaption" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+        </Style>
+
+        <Style x:Key="AccountLinkButton" TargetType="Button">
+            <Setter Property="Height" Value="27" />
+            <Setter Property="Padding" Value="9,0" />
+            <Setter Property="Foreground" Value="{DynamicResource TonalTextBrush}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource NavHoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="{DynamicResource DisabledTextBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="AccountApiSwitch" TargetType="ToggleButton">
+            <Setter Property="Width" Value="150" />
+            <Setter Property="Height" Value="34" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardLineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="SwitchRoot"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="7"
+                                Padding="5">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="39" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border x:Name="SwitchTrack"
+                                        Width="35"
+                                        Height="20"
+                                        HorizontalAlignment="Left"
+                                        VerticalAlignment="Center"
+                                        Background="{DynamicResource DisabledBrush}"
+                                        BorderBrush="{DynamicResource CardLineBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="5">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="17" />
+                                            <ColumnDefinition Width="17" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border x:Name="SwitchThumb"
+                                                Grid.Column="0"
+                                                Width="13"
+                                                Height="13"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                Background="{DynamicResource MutedBrush}"
+                                                CornerRadius="3" />
+                                    </Grid>
+                                </Border>
+                                <TextBlock x:Name="SwitchText"
+                                           Grid.Column="1"
+                                           Text="启用账号 API"
+                                    FontSize="12"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource MutedBrush}"
+                                           VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="SwitchRoot" Property="Background" Value="{DynamicResource TonalBrush}" />
+                                <Setter TargetName="SwitchRoot" Property="BorderBrush" Value="{DynamicResource TonalTextBrush}" />
+                                <Setter TargetName="SwitchTrack" Property="Background" Value="{DynamicResource MemoryBrush}" />
+                                <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="{DynamicResource MemoryBrush}" />
+                                <Setter TargetName="SwitchThumb" Property="Grid.Column" Value="1" />
+                                <Setter TargetName="SwitchThumb" Property="Background" Value="White" />
+                                <Setter TargetName="SwitchText" Property="Text" Value="账号 API 已启用" />
+                                <Setter TargetName="SwitchText" Property="Foreground" Value="{DynamicResource TextBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="SwitchRoot" Property="BorderBrush" Value="{DynamicResource TonalTextBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="SwitchRoot" Property="Opacity" Value="0.62" />
+                                <Setter TargetName="SwitchText" Property="Foreground" Value="{DynamicResource DisabledTextBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <DataTemplate x:Key="ProviderStatusTemplate">
+            <Border Background="{DynamicResource SurfaceAltBrush}"
+                    BorderBrush="{DynamicResource CardLineBrush}"
+                    BorderThickness="1"
+                    CornerRadius="6"
+                    Padding="8,6"
+                    Margin="0,0,6,0"
+                    MinWidth="148"
+                    Height="46">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="9" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Ellipse Width="7" Height="7" VerticalAlignment="Top" Margin="0,3,0,0">
+                        <Ellipse.Style>
+                            <Style TargetType="Ellipse">
+                                <Setter Property="Fill" Value="{DynamicResource WarningTextBrush}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsHealthy}" Value="True">
+                                        <Setter Property="Fill" Value="{DynamicResource MemoryBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Ellipse.Style>
+                    </Ellipse>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="{Binding Name}"
+                                   FontSize="10"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextBrush}"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding StatusText}"
+                                   FontSize="10"
+                                   Margin="0,2,0,0"
+                                   Foreground="{DynamicResource MutedBrush}"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding Error}" />
+                    </StackPanel>
+                    <TextBlock Grid.Column="2"
+                               Text="{Binding LatencyText}"
+                                FontSize="10"
+                               Foreground="{DynamicResource MutedBrush}"
+                               VerticalAlignment="Top"
+                               Margin="6,0,0,0" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Grid Margin="0" MinHeight="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Style="{DynamicResource Card}" Padding="16,10" Margin="0,0,0,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="42" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Border Width="36" Height="36" CornerRadius="7" Background="{DynamicResource TonalBrush}" VerticalAlignment="Center">
+                    <TextBlock Text="&#xE8D4;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{DynamicResource TonalTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <StackPanel Grid.Column="1" Margin="12,0,16,0" VerticalAlignment="Center">
+                    <TextBlock Text="账号管理 API" Style="{DynamicResource SectionTitle}" FontSize="18" />
+                    <TextBlock Text="统一管理内置 Account API、HMAC 密钥和连接状态。" Margin="0,3,0,0" FontSize="11" Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <ToggleButton IsChecked="{Binding AccountApiEnabled, Mode=OneWay}"
+                                  Style="{StaticResource AccountApiSwitch}"
+                                  Click="Enabled_Click"
+                                  IsEnabled="{Binding CanToggleEnabled}"
+                                  ToolTip="开启后由 MCPanel 托管运行；关闭后停止内置 Account API。" />
+                    <Border x:Name="ServiceStatusBadge"
+                            MinWidth="92"
+                            Height="30"
+                            CornerRadius="6"
+                            Padding="10,0"
+                            Margin="8,0,0,0"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            BorderThickness="1">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource CardLineBrush}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ServiceStatusKind}" Value="Starting">
+                                        <Setter Property="BorderBrush" Value="{DynamicResource TonalTextBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding ServiceStatusKind}" Value="Healthy">
+                                        <Setter Property="BorderBrush" Value="{DynamicResource MemoryBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding ServiceStatusKind}" Value="Setup">
+                                        <Setter Property="BorderBrush" Value="{DynamicResource WarningTextBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding ServiceStatusKind}" Value="Degraded">
+                                        <Setter Property="BorderBrush" Value="{DynamicResource WarningTextBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding ServiceStatusKind}" Value="Missing">
+                                        <Setter Property="BorderBrush" Value="{DynamicResource DangerTextBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding ServiceStatusKind}" Value="Offline">
+                                        <Setter Property="BorderBrush" Value="{DynamicResource WarningTextBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <TextBlock Text="{Binding ServiceStatusText}"
+                                   FontSize="11"
+                                   FontWeight="SemiBold"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   TextAlignment="Center"
+                                   TextWrapping="NoWrap"
+                                   TextTrimming="CharacterEllipsis">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ServiceStatusKind}" Value="Healthy">
+                                            <Setter Property="Foreground" Value="{DynamicResource MemoryBrush}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding ServiceStatusKind}" Value="Starting">
+                                            <Setter Property="Foreground" Value="{DynamicResource TonalTextBrush}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding ServiceStatusKind}" Value="Setup">
+                                            <Setter Property="Foreground" Value="{DynamicResource WarningTextBrush}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding ServiceStatusKind}" Value="Degraded">
+                                            <Setter Property="Foreground" Value="{DynamicResource WarningTextBrush}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding ServiceStatusKind}" Value="Missing">
+                                            <Setter Property="Foreground" Value="{DynamicResource DangerTextBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Border Grid.Column="0" Style="{DynamicResource Card}" Padding="12,8" Margin="0,0,6,0">
+                <StackPanel>
+                    <TextBlock Text="内置 API 版本" Style="{StaticResource AccountCaption}" />
+                    <TextBlock Text="{Binding VersionText}" Style="{StaticResource AccountMetricValue}" Margin="0,3,0,0" />
+                    <TextBlock Text="{Binding RuntimeStateText}" FontSize="11" Foreground="{DynamicResource MutedBrush}" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="1" Style="{DynamicResource Card}" Padding="12,8" Margin="0,0,6,0">
+                <StackPanel>
+                    <TextBlock Text="监听地址" Style="{StaticResource AccountCaption}" />
+                    <TextBlock Text="{Binding EndpointText}" Style="{StaticResource AccountMetricValue}" Margin="0,3,0,0" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding AuthModeText}" FontSize="11" Foreground="{DynamicResource MutedBrush}" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="2" Style="{DynamicResource Card}" Padding="12,8" Margin="0,0,6,0">
+                <StackPanel>
+                    <TextBlock Text="数据库连接" Style="{StaticResource AccountCaption}" />
+                    <TextBlock Text="{Binding DatabaseSummaryText}" Style="{StaticResource AccountMetricValue}" Margin="0,3,0,0" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding HealthStatusText}" FontSize="11" Foreground="{DynamicResource MutedBrush}" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="3" Style="{DynamicResource Card}" Padding="12,8">
+                <StackPanel>
+                    <TextBlock Text="运行方式" Style="{StaticResource AccountCaption}" />
+                    <TextBlock Text="{Binding WindowsServiceText}" Style="{StaticResource AccountMetricValue}" Margin="0,3,0,0" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding CheckedAtText}" FontSize="11" Foreground="{DynamicResource MutedBrush}" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Grid Grid.Row="2" Margin="0,0,0,4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{DynamicResource Card}" Padding="12,10" Margin="0,0,8,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="内置 Account API 运行状态" FontSize="14" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding HeaderHintText}" Style="{StaticResource AccountCaption}" FontSize="10" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Content="刷新" Style="{DynamicResource RoundedRectTonalButton}" Height="27" Padding="10,0" Click="Refresh_Click" IsEnabled="{Binding CanInteract}" />
+                    </Grid>
+                    <TextBlock Grid.Row="1" Text="MCPanel 数据目录" Style="{StaticResource AccountCaption}" Margin="0,7,0,3" />
+                    <Grid Grid.Row="2">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="28" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBox Text="{Binding RuntimeDirectoryText, Mode=OneWay}" IsReadOnly="True" Height="28" Padding="8,0" VerticalContentAlignment="Center" FontSize="10" ToolTip="{Binding RuntimeDirectoryText}" />
+                        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,6,0,0">
+                            <Button Content="导入" Width="72" Style="{DynamicResource RoundedRectTonalButton}" Height="28" Padding="9,0" Click="SelectRuntime_Click" IsEnabled="{Binding CanInteract}" />
+                            <Button Content="打开" Width="72" Style="{DynamicResource RoundedRectTonalButton}" Height="28" Padding="9,0" Margin="6,0,0,0" Click="OpenRuntime_Click" IsEnabled="{Binding CanOpenRuntime}" />
+                        </StackPanel>
+                    </Grid>
+                    <Grid Grid.Row="3" Margin="0,7,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Margin="0,0,8,0">
+                            <TextBlock Text="运行模式" Style="{StaticResource AccountCaption}" />
+                            <TextBlock Text="{Binding ServiceModeText}" FontSize="11" FontWeight="SemiBold" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                            <TextBlock Text="设备标识" Style="{StaticResource AccountCaption}" />
+                            <TextBlock Text="{Binding DeviceIdText}" FontSize="11" FontWeight="SemiBold" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding DeviceIdText}" />
+                        </StackPanel>
+                    </Grid>
+                    <Border Grid.Row="4" Background="{DynamicResource SurfaceAltBrush}" CornerRadius="6" Padding="8,6" Margin="0,7,0,0" VerticalAlignment="Top">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="10" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Ellipse Width="7" Height="7" VerticalAlignment="Top" Margin="0,3,0,0">
+                                <Ellipse.Style>
+                                    <Style TargetType="Ellipse">
+                                        <Setter Property="Fill" Value="{DynamicResource MutedBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ServiceStatusKind}" Value="Healthy">
+                                                <Setter Property="Fill" Value="{DynamicResource MemoryBrush}" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding ServiceStatusKind}" Value="Setup">
+                                                <Setter Property="Fill" Value="{DynamicResource WarningTextBrush}" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding ServiceStatusKind}" Value="Degraded">
+                                                <Setter Property="Fill" Value="{DynamicResource WarningTextBrush}" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding ServiceStatusKind}" Value="Missing">
+                                                <Setter Property="Fill" Value="{DynamicResource DangerTextBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Ellipse.Style>
+                            </Ellipse>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="{Binding OperationStatusText}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding OperationHintText}" Style="{StaticResource AccountCaption}" FontSize="10" Margin="0,2,0,0" TextWrapping="Wrap" MaxHeight="32" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="1" Style="{DynamicResource Card}" Padding="12,10">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="安全认证" FontSize="16" FontWeight="SemiBold" />
+                    <TextBlock Grid.Row="1" Text="网页后台与内置 API 使用同一枚 HMAC 密钥。" Style="{StaticResource AccountCaption}" FontSize="10" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Row="2" Text="当前签名密钥" Style="{StaticResource AccountCaption}" Margin="0,7,0,3" />
+                    <Grid Grid.Row="3">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Text="{Binding SecretDisplayText, Mode=OneWay}" IsReadOnly="True" Height="28" Padding="8,0" VerticalContentAlignment="Center" FontFamily="Consolas" FontSize="10" ToolTip="密钥只在本机配置文件中保存，不会写入面板日志。" />
+                        <Button Grid.Column="1" Content="{Binding SecretToggleText}" Style="{DynamicResource AccountLinkButton}" Margin="3,0,0,0" Click="ToggleSecret_Click" IsEnabled="{Binding HasSigningSecret}" />
+                    </Grid>
+                    <WrapPanel Grid.Row="4" Margin="0,6,0,0">
+                        <Button Content="复制密钥" Style="{DynamicResource RoundedRectTonalButton}" Height="27" Padding="9,0" Click="CopySecret_Click" IsEnabled="{Binding CanCopySecret}" />
+                        <Button Content="生成新密钥" Style="{DynamicResource RoundedRectDangerButton}" Height="27" Padding="9,0" Margin="6,0,0,0" Click="GenerateSecret_Click" IsEnabled="{Binding CanGenerateSecret}" />
+                    </WrapPanel>
+                    <StackPanel Grid.Row="5" Margin="0,6,0,0" VerticalAlignment="Top">
+                        <TextBlock Text="生成新密钥会使网页后台旧密钥失效。" FontSize="10" Foreground="{DynamicResource WarningTextBrush}" TextTrimming="CharacterEllipsis" />
+                        <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="6" Padding="8,5" Margin="0,5,0,0">
+                            <TextBlock Text="开机自启动跟随面板设置：面板开机启动时，内置 API 会随 MCPanel 自动运行。" Style="{StaticResource AccountCaption}" FontSize="10" TextWrapping="Wrap" MaxHeight="32" />
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <Grid Grid.Row="3" Margin="0,0,0,4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Border Grid.Column="0" Style="{DynamicResource Card}" Padding="12,10" Margin="0,0,8,0" ClipToBounds="True">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="数据库连接健康" FontSize="16" FontWeight="SemiBold" />
+                            <TextBlock Text="内置 /health 检查 SQL Server / MySQL。" Style="{StaticResource AccountCaption}" FontSize="10" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Content="配置" Style="{DynamicResource AccountLinkButton}" Click="OpenConfig_Click" IsEnabled="{Binding CanOpenConfig}" />
+                            <Button Content="检测" Style="{DynamicResource RoundedRectTonalButton}" Height="27" Padding="10,0" Margin="6,0,0,0" Click="Refresh_Click" IsEnabled="{Binding CanInteract}" />
+                        </StackPanel>
+                    </Grid>
+                    <ItemsControl ItemsSource="{Binding Providers}" ItemTemplate="{StaticResource ProviderStatusTemplate}" Margin="0,7,0,0" MaxHeight="50" ClipToBounds="True">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                    </ItemsControl>
+                    <TextBlock Text="{Binding ProviderEmptyText}" Visibility="{Binding ProviderEmptyVisibility}" Style="{StaticResource AccountCaption}" FontSize="10" Margin="0,7,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding ProviderEmptyText}" />
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="1" Style="{DynamicResource Card}" Padding="12,10" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="审计与运行日志" FontSize="16" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding LogHintText}" Style="{StaticResource AccountCaption}" FontSize="10" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Content="目录" Style="{DynamicResource AccountLinkButton}" Click="OpenLogs_Click" IsEnabled="{Binding CanOpenLogs}" />
+                            <Button Content="刷新" Style="{DynamicResource RoundedRectTonalButton}" Height="27" Padding="10,0" Margin="6,0,0,0" Click="Refresh_Click" IsEnabled="{Binding CanInteract}" />
+                        </StackPanel>
+                    </Grid>
+                    <ScrollViewer Grid.Row="1"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  CanContentScroll="False"
+                                  Background="#101820"
+                                  Padding="8"
+                                  MinHeight="110"
+                                  Margin="0,7,0,0"
+                                  VerticalAlignment="Stretch"
+                                  HorizontalAlignment="Stretch">
+                        <ScrollViewer.Resources>
+                            <Style x:Key="AccountLogScrollThumb" TargetType="Thumb">
+                                <Setter Property="Background" Value="{DynamicResource ScrollThumbBrush}" />
+                                <Setter Property="MinHeight" Value="60" />
+                                <Setter Property="HorizontalAlignment" Value="Center" />
+                                <Setter Property="Cursor" Value="Hand" />
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Thumb">
+                                            <Grid Background="Transparent" MinHeight="60">
+                                                <Border x:Name="ThumbBody"
+                                                        Width="6"
+                                                        Height="48"
+                                                        HorizontalAlignment="Center"
+                                                        VerticalAlignment="Center"
+                                                        CornerRadius="3"
+                                                        Background="{TemplateBinding Background}" />
+                                            </Grid>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="ThumbBody" Property="Width" Value="8" />
+                                                    <Setter TargetName="ThumbBody" Property="CornerRadius" Value="4" />
+                                                    <Setter TargetName="ThumbBody" Property="Background" Value="{DynamicResource ScrollThumbHoverBrush}" />
+                                                </Trigger>
+                                                <Trigger Property="IsDragging" Value="True">
+                                                    <Setter TargetName="ThumbBody" Property="Width" Value="8" />
+                                                    <Setter TargetName="ThumbBody" Property="CornerRadius" Value="4" />
+                                                    <Setter TargetName="ThumbBody" Property="Background" Value="{DynamicResource PrimaryBrush}" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                            <Style TargetType="ScrollBar">
+                                <Setter Property="Width" Value="18" />
+                                <Setter Property="MinWidth" Value="18" />
+                                <Setter Property="Margin" Value="0,0,3,0" />
+                                <Setter Property="Background" Value="Transparent" />
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ScrollBar">
+                                            <Grid Width="18" Background="Transparent" ClipToBounds="False">
+                                                <Track x:Name="PART_Track"
+                                                       Margin="5,7"
+                                                       IsDirectionReversed="True"
+                                                       Focusable="False"
+                                                       Minimum="{TemplateBinding Minimum}"
+                                                       Maximum="{TemplateBinding Maximum}"
+                                                       Value="{Binding Value, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                                                       ViewportSize="NaN"
+                                                       ClipToBounds="False">
+                                                    <Track.DecreaseRepeatButton>
+                                                        <RepeatButton Command="{x:Static ScrollBar.PageUpCommand}"
+                                                                      Focusable="False"
+                                                                      IsTabStop="False"
+                                                                      Opacity="0" />
+                                                    </Track.DecreaseRepeatButton>
+                                                    <Track.Thumb>
+                                                        <Thumb Style="{StaticResource AccountLogScrollThumb}" />
+                                                    </Track.Thumb>
+                                                    <Track.IncreaseRepeatButton>
+                                                        <RepeatButton Command="{x:Static ScrollBar.PageDownCommand}"
+                                                                      Focusable="False"
+                                                                      IsTabStop="False"
+                                                                      Opacity="0" />
+                                                    </Track.IncreaseRepeatButton>
+                                                </Track>
+                                            </Grid>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ScrollViewer.Resources>
+                        <TextBox Text="{Binding LogsText, Mode=OneWay}"
+                                 IsReadOnly="True"
+                                 AcceptsReturn="True"
+                                 TextWrapping="Wrap"
+                                 VerticalScrollBarVisibility="Disabled"
+                                 HorizontalScrollBarVisibility="Disabled"
+                                 Background="Transparent"
+                                 Foreground="#CBD5E1"
+                                 BorderThickness="0"
+                                 Padding="0"
+                                 FontFamily="Consolas"
+                                 FontSize="11"
+                                 VerticalAlignment="Top"
+                                 HorizontalAlignment="Stretch" />
+                    </ScrollViewer>
+                    <TextBlock Grid.Row="2" Text="{Binding ErrorText}" Visibility="{Binding ErrorVisibility}" Foreground="{DynamicResource WarningTextBrush}" FontSize="10" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding ErrorText}" />
+                </Grid>
+            </Border>
+        </Grid>
+        </Grid>
+    </UserControl>

@@ -1,0 +1,58 @@
+# Build, IDE, and test output
+[Bb]in/
+[Oo]bj/
+[Tt]est[Rr]esults/
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Packages and release artifacts are published as GitHub Release assets, not source files.
+artifacts/
+*.zip
+*.7z
+*.rar
+*.sha256
+
+# Per-machine program state, runtime files, logs, caches, and downloaded components.
+StoreData/
+AccountApi/
+Runtime/
+Downloads/
+Tools/
+web/
+Cache/
+Frp/
+Nginx/
+MySQL/
+MSSQL/
+Tomcat/
+SSMS/
+Navicat Premium Lite/
+logs/
+config.ini
+config.ini.previous
+device.identity
+database.config
+database.config.previous
+install-queue.json
+
+# Never commit local credentials, certificates, or secrets.
+.env
+.env.*
+*.pfx
+*.p12
+*.pem
+*.key
+*.snk
+*.secrets.json
+secrets.json
+
+# OS and package-manager noise
+Thumbs.db
+Desktop.ini
+packages/
+*.nupkg
+*.snupkg

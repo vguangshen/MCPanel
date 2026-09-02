@@ -1,0 +1,120 @@
+<Window x:Class="MCPanel.ProductWebsiteDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="产品域名与 SSL" Width="720" Height="650" MinWidth="520" MinHeight="500" MaxHeight="760"
+        WindowStartupLocation="CenterOwner" ResizeMode="CanResize" ShowInTaskbar="False"
+        Background="{DynamicResource PageBrush}">
+    <Window.Resources>
+        <SolidColorBrush x:Key="PageBrush" Color="#F5F7FB" />
+        <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF" />
+        <SolidColorBrush x:Key="SurfaceAltBrush" Color="#F8FAFD" />
+        <SolidColorBrush x:Key="TextBrush" Color="#202124" />
+        <SolidColorBrush x:Key="MutedBrush" Color="#5F6368" />
+        <SolidColorBrush x:Key="LineBrush" Color="#DADCE0" />
+        <SolidColorBrush x:Key="PrimaryBrush" Color="#1A73E8" />
+        <SolidColorBrush x:Key="TonalBrush" Color="#E8F0FE" />
+        <Style TargetType="TextBox">
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+        </Style>
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Padding" Value="18,0" />
+            <Setter Property="Margin" Value="8,0,0,0" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="{DynamicResource TonalBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        </Style>
+    </Window.Resources>
+    <Grid Background="{DynamicResource PageBrush}" ClipToBounds="True">
+        <Viewbox Stretch="Uniform" StretchDirection="Both">
+        <Grid Width="676" Height="606" Margin="22">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <StackPanel>
+            <TextBlock Text="产品域名与 SSL" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" />
+            <TextBlock Text="通过统一 Nginx 为当前产品配置独立域名、HTTPS、跳转和下载限速。" Margin="0,7,0,16"
+                       Foreground="{DynamicResource MutedBrush}" FontSize="13" />
+        </StackPanel>
+        <Border Grid.Row="1" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource LineBrush}"
+                BorderThickness="1" CornerRadius="8" Padding="18">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <CheckBox x:Name="EnabledBox" Content="启用独立域名访问" Checked="OptionChanged" Unchecked="OptionChanged" />
+                <Grid Grid.Row="1" Margin="0,16,0,0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="132"/></Grid.ColumnDefinitions>
+                    <StackPanel Margin="0,0,14,0">
+                        <TextBlock Text="域名" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,6" />
+                        <TextBox x:Name="DomainsBox" ToolTip="多个域名可用逗号或空格分隔" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="HTTP 端口" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,6" />
+                        <TextBox x:Name="HttpPortBox" />
+                    </StackPanel>
+                </Grid>
+                <CheckBox Grid.Row="2" x:Name="SslBox" Content="启用 HTTPS（PEM/CRT 证书 + PEM/KEY 私钥）"
+                          Margin="0,18,0,0" Checked="OptionChanged" Unchecked="OptionChanged" />
+                <Grid Grid.Row="3" Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="86"/><ColumnDefinition Width="112"/></Grid.ColumnDefinitions>
+                    <StackPanel Margin="0,0,10,0">
+                        <TextBlock Text="证书文件" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,6" />
+                        <TextBox x:Name="CertificateBox" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="浏览" VerticalAlignment="Bottom" Margin="0,0,10,0" Click="BrowseCertificate_Click" />
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="HTTPS 端口" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,6" />
+                        <TextBox x:Name="HttpsPortBox" />
+                    </StackPanel>
+                </Grid>
+                <Grid Grid.Row="4" Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="86"/></Grid.ColumnDefinitions>
+                    <StackPanel Margin="0,0,10,0">
+                        <TextBlock Text="私钥文件" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,6" />
+                        <TextBox x:Name="CertificateKeyBox" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="浏览" VerticalAlignment="Bottom" Margin="0" Click="BrowseKey_Click" />
+                </Grid>
+                <Grid Grid.Row="5" Margin="0,18,0,0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="180"/></Grid.ColumnDefinitions>
+                    <CheckBox x:Name="RedirectBox" Content="HTTP 自动 301 跳转到 HTTPS" />
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="单连接限速（KB/s，0 不限）" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,6" />
+                        <TextBox x:Name="BandwidthBox" />
+                    </StackPanel>
+                </Grid>
+                <TextBlock Grid.Row="6" x:Name="StatusText" Margin="0,18,0,0" TextWrapping="Wrap"
+                           Foreground="{DynamicResource MutedBrush}" FontSize="12"
+                           Text="证书会复制到 Nginx 的独立配置目录；保存前会执行 nginx -t 校验，失败时自动恢复原配置。" />
+            </Grid>
+        </Border>
+        <Grid Grid.Row="2" Margin="0,16,0,0">
+            <Button x:Name="RemoveButton" Content="移除域名配置" HorizontalAlignment="Left" Margin="0" Click="Remove_Click" />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="取消" IsCancel="True" Click="Cancel_Click" />
+                <Button Content="保存并应用" IsDefault="True" Background="{DynamicResource PrimaryBrush}" Foreground="White" Click="Save_Click" />
+            </StackPanel>
+        </Grid>
+        </Grid>
+        </Viewbox>
+    </Grid>
+</Window>

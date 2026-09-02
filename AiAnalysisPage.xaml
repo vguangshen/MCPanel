@@ -1,0 +1,360 @@
+<UserControl x:Class="MCPanel.AiAnalysisPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             FontFamily="Segoe UI, Microsoft YaHei UI"
+             Focusable="True"
+             KeyboardNavigation.TabNavigation="Local">
+    <UserControl.Resources>
+        <Style x:Key="AiTargetOptionButton" TargetType="Button">
+            <Setter Property="Height" Value="38" />
+            <Setter Property="Padding" Value="14,0" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="6">
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              VerticalAlignment="Center"
+                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource NavHoverBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="AiComboBox" TargetType="ComboBox">
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="Background" Value="{DynamicResource InputBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardLineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton Focusable="False"
+                                          ClickMode="Press"
+                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                          Background="Transparent"
+                                          BorderThickness="0"
+                                          HorizontalContentAlignment="Stretch"
+                                          VerticalContentAlignment="Stretch">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <ContentPresenter HorizontalAlignment="Stretch"
+                                                          VerticalAlignment="Stretch" />
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                                <Border x:Name="Root"
+                                        Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                        CornerRadius="7"
+                                        Padding="{TemplateBinding Padding}">
+                                    <Grid>
+                                        <TextBlock Text="{TemplateBinding SelectionBoxItem}"
+                                                          VerticalAlignment="Center"
+                                                          HorizontalAlignment="Left"
+                                                          Foreground="{DynamicResource TextBrush}" />
+                                        <TextBlock Text="&#xE70D;"
+                                                   FontFamily="Segoe MDL2 Assets"
+                                                   FontSize="11"
+                                                   Foreground="{DynamicResource MutedBrush}"
+                                                   HorizontalAlignment="Right"
+                                                   VerticalAlignment="Center" />
+                                    </Grid>
+                                </Border>
+                            </ToggleButton>
+                            <Popup x:Name="PART_Popup"
+                                   Placement="Bottom"
+                                   AllowsTransparency="True"
+                                   Focusable="False"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}">
+                                <Border MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                                        Margin="0,4,0,0"
+                                        Padding="5"
+                                        CornerRadius="8"
+                                        Background="{DynamicResource SurfaceAltBrush}"
+                                        BorderBrush="{DynamicResource CardLineBrush}"
+                                        BorderThickness="1">
+                                    <ScrollViewer MaxHeight="180"
+                                                  VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled">
+                                        <ItemsPresenter />
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="AiComboBoxItem" TargetType="ComboBoxItem">
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="Root" CornerRadius="6" Background="Transparent">
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              VerticalAlignment="Center"
+                                              HorizontalAlignment="Left" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource NavHoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource TonalBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TonalTextBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="ScrollBar">
+            <Setter Property="Width" Value="9" />
+            <Setter Property="Margin" Value="3,2,2,2" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Grid Width="{TemplateBinding Width}" Background="Transparent">
+                            <Track x:Name="PART_Track" IsDirectionReversed="True">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="{x:Static ScrollBar.PageUpCommand}"
+                                                  Background="Transparent" BorderThickness="0" Opacity="0" />
+                                </Track.DecreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb MinHeight="34">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border x:Name="ThumbBody"
+                                                        Margin="1"
+                                                        CornerRadius="4"
+                                                        Background="{DynamicResource CardLineBrush}" />
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="ThumbBody" Property="Background" Value="{DynamicResource AccentBrush}" />
+                                                    </Trigger>
+                                                    <Trigger Property="IsDragging" Value="True">
+                                                        <Setter TargetName="ThumbBody" Property="Background" Value="{DynamicResource AccentBrush}" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="{x:Static ScrollBar.PageDownCommand}"
+                                                  Background="Transparent" BorderThickness="0" Opacity="0" />
+                                </Track.IncreaseRepeatButton>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled"
+                  Focusable="True"
+                  KeyboardNavigation.TabNavigation="Local">
+        <Grid MinHeight="620">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+        <Border Style="{DynamicResource Card}" Padding="22,18" Margin="0,0,0,14"
+                ClipToBounds="True">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="AI 日志分析" FontSize="24" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextBrush}" />
+                    <TextBlock Text="采集真实组件日志，由已配置的大模型定位故障根因并生成可执行的修复步骤。"
+                               FontSize="13" Margin="0,7,0,0"
+                               Foreground="{DynamicResource MutedBrush}" />
+                    <TextBlock Text="模型配置读取自 MCPanel.exe.config，修改后重新开始分析即可生效。"
+                               FontSize="12" Margin="0,5,0,0"
+                               Foreground="{DynamicResource MutedBrush}" />
+                    <TextBlock Text="开始分析前请检查左侧脱敏后的日志预览；点击分析后，日志会发送到已配置的模型服务。"
+                               FontSize="12" Margin="0,5,0,0" TextWrapping="Wrap"
+                               Foreground="{DynamicResource MutedBrush}" />
+                </StackPanel>
+
+                <Border Grid.Column="1" Padding="14,8" VerticalAlignment="Center"
+                        Background="{DynamicResource TonalBrush}" CornerRadius="18">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="8" Height="8" Fill="{Binding ApiStatusBrush}" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding ProviderBadgeText}" Margin="8,0,0,0"
+                                   Foreground="{DynamicResource TonalTextBrush}" FontSize="12" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="0.92*" />
+                <ColumnDefinition Width="1.08*" />
+            </Grid.ColumnDefinitions>
+
+            <Grid Margin="0,0,7,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Border Style="{DynamicResource Card}" Padding="18,16" Margin="0,0,0,12">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel>
+                            <TextBlock Text="分析组件" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextBrush}" />
+                            <ComboBox x:Name="TargetComboBox"
+                                      Margin="0,8,0,0"
+                                      Style="{StaticResource AiComboBox}"
+                                      ItemContainerStyle="{StaticResource AiComboBoxItem}"
+                                      SelectionChanged="TargetComboBox_SelectionChanged">
+                                <ComboBoxItem Content="Tomcat" Tag="Tomcat" />
+                                <ComboBoxItem Content="IIS" Tag="Iis" />
+                                <ComboBoxItem Content="Nginx" Tag="Nginx" />
+                                <ComboBoxItem Content="MySQL" Tag="MySql" />
+                                <ComboBoxItem Content="SQL Server" Tag="SqlServer" />
+                                <ComboBoxItem Content="FRP" Tag="Frp" />
+                            </ComboBox>
+                        </StackPanel>
+
+                        <StackPanel Grid.Row="1" Margin="0,14,0,0">
+                            <TextBlock Text="补充现象（可选）" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextBrush}" />
+                            <TextBox x:Name="IssueBox" Height="64" Margin="0,8,0,0" Padding="10,8"
+                                     AcceptsReturn="True" TextWrapping="Wrap"
+                                     VerticalScrollBarVisibility="Auto"
+                                     Background="{DynamicResource InputBrush}"
+                                     Foreground="{DynamicResource TextBrush}"
+                                     BorderBrush="{DynamicResource CardLineBrush}" />
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="2" Text="{Binding CollectionStatus}" Margin="0,12,0,0"
+                                   Foreground="{DynamicResource MutedBrush}" FontSize="12"
+                                   TextWrapping="Wrap" />
+                        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right"
+                                    Margin="0,12,0,0">
+                            <Button Content="重新采集" MinWidth="96" Margin="0,0,8,0"
+                                    Height="36" Padding="14,0" FontSize="13"
+                                    Style="{DynamicResource TonalButton}" Click="CollectLogs_Click"
+                                    IsEnabled="{Binding CanInteract}" />
+                            <Button Content="开始分析" MinWidth="96"
+                                    Height="36" Padding="14,0" FontSize="13"
+                                    Style="{DynamicResource PrimaryButton}" Click="Analyze_Click"
+                                    IsEnabled="{Binding CanInteract}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Border Grid.Row="1" Style="{DynamicResource Card}" Padding="16">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <Grid>
+                            <TextBlock Text="日志预览" FontSize="16" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextBrush}" />
+                            <TextBlock Text="{Binding LogFileCountText}" HorizontalAlignment="Right"
+                                       Foreground="{DynamicResource MutedBrush}" FontSize="12" />
+                        </Grid>
+                        <Grid Grid.Row="1" Margin="0,12,0,0">
+                            <TextBox x:Name="LogPreviewBox"
+                                     IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+                                     FontFamily="Cascadia Mono, Consolas" FontSize="11"
+                                     VerticalScrollBarVisibility="Auto"
+                                     Background="{DynamicResource InputBrush}"
+                                     Foreground="{DynamicResource MutedBrush}"
+                                     BorderBrush="{DynamicResource CardLineBrush}" />
+                            <TextBlock Text="暂无日志，请先点击“重新采集”"
+                                       Visibility="{Binding LogEmptyVisibility}"
+                                       Foreground="{DynamicResource MutedBrush}"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       IsHitTestVisible="False" />
+                        </Grid>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <Border Grid.Column="1" Style="{DynamicResource Card}" Padding="18,16" Margin="7,0,0,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid>
+                        <StackPanel>
+                            <TextBlock Text="诊断结论" FontSize="18" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextBrush}" />
+                            <TextBlock Text="{Binding AnalysisStatus}" Margin="0,5,0,0"
+                                       Foreground="{DynamicResource MutedBrush}" FontSize="12" />
+                        </StackPanel>
+                        <Button Content="复制结果" HorizontalAlignment="Right"
+                                Height="34" Padding="14,0" FontSize="13"
+                                Style="{DynamicResource TonalButton}" Click="CopyResult_Click" />
+                    </Grid>
+                    <ProgressBar Grid.Row="1" Height="3" Margin="0,12,0,0"
+                                 IsIndeterminate="{Binding IsBusy}"
+                                 Visibility="{Binding BusyVisibility}" />
+                    <Grid Grid.Row="2" Margin="0,14,0,0">
+                        <TextBox x:Name="AnalysisBox"
+                                 IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+                                 VerticalScrollBarVisibility="Auto"
+                                 Padding="14,12" FontSize="13"
+                                 Background="{DynamicResource InputBrush}"
+                                 Foreground="{DynamicResource TextBrush}"
+                                 BorderBrush="{DynamicResource CardLineBrush}" />
+                        <TextBlock Text="暂无诊断结论，请先采集日志并开始分析"
+                                   Visibility="{Binding AnalysisEmptyVisibility}"
+                                   Foreground="{DynamicResource MutedBrush}"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   IsHitTestVisible="False" />
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+        </Grid>
+    </ScrollViewer>
+</UserControl>

@@ -1,0 +1,443 @@
+using System.Diagnostics;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Windows;
+using System.Windows.Interop;
+using System.Windows.Threading;
+
+namespace MCPanel;
+
+/// <summary>
+/// Interaction logic for App.xaml
+/// </summary>
+public partial class App : Application
+{
+    private const string UiMutexName = "Local\\MCPanel.MainWindow.v1";
+    private const string ActivationEventName = "Local\\MCPanel.Activate.v1";
+    private Mutex? _uiMutex;
+    private EventWaitHandle? _activationEvent;
+    private RegisteredWaitHandle? _activationRegistration;
+    private TrayIconService? _trayIcon;
+    private MainWindow? _mainWindow;
+    private bool _isExiting;
+    private int _uiGeneration;
+
+    internal bool IsExiting => _isExiting;
+    internal bool HasTrayIcon => _trayIcon is not null;
+
+    public App()
+    {
+        DispatcherUnhandledException += (_, args) =>
+        {
+            WriteLifecycleError("UI 未处理异常", args.Exception);
+            // A rendering/resource exception must not terminate the entire
+            // panel. The detailed exception is retained for diagnosis while
+            // the current page can be replaced or retried by the user.
+            args.Handled = true;
+        };
+        TaskScheduler.UnobservedTaskException += (_, args) =>
+        {
+            WriteLifecycleError("后台任务未处理异常", args.Exception);
+            args.SetObserved();
+        };
+    }
+
+    protected override void OnStartup(StartupEventArgs e)
+    {
+        base.OnStartup(e);
+        _ = OnStartupAsync(e);
+    }
+
+    private async Task OnStartupAsync(StartupEventArgs e)
+    {
+        try
+        {
+            ComponentStorageMigration.MigrateLegacyData();
+
+            if (NginxWindowsServiceHost.IsServiceRequest(e.Args))
+            {
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                var exitCode = NginxWindowsServiceHost.Run(e.Args);
+                Shutdown(exitCode);
+                return;
+            }
+
+            if (EnvironmentInstallWorker.IsWorkerRequest(e.Args))
+            {
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                var exitCode = await EnvironmentInstallWorker.RunAsync(e.Args);
+                Shutdown(exitCode);
+                return;
+            }
+
+            if (ProductInstallWorker.IsWorkerRequest(e.Args))
+            {
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                var exitCode = await ProductInstallWorker.RunAsync(e.Args);
+                Shutdown(exitCode);
+                return;
+            }
+
+            if (TomcatProductStartupManager.IsRestoreRequest(e.Args))
+            {
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                var exitCode = await TomcatProductStartupManager.RestoreAsync();
+                Shutdown(exitCode);
+                return;
+            }
+
+            var applyUpdateIndex = Array.FindIndex(e.Args, argument =>
+                string.Equals(argument, "--apply-update", StringComparison.OrdinalIgnoreCase));
+            if (applyUpdateIndex >= 0)
+            {
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                var planFile = applyUpdateIndex + 1 < e.Args.Length ? e.Args[applyUpdateIndex + 1] : string.Empty;
+                var exitCode = await ApplicationUpdateService.ApplyUpdatePlanAsync(planFile);
+                Shutdown(exitCode);
+                return;
+            }
+
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            var startInTray = ApplicationLaunchMode.IsTrayStartupRequest(e.Args);
+            _uiMutex = new Mutex(true, UiMutexName, out var isPrimaryUi);
+            if (!isPrimaryUi)
+            {
+                if (!startInTray)
+                {
+                    SignalPrimaryInstance();
+                }
+
+                Shutdown();
+                return;
+            }
+
+            InitializeActivationListener();
+            TryNormalizeStartupRegistration();
+            try
+            {
+                _trayIcon = new TrayIconService(ShowMainWindow, ExitApplication);
+            }
+            catch (Exception ex)
+            {
+                WriteLifecycleError("创建系统托盘图标失败", ex);
+                if (startInTray)
+                {
+                    MessageBox.Show(
+                        $"无法创建系统托盘图标，MCPanel 将改为打开主窗口。\n\n{ex.Message}",
+                        "MCPanel",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
+            }
+
+            if (!startInTray || _trayIcon is null)
+            {
+                ShowMainWindow();
+            }
+            else
+            {
+                _ = ScheduleUiMemoryRelease(Volatile.Read(ref _uiGeneration));
+            }
+
+            // The embedded API follows the MCPanel process. The Windows
+            // startup toggle only decides whether MCPanel itself is launched;
+            // the Account API page's enable switch decides whether the API is
+            // started inside that process.
+            _ = EnsureAccountApiAtStartup();
+        }
+        catch (Exception ex)
+        {
+            WriteLifecycleError("MCPanel 启动失败", ex);
+            if (!Dispatcher.HasShutdownStarted)
+            {
+                MessageBox.Show(
+                    $"MCPanel 启动失败。\n\n{ex.Message}",
+                    "MCPanel",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                Shutdown(1);
+            }
+        }
+    }
+
+    internal void ExitApplication()
+    {
+        if (_isExiting)
+        {
+            return;
+        }
+
+        _isExiting = true;
+        _trayIcon?.Hide();
+        _mainWindow?.Close();
+        Shutdown();
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        _isExiting = true;
+        _activationRegistration?.Unregister(null);
+        _activationRegistration = null;
+        _activationEvent?.Dispose();
+        _activationEvent = null;
+        _trayIcon?.Dispose();
+        _trayIcon = null;
+
+        if (_uiMutex is not null)
+        {
+            try { _uiMutex.ReleaseMutex(); } catch { }
+            _uiMutex.Dispose();
+            _uiMutex = null;
+        }
+
+        AccountApiManagerService.StopEmbeddedRuntime();
+
+        base.OnExit(e);
+    }
+
+    private void ShowMainWindow()
+    {
+        if (_isExiting || Dispatcher.HasShutdownStarted)
+        {
+            return;
+        }
+
+        Interlocked.Increment(ref _uiGeneration);
+        if (_mainWindow is not null)
+        {
+            RestoreAndActivate(_mainWindow);
+            return;
+        }
+
+        MainWindow? window = null;
+        try
+        {
+            window = new MainWindow();
+            _mainWindow = window;
+            MainWindow = window;
+            window.Closed += MainWindow_Closed;
+            window.Show();
+            RestoreAndActivate(window);
+        }
+        catch (Exception ex)
+        {
+            if (window is not null)
+            {
+                window.Closed -= MainWindow_Closed;
+            }
+
+            _mainWindow = null;
+            if (ReferenceEquals(MainWindow, window))
+            {
+                MainWindow = null;
+            }
+
+            WriteLifecycleError("打开主窗口失败", ex);
+            MessageBox.Show(
+                $"无法打开 MCPanel 主窗口。\n\n{ex.Message}",
+                "MCPanel",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    private void MainWindow_Closed(object? sender, EventArgs e)
+    {
+        if (sender is not MainWindow window)
+        {
+            return;
+        }
+
+        window.Closed -= MainWindow_Closed;
+        if (ReferenceEquals(_mainWindow, window))
+        {
+            _mainWindow = null;
+        }
+
+        if (ReferenceEquals(MainWindow, window))
+        {
+            MainWindow = null;
+        }
+
+        if (_isExiting)
+        {
+            return;
+        }
+
+        if (_trayIcon is null)
+        {
+            ExitApplication();
+            return;
+        }
+
+        _trayIcon?.ShowBackgroundTip();
+        _ = ScheduleUiMemoryRelease(Volatile.Read(ref _uiGeneration));
+    }
+
+    private async Task ScheduleUiMemoryRelease(int closedGeneration)
+    {
+        try
+        {
+            await Task.Delay(750);
+            if (!CanReleaseUiMemory(closedGeneration))
+            {
+                return;
+            }
+
+            await Task.Run(() => ReleaseUiMemory(collectManagedObjects: true));
+
+            // Closing the first WPF window can finish a few dispatcher and thread-pool
+            // callbacks after Closed. Trim once more after those pages become idle.
+            await Task.Delay(5000);
+            if (CanReleaseUiMemory(closedGeneration))
+            {
+                await Task.Run(() => ReleaseUiMemory(collectManagedObjects: false));
+            }
+        }
+        catch (Exception ex)
+        {
+            WriteLifecycleError("释放后台 UI 内存失败", ex);
+        }
+    }
+
+    private bool CanReleaseUiMemory(int generation) =>
+        !_isExiting && _mainWindow is null && generation == Volatile.Read(ref _uiGeneration);
+
+    private static void ReleaseUiMemory(bool collectManagedObjects)
+    {
+        if (collectManagedObjects)
+        {
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+            GC.WaitForPendingFinalizers();
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+        }
+
+        using var process = Process.GetCurrentProcess();
+        SetProcessWorkingSetSize(process.Handle, new IntPtr(-1), new IntPtr(-1));
+    }
+
+    private void InitializeActivationListener()
+    {
+        _activationEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ActivationEventName);
+        _activationRegistration = ThreadPool.RegisterWaitForSingleObject(
+            _activationEvent,
+            (_, timedOut) =>
+            {
+                if (timedOut || _isExiting || Dispatcher.HasShutdownStarted)
+                {
+                    return;
+                }
+
+                Dispatcher.BeginInvoke((Action)ShowMainWindow, DispatcherPriority.Normal);
+            },
+            null,
+            Timeout.Infinite,
+            executeOnlyOnce: false);
+    }
+
+    private static void SignalPrimaryInstance()
+    {
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            try
+            {
+                using var activationEvent = EventWaitHandle.OpenExisting(ActivationEventName);
+                activationEvent.Set();
+                return;
+            }
+            catch (WaitHandleCannotBeOpenedException)
+            {
+                Thread.Sleep(40);
+            }
+        }
+    }
+
+    private static void RestoreAndActivate(Window window)
+    {
+        if (!window.IsVisible)
+        {
+            window.Show();
+        }
+
+        if (window.WindowState == WindowState.Minimized)
+        {
+            window.WindowState = WindowState.Normal;
+        }
+
+        var handle = new WindowInteropHelper(window).Handle;
+        if (handle != IntPtr.Zero)
+        {
+            ShowWindow(handle, 9);
+            SetForegroundWindow(handle);
+        }
+
+        window.Activate();
+        window.Focus();
+    }
+
+    private static void TryNormalizeStartupRegistration()
+    {
+        try
+        {
+            new PanelSettingsService().EnsureStartupRegistrationUsesTrayMode();
+        }
+        catch (Exception ex)
+        {
+            WriteLifecycleError("更新开机自启动参数失败", ex);
+        }
+    }
+
+    private static async Task EnsureAccountApiAtStartup()
+    {
+        try
+        {
+            using var manager = new AccountApiManagerService();
+            if (!manager.IsEnabled)
+            {
+                return;
+            }
+
+            await manager.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            WriteLifecycleError("开机启动 Account API 失败", ex);
+        }
+    }
+
+    private static void WriteLifecycleError(string action, Exception exception)
+    {
+        try
+        {
+            var workDirectory = Path.Combine(AppContext.BaseDirectory, "StoreData", "Work");
+            Directory.CreateDirectory(workDirectory);
+            RollingLogWriter.Append(
+                Path.Combine(workDirectory, "application-lifecycle-error.log"),
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {action}{Environment.NewLine}{exception}{Environment.NewLine}{Environment.NewLine}");
+        }
+        catch
+        {
+            // Lifecycle diagnostics must never prevent tray startup or shutdown.
+        }
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr windowHandle);
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr windowHandle, int command);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool SetProcessWorkingSetSize(
+        IntPtr process,
+        IntPtr minimumWorkingSetSize,
+        IntPtr maximumWorkingSetSize);
+}
+
+internal static class ApplicationLaunchMode
+{
+    internal const string TrayArgument = "--tray";
+
+    internal static bool IsTrayStartupRequest(IEnumerable<string> arguments) =>
+        arguments.Any(argument => string.Equals(argument, TrayArgument, StringComparison.OrdinalIgnoreCase));
+}
