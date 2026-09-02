@@ -27,6 +27,12 @@ public partial class MainWindow : Window
     private const int DwmWindowCornerPreferenceAttribute = 33;
     private const int DwmCornerPreferenceDoNotRound = 1;
     private const int DwmCornerPreferenceRound = 2;
+    private static readonly string[] DialogThemeBrushKeys =
+    [
+        "PrimaryBrush", "PrimaryDarkBrush", "SurfaceBrush", "SurfaceAltBrush",
+        "TextBrush", "MutedBrush", "LineBrush", "CardLineBrush", "InputBrush", "NavHoverBrush",
+        "TonalBrush", "TonalTextBrush", "DisabledBrush", "DisabledTextBrush"
+    ];
 
     [DllImport("dwmapi.dll", EntryPoint = "DwmSetWindowAttribute")]
     private static extern int DwmSetWindowAttribute(
@@ -1202,14 +1208,31 @@ public partial class MainWindow : Window
             ShowInTaskbar = false,
             Background = (Brush)FindResource("SurfaceBrush")
         };
+        foreach (var key in DialogThemeBrushKeys)
+        {
+            dialog.Resources[key] = FindResource(key);
+        }
 
         var token = new PasswordBox
         {
             FontSize = 14,
-            Height = 36,
-            Padding = new Thickness(10, 5, 10, 5),
+            Padding = new Thickness(0),
             VerticalContentAlignment = VerticalAlignment.Center,
-            MaxLength = 256
+            MaxLength = 256,
+            Background = Brushes.Transparent,
+            Foreground = (Brush)FindResource("TextBrush"),
+            CaretBrush = (Brush)FindResource("TextBrush"),
+            BorderThickness = new Thickness(0)
+        };
+        var tokenInput = new Border
+        {
+            Height = 38,
+            Padding = new Thickness(10, 0, 10, 0),
+            Background = (Brush)FindResource("InputBrush"),
+            BorderBrush = (Brush)FindResource("LineBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Child = token
         };
         var savedState = new TextBlock
         {
@@ -1289,7 +1312,7 @@ public partial class MainWindow : Window
         };
 
         var content = new Grid { Margin = new Thickness(24, 18, 24, 18) };
-        for (var i = 0; i < 7; i++)
+        for (var i = 0; i < 6; i++)
         {
             content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         }
@@ -1305,33 +1328,40 @@ public partial class MainWindow : Window
         };
         var hint = new TextBlock
         {
-            Text = "使用一个固定的细粒度访问令牌。仅授予此仓库 Contents: read 权限；令牌不会写入配置文件、日志或更新包。",
+            Text = "更新仓库已固定。只需保存一个固定的细粒度访问令牌；仅授予 Contents: read 权限，令牌不会写入配置文件、日志或更新包。",
             FontSize = 12,
             Margin = new Thickness(0, 5, 0, 12),
             TextWrapping = TextWrapping.Wrap,
             Foreground = (Brush)FindResource("MutedBrush")
         };
-        var repositoryLabel = new TextBlock
+        var repositorySummary = new Border
         {
-            Text = "更新仓库",
-            FontSize = 11,
-            Margin = new Thickness(0, 0, 0, 4),
-            Foreground = (Brush)FindResource("MutedBrush")
+            Padding = new Thickness(10, 8, 10, 8),
+            Background = (Brush)FindResource("SurfaceAltBrush"),
+            BorderBrush = (Brush)FindResource("CardLineBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6)
         };
-        var repositoryValue = new TextBox
+        var repositoryContent = new StackPanel();
+        repositoryContent.Children.Add(new TextBlock
+        {
+            Text = "更新仓库（固定）",
+            FontSize = 10,
+            Foreground = (Brush)FindResource("MutedBrush")
+        });
+        repositoryContent.Children.Add(new TextBlock
         {
             Text = repository,
-            IsReadOnly = true,
-            Height = 32,
-            Padding = new Thickness(10, 4, 10, 4),
-            VerticalContentAlignment = VerticalAlignment.Center,
+            FontSize = 13,
+            FontWeight = FontWeights.SemiBold,
             Foreground = (Brush)FindResource("TextBrush")
-        };
+        });
+        repositorySummary.Child = repositoryContent;
         var tokenLabel = new TextBlock
         {
             Text = "固定访问令牌",
             FontSize = 11,
-            Margin = new Thickness(0, 10, 0, 4),
+            Margin = new Thickness(0, 12, 0, 4),
             Foreground = (Brush)FindResource("MutedBrush")
         };
         var buttons = new StackPanel
@@ -1345,18 +1375,16 @@ public partial class MainWindow : Window
 
         Grid.SetRow(title, 0);
         Grid.SetRow(hint, 1);
-        Grid.SetRow(repositoryLabel, 2);
-        Grid.SetRow(repositoryValue, 3);
-        Grid.SetRow(tokenLabel, 4);
-        Grid.SetRow(token, 5);
-        Grid.SetRow(savedState, 6);
-        Grid.SetRow(buttons, 8);
+        Grid.SetRow(repositorySummary, 2);
+        Grid.SetRow(tokenLabel, 3);
+        Grid.SetRow(tokenInput, 4);
+        Grid.SetRow(savedState, 5);
+        Grid.SetRow(buttons, 7);
         content.Children.Add(title);
         content.Children.Add(hint);
-        content.Children.Add(repositoryLabel);
-        content.Children.Add(repositoryValue);
+        content.Children.Add(repositorySummary);
         content.Children.Add(tokenLabel);
-        content.Children.Add(token);
+        content.Children.Add(tokenInput);
         content.Children.Add(savedState);
         content.Children.Add(buttons);
         dialog.Content = content;

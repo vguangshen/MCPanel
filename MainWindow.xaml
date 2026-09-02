@@ -2407,6 +2407,9 @@
                     <ScrollViewer Grid.Row="1" Margin="0,12,0,0" VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled"
                                   Visibility="{Binding WebsiteContentVisibility}">
+                        <ScrollViewer.Resources>
+                            <Style TargetType="ScrollBar" BasedOn="{StaticResource ModernVerticalScrollBar}" />
+                        </ScrollViewer.Resources>
                         <StackPanel>
                             <TextBlock Text="自定义 IIS 网站" Foreground="{DynamicResource TextBrush}" FontSize="14" FontWeight="SemiBold" Margin="2,0,0,9" />
                             <ItemsControl ItemsSource="{Binding CustomWebsites}" ItemTemplate="{StaticResource CustomWebsiteCardTemplate}">
