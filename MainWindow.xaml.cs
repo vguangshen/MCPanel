@@ -5641,11 +5641,14 @@ public sealed class ProductItem(string productId, string name, string level, str
     public bool IsQueued => QueueState is ProductInstallQueueStatus.Pending or ProductInstallQueueStatus.Running;
     public bool CanProductAction => !IsBusy && !IsQueued;
     public bool CanUpdate => IsInstalled && !IsBusy && !IsQueued;
+    public bool IsInstallationComplete => IsInstalled && !IsBusy && !IsQueued;
     public ProductInstallQueueStatus? QueueState => _queueState;
     public int QueuePosition => _queuePosition;
     public Visibility InstallButtonVisibility => IsInstalled ? Visibility.Collapsed : Visibility.Visible;
     public Visibility UninstallButtonVisibility => IsInstalled ? Visibility.Visible : Visibility.Collapsed;
     public Visibility UpdateButtonVisibility => IsInstalled ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility CompletedIndicatorVisibility => IsInstallationComplete ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility ProgressIndicatorVisibility => IsInstallationComplete ? Visibility.Collapsed : Visibility.Visible;
     public int InstallSequence
     {
         get => _installSequence;
@@ -5722,6 +5725,7 @@ public sealed class ProductItem(string productId, string name, string level, str
                 OnPropertyChanged(nameof(CanProductAction));
                 OnPropertyChanged(nameof(CanUpdate));
                 OnPropertyChanged(nameof(CompactStatusText));
+                NotifyInstallationVisualStateChanged();
             }
         }
     }
@@ -5739,6 +5743,7 @@ public sealed class ProductItem(string productId, string name, string level, str
             OnPropertyChanged(nameof(CanProductAction));
             OnPropertyChanged(nameof(CanUpdate));
             OnPropertyChanged(nameof(CompactStatusText));
+            NotifyInstallationVisualStateChanged();
         }
 
         if (SetProperty(ref _queuePosition, Math.Max(0, queuePosition)))
@@ -5765,8 +5770,16 @@ public sealed class ProductItem(string productId, string name, string level, str
                 OnPropertyChanged(nameof(UninstallButtonVisibility));
                 OnPropertyChanged(nameof(UpdateButtonVisibility));
                 OnPropertyChanged(nameof(CompactStatusText));
+                NotifyInstallationVisualStateChanged();
             }
         }
+    }
+
+    private void NotifyInstallationVisualStateChanged()
+    {
+        OnPropertyChanged(nameof(IsInstallationComplete));
+        OnPropertyChanged(nameof(CompletedIndicatorVisibility));
+        OnPropertyChanged(nameof(ProgressIndicatorVisibility));
     }
 
     private static string Classify(string productName, string productLevel)

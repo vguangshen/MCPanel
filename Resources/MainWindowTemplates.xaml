@@ -99,17 +99,38 @@
                     </StackPanel>
                     <Grid Grid.Column="1" Width="42" Height="42" HorizontalAlignment="Right">
                         <local:CircularProgress Value="{Binding DownloadProgress, Mode=OneWay}"
-                                                ProgressBrush="{DynamicResource PrimaryBrush}"
-                                                TrackBrush="{DynamicResource DisabledBrush}"
-                                                Width="40"
-                                                Height="40"
-                                                StrokeThickness="5" />
+                                                 ProgressBrush="{DynamicResource PrimaryBrush}"
+                                                 TrackBrush="{DynamicResource DisabledBrush}"
+                                                 Width="40"
+                                                 Height="40"
+                                                 StrokeThickness="5"
+                                                 Visibility="{Binding ProgressIndicatorVisibility}" />
                         <TextBlock Text="{Binding DownloadProgress, StringFormat={}{0:N0}%}"
                                    FontSize="9"
                                    FontWeight="SemiBold"
                                    Foreground="{DynamicResource MutedBrush}"
                                    HorizontalAlignment="Center"
-                                   VerticalAlignment="Center" />
+                                   VerticalAlignment="Center"
+                                   Visibility="{Binding ProgressIndicatorVisibility}" />
+                        <Border Width="40"
+                                Height="40"
+                                CornerRadius="20"
+                                Background="{DynamicResource MemoryBrush}"
+                                BorderBrush="{DynamicResource MemoryBrush}"
+                                BorderThickness="1"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                ToolTip="已安装"
+                                Visibility="{Binding CompletedIndicatorVisibility}">
+                            <TextBlock Text="&#x2713;"
+                                       FontFamily="Segoe UI Symbol"
+                                       FontSize="20"
+                                       FontWeight="Bold"
+                                       Foreground="White"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       Margin="0,-1,0,0" />
+                        </Border>
                     </Grid>
                 </Grid>
             </Grid>

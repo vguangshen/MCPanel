@@ -539,6 +539,43 @@ public sealed class ReliabilityTests
     }
 
     [TestMethod]
+    public void InstalledProductUsesCompletionIndicatorInsteadOfZeroProgress()
+    {
+        var product = new ProductItem("TEST-COMPLETE", "已安装产品", "测试", string.Empty, ProductSource.Online)
+        {
+            DownloadProgress = 0
+        };
+
+        Assert.IsFalse(product.IsInstallationComplete);
+        Assert.AreEqual(System.Windows.Visibility.Visible, product.ProgressIndicatorVisibility);
+        Assert.AreEqual(System.Windows.Visibility.Collapsed, product.CompletedIndicatorVisibility);
+
+        product.IsInstalled = true;
+
+        Assert.IsTrue(product.IsInstallationComplete);
+        Assert.AreEqual(System.Windows.Visibility.Collapsed, product.ProgressIndicatorVisibility);
+        Assert.AreEqual(System.Windows.Visibility.Visible, product.CompletedIndicatorVisibility);
+
+        product.IsBusy = true;
+
+        Assert.IsFalse(product.IsInstallationComplete, "更新或卸载期间不能显示安装完成勾号。");
+        Assert.AreEqual(System.Windows.Visibility.Visible, product.ProgressIndicatorVisibility);
+        Assert.AreEqual(System.Windows.Visibility.Collapsed, product.CompletedIndicatorVisibility);
+
+        product.IsBusy = false;
+        product.SetQueueState(ProductInstallQueueStatus.Pending, 1);
+
+        Assert.IsFalse(product.IsInstallationComplete, "排队期间不能显示安装完成勾号。");
+        Assert.AreEqual(System.Windows.Visibility.Visible, product.ProgressIndicatorVisibility);
+
+        product.SetQueueState(null, 0);
+
+        Assert.IsTrue(product.IsInstallationComplete);
+        Assert.AreEqual(System.Windows.Visibility.Collapsed, product.ProgressIndicatorVisibility);
+        Assert.AreEqual(System.Windows.Visibility.Visible, product.CompletedIndicatorVisibility);
+    }
+
+    [TestMethod]
     public void HidingInstallationPanelKeepsDownloadControlsAndStateAlive()
     {
         var product = new ProductItem("TEST-HIDE", "后台下载产品", "测试", string.Empty, ProductSource.Online);
