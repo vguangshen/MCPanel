@@ -6,6 +6,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
@@ -2720,6 +2721,87 @@ public sealed class ReliabilityTests
             }
 
             DeleteTemporaryTree(root);
+        }
+    }
+
+    [TestMethod]
+    public async Task RemoteUpdateReleasesDownloadFileAndReusesVerifiedPackage()
+    {
+        var sourceRoot = CreateTemporaryDirectory();
+        var service = new ApplicationUpdateService();
+        const string version = "999.0.0.1";
+        var packageFile = Path.Combine(service.UpdatesRoot, "Downloads", $"MCPanel-{version}.zip");
+        var temporaryFile = packageFile + ".part";
+        PreparedApplicationUpdate? first = null;
+        PreparedApplicationUpdate? second = null;
+        try
+        {
+            if (File.Exists(packageFile)) File.Delete(packageFile);
+            if (File.Exists(temporaryFile)) File.Delete(temporaryFile);
+
+            var packageSource = Path.Combine(sourceRoot, "MCPanel-source.zip");
+            var executable = Path.Combine(AppContext.BaseDirectory, "MCPanel.exe");
+            var config = Path.Combine(AppContext.BaseDirectory, "MCPanel.exe.config");
+            Assert.IsTrue(File.Exists(executable), "测试发布目录必须包含 MCPanel.exe。");
+            Assert.IsTrue(File.Exists(config), "测试发布目录必须包含 MCPanel.exe.config。");
+
+            using (var archive = ZipFile.Open(packageSource, ZipArchiveMode.Create))
+            {
+                archive.CreateEntryFromFile(executable, "MCPanel.exe");
+                archive.CreateEntryFromFile(config, "MCPanel.exe.config");
+            }
+
+            var packageBytes = File.ReadAllBytes(packageSource);
+            string hash;
+            using (var sha = SHA256.Create())
+            {
+                hash = BitConverter.ToString(sha.ComputeHash(packageBytes)).Replace("-", string.Empty).ToLowerInvariant();
+            }
+
+            var manifest = new OnlineUpdateManifest
+            {
+                Version = version,
+                PackageUrl = "https://updates.example.test/MCPanel.zip",
+                Sha256 = hash
+            };
+            var downloadCount = 0;
+            Task<HttpResponseMessage> Download(CancellationToken _)
+            {
+                downloadCount++;
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new ByteArrayContent(packageBytes)
+                });
+            }
+
+            first = await service.PrepareRemotePackageAsync(
+                manifest,
+                Download,
+                response => response.EnsureSuccessStatusCode(),
+                progress: null,
+                status: null,
+                CancellationToken.None);
+            service.DiscardPreparedUpdate(first);
+
+            Assert.IsTrue(File.Exists(packageFile), "下载完成后应保留可复用的正式更新包。");
+            Assert.IsFalse(File.Exists(temporaryFile), "正式化完成后不应残留被占用的 .part 文件。");
+
+            second = await service.PrepareRemotePackageAsync(
+                manifest,
+                Download,
+                response => response.EnsureSuccessStatusCode(),
+                progress: null,
+                status: null,
+                CancellationToken.None);
+            Assert.AreEqual(1, downloadCount, "SHA-256 一致的已下载更新包应直接复用，不应重新下载。");
+        }
+        finally
+        {
+            service.DiscardPreparedUpdate(first);
+            service.DiscardPreparedUpdate(second);
+            if (File.Exists(packageFile)) File.Delete(packageFile);
+            if (File.Exists(temporaryFile)) File.Delete(temporaryFile);
+            DeleteTemporaryTree(sourceRoot);
         }
     }
 

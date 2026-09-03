@@ -344,7 +344,7 @@ public sealed class ApplicationUpdateService
             cancellationToken);
     }
 
-    private async Task<PreparedApplicationUpdate> PrepareRemotePackageAsync(
+    internal async Task<PreparedApplicationUpdate> PrepareRemotePackageAsync(
         OnlineUpdateManifest manifest,
         Func<CancellationToken, Task<HttpResponseMessage>> download,
         Action<HttpResponseMessage> ensureResponse,
@@ -360,38 +360,86 @@ public sealed class ApplicationUpdateService
         var safeVersion = SafeName(manifest.Version);
         var packageFile = Path.Combine(downloadRoot, $"MCPanel-{safeVersion}.zip");
         var temporary = packageFile + ".part";
-        status?.Report("正在下载更新包...");
-        try
+        var expectedHash = NormalizeSha256(manifest.Sha256);
+        var reusedCachedPackage = false;
+        if (File.Exists(packageFile))
         {
-            using var response = await download(cancellationToken);
-            ensureResponse(response);
-            var length = response.Content.Headers.ContentLength;
-            using var source = await response.Content.ReadAsStreamAsync();
-            using var target = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None, 1024 * 1024, true);
-            var buffer = new byte[1024 * 1024];
-            long received = 0;
-            int read;
-            while ((read = await source.ReadAsync(buffer, 0, buffer.Length, cancellationToken)) > 0)
+            status?.Report("正在检查已下载的更新包...");
+            string cachedHash;
+            try
             {
-                await target.WriteAsync(buffer, 0, read, cancellationToken);
-                received += read;
-                if (length is > 0) progress?.Report(Math.Min(75, received * 75d / length.Value));
+                cachedHash = await Task.Run(() => ComputeSha256(packageFile), cancellationToken);
             }
-            await target.FlushAsync(cancellationToken);
-            FileCompat.Move(temporary, packageFile, overwrite: true);
-        }
-        finally
-        {
-            if (File.Exists(temporary)) File.Delete(temporary);
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+            {
+                throw new IOException("已下载的更新包正在被其他进程使用，无法继续更新。请关闭其他 MCPanel 更新任务后重试。", ex);
+            }
+
+            if (cachedHash.Equals(expectedHash, StringComparison.OrdinalIgnoreCase))
+            {
+                reusedCachedPackage = true;
+                status?.Report("已复用已下载的更新包。");
+            }
+            else
+            {
+                try
+                {
+                    File.Delete(packageFile);
+                }
+                catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+                {
+                    throw new IOException("旧的更新包无法替换，可能正被其他进程使用。请关闭其他 MCPanel 更新任务后重试。", ex);
+                }
+            }
         }
 
-        status?.Report("正在校验 SHA-256...");
-        var actualHash = await Task.Run(() => ComputeSha256(packageFile), cancellationToken);
-        if (!actualHash.Equals(NormalizeSha256(manifest.Sha256), StringComparison.OrdinalIgnoreCase))
+        if (!reusedCachedPackage)
         {
-            File.Delete(packageFile);
-            throw new InvalidDataException("更新包 SHA-256 校验失败，文件可能不完整或已被替换。");
+            status?.Report("正在下载更新包...");
+            try
+            {
+                using var response = await download(cancellationToken);
+                ensureResponse(response);
+                var length = response.Content.Headers.ContentLength;
+                using var source = await response.Content.ReadAsStreamAsync();
+                // 必须在 Move 前结束此作用域，确保 Windows 已释放 .part 文件句柄。
+                using (var target = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None, 1024 * 1024, true))
+                {
+                    var buffer = new byte[1024 * 1024];
+                    long received = 0;
+                    int read;
+                    while ((read = await source.ReadAsync(buffer, 0, buffer.Length, cancellationToken)) > 0)
+                    {
+                        await target.WriteAsync(buffer, 0, read, cancellationToken);
+                        received += read;
+                        if (length is > 0) progress?.Report(Math.Min(75, received * 75d / length.Value));
+                    }
+                    await target.FlushAsync(cancellationToken);
+                }
+
+                try
+                {
+                    FileCompat.Move(temporary, packageFile, overwrite: true);
+                }
+                catch (IOException ex)
+                {
+                    throw new IOException("更新包下载完成但无法保存，文件可能正被其他进程使用。请关闭其他 MCPanel 更新任务后重试。", ex);
+                }
+            }
+            finally
+            {
+                if (File.Exists(temporary)) File.Delete(temporary);
+            }
+
+            status?.Report("正在校验 SHA-256...");
+            var actualHash = await Task.Run(() => ComputeSha256(packageFile), cancellationToken);
+            if (!actualHash.Equals(expectedHash, StringComparison.OrdinalIgnoreCase))
+            {
+                File.Delete(packageFile);
+                throw new InvalidDataException("更新包 SHA-256 校验失败，文件可能不完整或已被替换。");
+            }
         }
+
         progress?.Report(80);
         return await PreparePackageAsync(
             packageFile,
