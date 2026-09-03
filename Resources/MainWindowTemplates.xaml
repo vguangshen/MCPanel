@@ -218,16 +218,10 @@
                                 <ColumnDefinition Width="30" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <Button Width="24"
-                                    Height="24"
-                                    MinWidth="0"
-                                    Padding="0"
-                                    Margin="0"
+                            <Button
                                     HorizontalAlignment="Left"
                                     VerticalAlignment="Center"
-                                    Style="{DynamicResource EnvironmentTonalButton}"
-                                    FontFamily="Segoe MDL2 Assets"
-                                    FontSize="13"
+                                    Style="{DynamicResource PathIconButton}"
                                     Content="&#xE8B7;"
                                     ToolTip="打开软件安装目录"
                                     AutomationProperties.Name="打开软件安装目录"
@@ -817,8 +811,7 @@
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="{Binding Title}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                 <Button Width="26" Height="26" MinWidth="0" Padding="0" Margin="7,0,0,0"
-                                        Style="{DynamicResource EnvironmentTonalButton}"
-                                        FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                        Style="{DynamicResource PathIconButton}"
                                         Content="&#xE8B7;" ToolTip="打开安装目录"
                                         Visibility="{Binding InstallDirectoryVisibility}"
                                         Click="EnvironmentOpenDirectory_Click" />

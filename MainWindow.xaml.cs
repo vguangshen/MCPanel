@@ -3347,7 +3347,7 @@ public sealed class DatabaseToolViewModel : ObservableObject
             : $"（{matchedVersion}）";
         StatusText = installation is null
             ? "未安装"
-            : $"已安装 · {installation.DisplayName}";
+            : "已安装";
         if (installation is null)
         {
             PathText = $"未在桌面或默认安装位置检测到；面板安装目录：{managedInstallRoot}";

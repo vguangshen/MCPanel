@@ -233,11 +233,27 @@ public sealed class ReliabilityTests
                     "InstallationQueueItemTemplate",
                     "InstallationRecentEventTemplate",
                     "EnvironmentCardTemplate",
-                    "DatabaseToolCardTemplate"
+                    "DatabaseToolCardTemplate",
+                    "PathIconButton"
                 })
                 {
                     Assert.IsNotNull(window.FindResource(resourceKey), resourceKey);
                 }
+
+                var pathIconButton = new Button
+                {
+                    Style = (Style)window.FindResource("PathIconButton"),
+                    Content = "\uE8B7"
+                };
+                pathIconButton.Measure(new Size(48, 48));
+                pathIconButton.Arrange(new Rect(0, 0, pathIconButton.DesiredSize.Width, pathIconButton.DesiredSize.Height));
+                pathIconButton.ApplyTemplate();
+                var pathIconRoot = pathIconButton.Template.FindName("Root", pathIconButton) as Border;
+                Assert.IsNotNull(pathIconRoot, "路径图标按钮模板必须包含可验证的根边框。");
+                Assert.AreEqual(Colors.Transparent, ((SolidColorBrush)pathIconRoot!.Background).Color,
+                    "已安装网站路径图标不应带额外底色。");
+                Assert.AreEqual(24d, pathIconButton.ActualWidth, 0.1d);
+                Assert.AreEqual(24d, pathIconButton.ActualHeight, 0.1d);
 
                 window.Show();
                 window.UpdateLayout();
@@ -1829,6 +1845,20 @@ public sealed class ReliabilityTests
         tool.Apply(null, @"D:\MCPanel\SSMS", "SSMS 22");
 
         Assert.AreEqual("未安装", tool.StatusText);
+        Assert.AreEqual("（SSMS 22）", tool.MatchedVersionText);
+
+        tool.Apply(
+            new DatabaseToolInstallation(
+                DatabaseToolKind.SqlServerManagementStudio,
+                @"D:\MCPanel\SSMS\Common7\IDE\Ssms.exe",
+                DatabaseToolSource.ManagedFolder,
+                @"D:\MCPanel\SSMS\Common7\IDE\Ssms.exe",
+                "Microsoft SQL Server Management Studio",
+                "22.0"),
+            @"D:\MCPanel\SSMS",
+            "SSMS 22");
+
+        Assert.AreEqual("已安装", tool.StatusText);
         Assert.AreEqual("（SSMS 22）", tool.MatchedVersionText);
     }
 
