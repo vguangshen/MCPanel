@@ -27,13 +27,6 @@ public partial class MainWindow : Window
     private const int DwmWindowCornerPreferenceAttribute = 33;
     private const int DwmCornerPreferenceDoNotRound = 1;
     private const int DwmCornerPreferenceRound = 2;
-    private static readonly string[] DialogThemeBrushKeys =
-    [
-        "PrimaryBrush", "PrimaryDarkBrush", "SurfaceBrush", "SurfaceAltBrush",
-        "TextBrush", "MutedBrush", "LineBrush", "CardLineBrush", "InputBrush", "NavHoverBrush",
-        "TonalBrush", "TonalTextBrush", "DisabledBrush", "DisabledTextBrush"
-    ];
-
     [DllImport("dwmapi.dll", EntryPoint = "DwmSetWindowAttribute")]
     private static extern int DwmSetWindowAttribute(
         IntPtr hwnd,
@@ -337,50 +330,7 @@ public partial class MainWindow : Window
     private void ApplyTheme(bool dark)
     {
         _isDarkThemeActive = dark;
-        SetBrush("PrimaryBrush", dark ? "#4C8DFF" : "#1A73E8");
-        SetBrush("PrimaryDarkBrush", dark ? "#6EA3FF" : "#1765CC");
-        SetBrush("SurfaceBrush", dark ? "#1B2027" : "#FFFFFF");
-        SetBrush("PageBrush", dark ? "#101419" : "#F5F7FB");
-        SetBrush("SurfaceAltBrush", dark ? "#242B33" : "#F8FAFD");
-        SetBrush("FooterBrush", dark ? "#171C22" : "#EEF2F7");
-        SetBrush("TextBrush", dark ? "#F8FAFC" : "#202124");
-        SetBrush("MutedBrush", dark ? "#D0D6DD" : "#5F6368");
-        SetBrush("LineBrush", dark ? "#46505B" : "#DADCE0");
-        SetBrush("CardLineBrush", dark ? "#4B5561" : "#E3E7EE");
-        SetBrush("InputBrush", dark ? "#151A20" : "#FFFFFF");
-        SetBrush("NavSelectedBrush", dark ? "#183A63" : "#E8F0FE");
-        SetBrush("NavHoverBrush", dark ? "#202B36" : "#F1F3F4");
-        SetBrush("HeaderLogoBrush", dark ? "#2B7DE9" : "#2B7DE9");
-        SetBrush("HeaderMutedBrush", dark ? "#D2E3FC" : "#E8F0FE");
-        SetBrush("TonalBrush", dark ? "#243D63" : "#E8F0FE");
-        SetBrush("TonalTextBrush", dark ? "#AECBFA" : "#174EA6");
-        SetBrush("DisabledBrush", dark ? "#343B44" : "#E8EAED");
-        SetBrush("DisabledTextBrush", dark ? "#A7B0BA" : "#9AA0A6");
-        SetBrush("WarningBrush", dark ? "#4A310E" : "#FFF3E0");
-        SetBrush("WarningHoverBrush", dark ? "#5B3C12" : "#FFE0B2");
-        SetBrush("WarningTextBrush", dark ? "#FFC36B" : "#C15C00");
-        SetBrush("DangerBrush", dark ? "#4A2526" : "#FDECEC");
-        SetBrush("DangerHoverBrush", dark ? "#653032" : "#FAD2D0");
-        SetBrush("DangerTextBrush", dark ? "#FFB4AB" : "#B3261E");
-        SetBrush("MemoryBrush", dark ? "#57C878" : "#34A853");
-        SetBrush("ScrollThumbBrush", dark ? "#46515E" : "#B7C0CC");
-        SetBrush("ScrollThumbHoverBrush", dark ? "#748092" : "#7E8A99");
-    }
-
-    private void SetBrush(string key, string hex)
-    {
-        if (TryFindResource(key) is SolidColorBrush brush)
-        {
-            var color = (Color)ColorConverter.ConvertFromString(hex);
-            if (brush.IsFrozen || brush.IsSealed)
-            {
-                Resources[key] = new SolidColorBrush(color);
-            }
-            else
-            {
-                brush.Color = color;
-            }
-        }
+        PanelThemeService.Apply(dark, Resources);
     }
 
     private void ThemeMode_Click(object sender, RoutedEventArgs e)
@@ -735,7 +685,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void DatabaseToolAction_Click(object sender, RoutedEventArgs e)
+    internal async void DatabaseToolAction_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button button || button.Tag is not string action)
         {
@@ -907,7 +857,7 @@ public partial class MainWindow : Window
         MessageBox.Show(result, "数据库工具", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
-    private void DatabaseToolPath_Click(object sender, MouseButtonEventArgs e)
+    internal void DatabaseToolPath_Click(object sender, MouseButtonEventArgs e)
     {
         if (sender is not FrameworkElement element || element.Tag is not string tag)
         {
@@ -1208,11 +1158,6 @@ public partial class MainWindow : Window
             ShowInTaskbar = false,
             Background = (Brush)FindResource("SurfaceBrush")
         };
-        foreach (var key in DialogThemeBrushKeys)
-        {
-            dialog.Resources[key] = FindResource(key);
-        }
-
         var token = new PasswordBox
         {
             FontSize = 14,
@@ -1489,8 +1434,16 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            _model.UpdateStatus = $"更新失败：{ex.Message}";
-            MessageBox.Show(_model.UpdateStatus, "软件更新", MessageBoxButton.OK, MessageBoxImage.Warning);
+            var logPath = EnvironmentOperationDiagnostics.RecordFailure(
+                "软件更新",
+                "准备或启动更新器",
+                ex,
+                Path.Combine(AppContext.BaseDirectory, "StoreData", "Work", "application-update-error.log"));
+            _model.UpdateStatus = $"更新失败：{ex.GetBaseException().Message}。详细日志：{logPath}";
+            if (!_isClosed)
+            {
+                MessageBox.Show(_model.UpdateStatus, "软件更新", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
         }
         finally
         {
@@ -1511,7 +1464,7 @@ public partial class MainWindow : Window
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
         _model.ApplyProductFilter(SearchBox.Text);
 
-    private void ProductCategory_Click(object sender, RoutedEventArgs e)
+    internal void ProductCategory_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is ProductCategoryFilter category)
         {
@@ -1519,7 +1472,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ProductInstall_Click(object sender, RoutedEventArgs e)
+    internal void ProductInstall_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is not ProductItem product)
         {
@@ -1823,7 +1776,7 @@ public partial class MainWindow : Window
     private void HideInstallationProgress_Click(object sender, RoutedEventArgs e) =>
         _model.InstallationProgress.Hide();
 
-    private void ToggleQueuedProductPause_Click(object sender, RoutedEventArgs e)
+    internal void ToggleQueuedProductPause_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is ProductInstallQueueItemViewModel item)
         {
@@ -1838,7 +1791,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void RemoveQueuedProduct_Click(object sender, RoutedEventArgs e)
+    internal void RemoveQueuedProduct_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is ProductInstallQueueItemViewModel item)
         {
@@ -1853,7 +1806,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void ProductUninstall_Click(object sender, RoutedEventArgs e)
+    internal async void ProductUninstall_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is ProductItem product)
         {
@@ -1971,7 +1924,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void InstalledProductUrl_Click(object sender, MouseButtonEventArgs e)
+    internal void InstalledProductUrl_Click(object sender, MouseButtonEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is InstalledProductItem item && item.CanBrowse)
         {
@@ -1979,7 +1932,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void InstalledProductManageToggle_Click(object sender, RoutedEventArgs e)
+    internal void InstalledProductManageToggle_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is InstalledProductItem item)
         {
@@ -1987,7 +1940,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void InstalledProductTomcatAction_Click(object sender, RoutedEventArgs e)
+    internal async void InstalledProductTomcatAction_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is not InstalledProductItem item ||
             sender is not Button button ||
@@ -2032,7 +1985,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void InstalledProductIis_Click(object sender, RoutedEventArgs e)
+    internal void InstalledProductIis_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is InstalledProductItem item && item.IsTomcatDeployment)
         {
@@ -2059,7 +2012,7 @@ public partial class MainWindow : Window
         Process.Start(new ProcessStartInfo(inetMgr) { UseShellExecute = true });
     }
 
-    private async void InstalledProductRepair_Click(object sender, RoutedEventArgs e)
+    internal async void InstalledProductRepair_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is not InstalledProductItem item)
         {
@@ -2082,7 +2035,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void InstalledProductDomain_Click(object sender, RoutedEventArgs e)
+    internal async void InstalledProductDomain_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is not InstalledProductItem item)
         {
@@ -2134,7 +2087,7 @@ public partial class MainWindow : Window
         await ShowCustomWebsiteDialogAsync(null);
     }
 
-    private async void CustomWebsiteEdit_Click(object sender, RoutedEventArgs e)
+    internal async void CustomWebsiteEdit_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is CustomWebsiteItem item)
         {
@@ -2166,7 +2119,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void CustomWebsiteBrowse_Click(object sender, RoutedEventArgs e)
+    internal void CustomWebsiteBrowse_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is CustomWebsiteItem item)
         {
@@ -2174,7 +2127,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void CustomWebsiteOpenRoot_Click(object sender, RoutedEventArgs e)
+    internal void CustomWebsiteOpenRoot_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is CustomWebsiteItem item && Directory.Exists(item.PhysicalPath))
         {
@@ -2182,7 +2135,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void CustomWebsiteDelete_Click(object sender, RoutedEventArgs e)
+    internal async void CustomWebsiteDelete_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is not CustomWebsiteItem item ||
             MessageBox.Show(
@@ -2204,7 +2157,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void InstalledProductUninstall_Click(object sender, RoutedEventArgs e)
+    internal async void InstalledProductUninstall_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is InstalledProductItem item)
         {
@@ -2233,7 +2186,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
+    internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is not EnvironmentItem item)
         {
@@ -2397,7 +2350,7 @@ public partial class MainWindow : Window
         };
     }
 
-    private void EnvironmentOpenDirectory_Click(object sender, RoutedEventArgs e)
+    internal void EnvironmentOpenDirectory_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is not EnvironmentItem item ||
             string.IsNullOrWhiteSpace(item.InstallDirectory))
@@ -2420,7 +2373,7 @@ public partial class MainWindow : Window
         });
     }
 
-    private async void EnvironmentRuntime_Click(object sender, RoutedEventArgs e)
+    internal async void EnvironmentRuntime_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is not EnvironmentItem item ||
             sender is not Button button ||
@@ -2509,7 +2462,7 @@ public partial class MainWindow : Window
         _ => $"确定卸载 {item.Title} 吗？"
     };
 
-    private async void ConnectMySql_Click(object sender, RoutedEventArgs e)
+    internal async void ConnectMySql_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is not EnvironmentItem item)
         {
@@ -2563,7 +2516,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void ConnectSqlServer_Click(object sender, RoutedEventArgs e)
+    internal async void ConnectSqlServer_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is not EnvironmentItem item)
         {
@@ -2625,7 +2578,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void EnvironmentCardFlip_Click(object sender, RoutedEventArgs e)
+    internal async void EnvironmentCardFlip_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement element ||
             element.DataContext is not EnvironmentItem item ||
@@ -2672,7 +2625,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void TomcatPortSave_Click(object sender, RoutedEventArgs e)
+    internal async void TomcatPortSave_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button button ||
             button.DataContext is not TomcatPortItem portItem ||
@@ -2723,7 +2676,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void CredentialCopy_Click(object sender, RoutedEventArgs e)
+    internal void CredentialCopy_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button button || button.Tag is not string value)
         {
@@ -2740,7 +2693,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void CredentialEdit_Click(object sender, RoutedEventArgs e)
+    internal async void CredentialEdit_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button button ||
             button.DataContext is not CredentialField field ||
@@ -3064,7 +3017,7 @@ public partial class MainWindow : Window
         return dialog.ShowDialog() == true ? password.Password : null;
     }
 
-    private void CredentialConnect_Click(object sender, RoutedEventArgs e)
+    internal void CredentialConnect_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement element || element.DataContext is not EnvironmentItem item)
         {
@@ -3117,7 +3070,7 @@ public partial class MainWindow : Window
         return "已打开 IIS 管理器。";
     }
 
-    private void NginxOpenManagement_Click(object sender, RoutedEventArgs e)
+    internal void NginxOpenManagement_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is not EnvironmentItem item)
         {
@@ -3246,7 +3199,7 @@ public partial class MainWindow : Window
         return compact.Length <= 420 ? compact : compact.Substring(0, 417) + "...";
     }
 
-    private async void FrpOpenManagement_Click(object sender, RoutedEventArgs e)
+    internal async void FrpOpenManagement_Click(object sender, RoutedEventArgs e)
     {
         try
         {
@@ -3264,7 +3217,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void ServiceAction_Click(object sender, RoutedEventArgs e)
+    internal async void ServiceAction_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is not ServiceItem service || sender is not Button button)
         {
@@ -3327,14 +3280,21 @@ public sealed class DatabaseToolViewModel : ObservableObject
     private bool _isInstalled;
     private bool _isBusy;
 
-    public DatabaseToolViewModel(string title, string description)
+    public DatabaseToolViewModel(string title, string description, string actionPrefix = "")
     {
         Title = title;
         Description = description;
+        ActionPrefix = actionPrefix;
     }
 
     public string Title { get; }
     public string Description { get; }
+    public string ActionPrefix { get; }
+    public string PathActionTag => $"{ActionPrefix}Path";
+    public string InstallActionTag => $"{ActionPrefix}Install";
+    public string UninstallActionTag => $"{ActionPrefix}Uninstall";
+    public string ConnectActionTag => $"{ActionPrefix}Connect";
+    public string ConfigureActionTag => $"{ActionPrefix}Configure";
     public string StatusText { get => _statusText; private set => SetProperty(ref _statusText, value); }
     public string PathText { get => _pathText; private set => SetProperty(ref _pathText, value); }
     public string MatchedVersionText { get => _matchedVersionText; private set => SetProperty(ref _matchedVersionText, value); }
@@ -3519,10 +3479,12 @@ public sealed class MainViewModel : ObservableObject
     public InstallationProgressViewModel InstallationProgress { get; } = new();
     public DatabaseToolViewModel NavicatTool { get; } = new(
         "MySQL 连接工具",
-        "Navicat Premium Lite / Premium / for MySQL");
+        "Navicat Premium Lite / Premium / for MySQL",
+        "Navicat");
     public DatabaseToolViewModel SqlServerTool { get; } = new(
         "SQL Server 连接工具",
-        "SQL Server Management Studio（SSMS）");
+        "SQL Server Management Studio（SSMS）",
+        "Ssms");
     public string ProductCountText => _visibleProductCount == Products.Count
         ? $"{Products.Count} 个产品"
         : $"{_visibleProductCount} / {Products.Count} 个产品";

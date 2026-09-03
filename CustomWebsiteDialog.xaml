@@ -5,32 +5,11 @@
         WindowStartupLocation="CenterOwner" ResizeMode="CanResize" ShowInTaskbar="False"
         Background="{DynamicResource PageBrush}">
     <Window.Resources>
-        <SolidColorBrush x:Key="PageBrush" Color="#F5F7FB" />
-        <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF" />
-        <SolidColorBrush x:Key="TextBrush" Color="#202124" />
-        <SolidColorBrush x:Key="MutedBrush" Color="#5F6368" />
-        <SolidColorBrush x:Key="LineBrush" Color="#DADCE0" />
-        <SolidColorBrush x:Key="PrimaryBrush" Color="#1A73E8" />
-        <SolidColorBrush x:Key="TonalBrush" Color="#E8F0FE" />
-        <Style TargetType="TextBox">
-            <Setter Property="Height" Value="35"/><Setter Property="Padding" Value="9,5"/><Setter Property="FontSize" Value="13"/>
-            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/><Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}"/>
-        </Style>
-        <Style TargetType="PasswordBox">
-            <Setter Property="Height" Value="35"/><Setter Property="Padding" Value="9,5"/><Setter Property="FontSize" Value="13"/>
-            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/><Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}"/>
-        </Style>
-        <Style TargetType="ComboBox">
-            <Setter Property="Height" Value="35"/><Setter Property="Padding" Value="8,4"/><Setter Property="FontSize" Value="13"/>
-        </Style>
-        <Style TargetType="CheckBox"><Setter Property="Foreground" Value="{DynamicResource TextBrush}"/><Setter Property="FontSize" Value="13"/></Style>
-        <Style TargetType="Button">
-            <Setter Property="Height" Value="35"/><Setter Property="Padding" Value="18,0"/><Setter Property="Margin" Value="8,0,0,0"/>
-            <Setter Property="BorderThickness" Value="0"/><Setter Property="Background" Value="{DynamicResource TonalBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
-        </Style>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Resources/PanelDialogControls.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
     </Window.Resources>
     <Grid Background="{DynamicResource PageBrush}" ClipToBounds="True">
         <Viewbox Stretch="Uniform" StretchDirection="Both">

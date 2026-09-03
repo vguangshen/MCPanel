@@ -12,6 +12,13 @@ public sealed partial class PanelMessageDialog : Window
     public PanelMessageDialog(string message, string caption, MessageBoxButton buttons, MessageBoxImage image)
     {
         InitializeComponent();
+        if (TryFindResource("DialogDangerBrush") is null)
+        {
+            // Tests and host integrations can construct the dialog without
+            // running App.xaml first. Use the shared palette as a local
+            // fallback only in that non-standard path.
+            PanelThemeService.Apply(false, Resources);
+        }
         _buttons = buttons;
         Title = caption;
         TitleText.Text = string.IsNullOrWhiteSpace(caption) ? "MCPanel" : caption;
@@ -37,18 +44,7 @@ public sealed partial class PanelMessageDialog : Window
 
     public void ApplyTheme(bool dark)
     {
-        SetBrush("DialogSurfaceBrush", dark ? "#20262F" : "#FFFFFF");
-        SetBrush("DialogLineBrush", dark ? "#3A4655" : "#DADCE0");
-        SetBrush("DialogTextBrush", dark ? "#F3F6FA" : "#202124");
-        SetBrush("DialogMutedBrush", dark ? "#B7C1CF" : "#5F6368");
-        SetBrush("DialogTonalBrush", dark ? "#263A5A" : "#E8F0FE");
-        SetBrush("DialogTonalTextBrush", dark ? "#A9C7FF" : "#174EA6");
-        SetBrush("DialogPrimaryBrush", dark ? "#6EA3FF" : "#1A73E8");
-        SetBrush("DialogPrimaryHoverBrush", dark ? "#8AB5FF" : "#1765CC");
-        SetBrush("DialogDangerBrush", dark ? "#FF8A80" : "#D93025");
-        SetBrush("ScrollThumbBrush", dark ? "#46515E" : "#B7C0CC");
-        SetBrush("ScrollThumbHoverBrush", dark ? "#748092" : "#7E8A99");
-        SetBrush("PrimaryBrush", dark ? "#6EA3FF" : "#1A73E8");
+        PanelThemeService.Apply(dark, Resources);
     }
 
     private void BuildButtons(MessageBoxButton buttons)
@@ -80,6 +76,7 @@ public sealed partial class PanelMessageDialog : Window
         {
             Content = text,
             Style = (Style)FindResource(primary ? "DialogPrimaryButton" : "DialogButton"),
+            Margin = new Thickness(8, 0, 0, 0),
             IsDefault = isDefault,
             IsCancel = isCancel,
             Tag = result
@@ -128,8 +125,4 @@ public sealed partial class PanelMessageDialog : Window
         Close();
     }
 
-    private void SetBrush(string key, string hex)
-    {
-        Resources[key] = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
-    }
 }

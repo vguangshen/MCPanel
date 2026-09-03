@@ -10,121 +10,59 @@
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResize"
         FontFamily="Segoe UI, Microsoft YaHei UI"
-        Background="#F5F7FB">
+        Background="{DynamicResource PageBrush}">
     <Window.Resources>
-        <SolidColorBrush x:Key="PrimaryBrush" Color="#1A73E8" />
-        <SolidColorBrush x:Key="PrimaryDarkBrush" Color="#1765CC" />
-        <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF" />
-        <SolidColorBrush x:Key="SurfaceAltBrush" Color="#F8FAFD" />
-        <SolidColorBrush x:Key="PageBrush" Color="#F5F7FB" />
-        <SolidColorBrush x:Key="TextBrush" Color="#202124" />
-        <SolidColorBrush x:Key="MutedBrush" Color="#5F6368" />
-        <SolidColorBrush x:Key="LineBrush" Color="#DADCE0" />
-        <SolidColorBrush x:Key="InputBrush" Color="#FFFFFF" />
-        <SolidColorBrush x:Key="TonalBrush" Color="#E8F0FE" />
-        <SolidColorBrush x:Key="TonalTextBrush" Color="#174EA6" />
-        <SolidColorBrush x:Key="DangerBrush" Color="#D93025" />
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Resources/PanelDialogControls.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <Style TargetType="DataGrid">
+                <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="GridLinesVisibility" Value="None" />
+                <Setter Property="HeadersVisibility" Value="Column" />
+                <Setter Property="RowHeight" Value="42" />
+                <Setter Property="ColumnHeaderHeight" Value="40" />
+                <Setter Property="FontSize" Value="13" />
+            </Style>
 
-        <Style x:Key="DialogButton" TargetType="Button">
-            <Setter Property="Height" Value="36" />
-            <Setter Property="MinWidth" Value="88" />
-            <Setter Property="Padding" Value="16,0" />
-            <Setter Property="Background" Value="{StaticResource TonalBrush}" />
-            <Setter Property="Foreground" Value="{StaticResource TonalTextBrush}" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="FontSize" Value="14" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="18" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Root" Property="Opacity" Value="0.88" />
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="Root" Property="Opacity" Value="0.55" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
+            <Style TargetType="DataGridColumnHeader">
+                <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+                <Setter Property="Padding" Value="10,0" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+            </Style>
 
-        <Style x:Key="PrimaryDialogButton" TargetType="Button" BasedOn="{StaticResource DialogButton}">
-            <Setter Property="Background" Value="{StaticResource PrimaryBrush}" />
-            <Setter Property="Foreground" Value="White" />
-            <Setter Property="MinWidth" Value="118" />
-        </Style>
-
-        <Style x:Key="GhostDialogButton" TargetType="Button" BasedOn="{StaticResource DialogButton}">
-            <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}" />
-            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
-        </Style>
-
-        <Style TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-        </Style>
-
-        <Style TargetType="TextBox">
-            <Setter Property="MinHeight" Value="34" />
-            <Setter Property="Padding" Value="10,0" />
-            <Setter Property="VerticalContentAlignment" Value="Center" />
-            <Setter Property="FontSize" Value="13" />
-            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
-            <Setter Property="Background" Value="{StaticResource InputBrush}" />
-        </Style>
-
-        <Style TargetType="DataGrid">
-            <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
-            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="GridLinesVisibility" Value="None" />
-            <Setter Property="HeadersVisibility" Value="Column" />
-            <Setter Property="RowHeight" Value="42" />
-            <Setter Property="ColumnHeaderHeight" Value="40" />
-            <Setter Property="FontSize" Value="13" />
-        </Style>
-
-        <Style TargetType="DataGridColumnHeader">
-            <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}" />
-            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
-            <Setter Property="Padding" Value="10,0" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-        </Style>
-
-        <Style TargetType="DataGridCell">
-            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-            <Setter Property="BorderBrush" Value="Transparent" />
-            <Setter Property="Padding" Value="8,0" />
-            <Setter Property="VerticalContentAlignment" Value="Center" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="DataGridCell">
-                        <Border x:Name="Root" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter VerticalAlignment="Center" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="{StaticResource TonalBrush}" />
-                                <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
+            <Style TargetType="DataGridCell">
+                <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="Padding" Value="8,0" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="DataGridCell">
+                            <Border x:Name="Root" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter TargetName="Root" Property="Background" Value="{DynamicResource TonalBrush}" />
+                                    <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+        </ResourceDictionary>
     </Window.Resources>
 
     <Grid Background="{DynamicResource PageBrush}" ClipToBounds="True">
     <Viewbox Stretch="Uniform" StretchDirection="Both">
-    <Border Width="980" Height="640" Margin="0" Padding="22" CornerRadius="12" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1">
+    <Border Width="980" Height="640" Margin="0" Padding="22" CornerRadius="12" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -140,10 +78,10 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel>
                     <TextBlock Text="Nginx 反向代理管理" FontSize="24" FontWeight="SemiBold" />
-                    <TextBlock Text="批量管理监听端口、域名、路径、代理目标和 WebSocket 转发。" FontSize="13" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,8,0,0" />
+                    <TextBlock Text="批量管理监听端口、域名、路径、代理目标和 WebSocket 转发。" FontSize="13" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Margin="0,8,0,0" />
                 </StackPanel>
-                <Border Grid.Column="1" Padding="14,8" CornerRadius="18" Background="{StaticResource TonalBrush}" VerticalAlignment="Center">
-                    <TextBlock x:Name="RuleCountText" Foreground="{StaticResource TonalTextBrush}" FontWeight="SemiBold" />
+                <Border Grid.Column="1" Padding="14,8" CornerRadius="18" Background="{DynamicResource TonalBrush}" VerticalAlignment="Center">
+                    <TextBlock x:Name="RuleCountText" Foreground="{DynamicResource TonalTextBrush}" FontWeight="SemiBold" />
                 </Border>
             </Grid>
 
@@ -185,7 +123,7 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBlock x:Name="StatusText" Foreground="{StaticResource MutedBrush}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                <TextBlock x:Name="StatusText" Foreground="{DynamicResource MutedBrush}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
                     <Button Content="取消" Style="{StaticResource DialogButton}" Margin="0,0,10,0" Click="Cancel_Click" />
                     <Button Content="保存并应用" Style="{StaticResource PrimaryDialogButton}" Click="Save_Click" />

@@ -13,61 +13,11 @@
         PreviewKeyDown="Window_PreviewKeyDown"
         FontFamily="Segoe UI, Microsoft YaHei UI">
     <Window.Resources>
-        <SolidColorBrush x:Key="DialogSurfaceBrush" Color="#FFFFFF" />
-        <SolidColorBrush x:Key="DialogLineBrush" Color="#DADCE0" />
-        <SolidColorBrush x:Key="DialogTextBrush" Color="#202124" />
-        <SolidColorBrush x:Key="DialogMutedBrush" Color="#5F6368" />
-        <SolidColorBrush x:Key="DialogPrimaryBrush" Color="#1A73E8" />
-        <SolidColorBrush x:Key="DialogPrimaryHoverBrush" Color="#1765CC" />
-        <SolidColorBrush x:Key="DialogTonalBrush" Color="#E8F0FE" />
-        <SolidColorBrush x:Key="DialogTonalTextBrush" Color="#174EA6" />
-        <SolidColorBrush x:Key="DialogDangerBrush" Color="#D93025" />
-        <SolidColorBrush x:Key="ScrollThumbBrush" Color="#B7C0CC" />
-        <SolidColorBrush x:Key="ScrollThumbHoverBrush" Color="#7E8A99" />
-        <SolidColorBrush x:Key="PrimaryBrush" Color="#1A73E8" />
-
-        <Style x:Key="DialogButton" TargetType="Button">
-            <Setter Property="Height" Value="36" />
-            <Setter Property="MinWidth" Value="88" />
-            <Setter Property="Padding" Value="16,0" />
-            <Setter Property="Margin" Value="8,0,0,0" />
-            <Setter Property="FontSize" Value="13" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Foreground" Value="{DynamicResource DialogTonalTextBrush}" />
-            <Setter Property="Background" Value="{DynamicResource DialogTonalBrush}" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="ButtonRoot"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="Transparent"
-                                BorderThickness="1"
-                                CornerRadius="18"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ButtonRoot" Property="Opacity" Value="0.88" />
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="ButtonRoot" Property="Opacity" Value="0.74" />
-                            </Trigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="ButtonRoot" Property="BorderBrush" Value="{DynamicResource DialogPrimaryBrush}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style x:Key="DialogPrimaryButton" TargetType="Button" BasedOn="{StaticResource DialogButton}">
-            <Setter Property="Foreground" Value="White" />
-            <Setter Property="Background" Value="{DynamicResource DialogPrimaryBrush}" />
-        </Style>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Resources/PanelDialogControls.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
     </Window.Resources>
 
     <Border x:Name="DialogSurface"

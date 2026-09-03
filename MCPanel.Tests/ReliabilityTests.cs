@@ -92,8 +92,23 @@ public sealed class ReliabilityTests
 
                 window.Show();
                 window.UpdateLayout();
+                ((FrameworkElement)window.FindName("HomePage")).Visibility = Visibility.Collapsed;
+                ((FrameworkElement)window.FindName("ProductsPage")).Visibility = Visibility.Visible;
+                window.UpdateLayout();
                 var button = (Button)window.FindName("DownloadQueueButton");
                 popup = (Popup)window.FindName("DownloadQueuePopup");
+
+                Assert.AreEqual(40d, button.ActualWidth, 0.1d, "下载队列入口的点击区域宽度必须固定为 40。");
+                Assert.AreEqual(40d, button.ActualHeight, 0.1d, "下载队列入口的点击区域高度必须固定为 40。");
+                Assert.AreEqual(button.ActualWidth, button.ActualHeight, 0.1d, "下载队列入口必须保持正方形比例。");
+                button.ApplyTemplate();
+                var buttonRoot = button.Template.FindName("Root", button) as Border;
+                Assert.IsNotNull(buttonRoot, "下载队列入口模板必须包含可验证的根边框。");
+                Assert.AreEqual(10d, buttonRoot!.CornerRadius.TopLeft, 0.1d, "下载队列入口应使用圆角正方形，而不是胶囊或圆形。");
+                Assert.AreEqual(10d, buttonRoot.CornerRadius.TopRight, 0.1d);
+                Assert.AreEqual(10d, buttonRoot.CornerRadius.BottomRight, 0.1d);
+                Assert.AreEqual(10d, buttonRoot.CornerRadius.BottomLeft, 0.1d);
+
                 button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
 
@@ -143,6 +158,264 @@ public sealed class ReliabilityTests
         if (failure is not null)
         {
             Assert.Fail($"下载队列弹窗无法渲染：{failure}");
+        }
+    }
+
+    [TestMethod]
+    public void MainWindowCardTemplatesLoadFromSharedResourceDictionary()
+    {
+        Exception? failure = null;
+        var completed = new ManualResetEventSlim();
+        var thread = new Thread(() =>
+        {
+            MainWindow? window = null;
+            try
+            {
+                window = new MainWindow();
+
+                foreach (var resourceKey in new[]
+                {
+                    "ProductCardTemplate",
+                    "CustomWebsiteCardTemplate",
+                    "InstalledProductCardTemplate",
+                    "ProductGridRowTemplate",
+                    "ProductCategoryChipTemplate",
+                    "DriveStatTemplate",
+                    "ServiceStatusTemplate",
+                    "InstallationQueueItemTemplate",
+                    "InstallationRecentEventTemplate",
+                    "EnvironmentCardTemplate",
+                    "DatabaseToolCardTemplate"
+                })
+                {
+                    Assert.IsNotNull(window.FindResource(resourceKey), resourceKey);
+                }
+
+                window.Show();
+                window.UpdateLayout();
+                window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+            }
+            catch (Exception ex)
+            {
+                failure = ex;
+            }
+            finally
+            {
+                window?.Close();
+                completed.Set();
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.IsTrue(completed.Wait(TimeSpan.FromSeconds(20)), "主窗口卡片模板加载测试超时。");
+        if (failure is not null)
+        {
+            Assert.Fail($"主窗口卡片模板无法从共享资源字典加载：{failure}");
+        }
+    }
+
+    [TestMethod]
+    public void UpdateBusyPanelRendersWhenLocalUpdatePreparationStarts()
+    {
+        Exception? failure = null;
+        var completed = new ManualResetEventSlim();
+        var thread = new Thread(() =>
+        {
+            MainWindow? window = null;
+            Exception? dispatcherFailure = null;
+            try
+            {
+                window = new MainWindow();
+                window.Dispatcher.UnhandledException += (_, args) =>
+                {
+                    dispatcherFailure ??= args.Exception;
+                    args.Handled = true;
+                };
+
+                var model = (MainViewModel)window.DataContext;
+                window.Show();
+                window.UpdateLayout();
+
+                // This is the first UI transition performed after a user selects
+                // a local update ZIP. Keep the deferred StaticResource bindings
+                // covered so a broken update progress panel cannot mask a valid
+                // package as an update failure.
+                model.IsUpdateBusy = true;
+                model.UpdateProgress = 10;
+                model.UpdateStatus = "正在校验本地更新包...";
+                window.UpdateLayout();
+                window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+
+                if (dispatcherFailure is not null)
+                {
+                    throw dispatcherFailure;
+                }
+            }
+            catch (Exception ex)
+            {
+                failure = ex;
+            }
+            finally
+            {
+                window?.Close();
+                completed.Set();
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.IsTrue(completed.Wait(TimeSpan.FromSeconds(20)), "更新准备状态的 UI 渲染测试超时。");
+        if (failure is not null)
+        {
+            Assert.Fail($"本地更新准备状态无法渲染：{failure}");
+        }
+    }
+
+    [TestMethod]
+    public void UpdateConfirmationDialogLoadsItsOwnScrollBarResources()
+    {
+        Exception? failure = null;
+        var completed = new ManualResetEventSlim();
+        var thread = new Thread(() =>
+        {
+            PanelMessageDialog? dialog = null;
+            Exception? dispatcherFailure = null;
+            try
+            {
+                dialog = new PanelMessageDialog(
+                    new string('更', 600),
+                    "本地更新",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning);
+                dialog.Dispatcher.UnhandledException += (_, args) =>
+                {
+                    dispatcherFailure ??= args.Exception;
+                    args.Handled = true;
+                };
+                dialog.ApplyTheme(dark: true);
+                dialog.Show();
+                dialog.UpdateLayout();
+
+                var scrollViewer = (ScrollViewer)dialog.FindName("MessageScrollViewer");
+                scrollViewer.ApplyTemplate();
+                scrollViewer.UpdateLayout();
+                dialog.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+
+                if (dispatcherFailure is not null)
+                {
+                    throw dispatcherFailure;
+                }
+            }
+            catch (Exception ex)
+            {
+                failure = ex;
+            }
+            finally
+            {
+                dialog?.Close();
+                completed.Set();
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.IsTrue(completed.Wait(TimeSpan.FromSeconds(20)), "本地更新确认窗口的渲染测试超时。");
+        if (failure is not null)
+        {
+            Assert.Fail($"本地更新确认窗口无法渲染：{failure}");
+        }
+    }
+
+    [TestMethod]
+    public void SharedDialogResourceDictionaryLoadsConfigurationDialogs()
+    {
+        Exception? failure = null;
+        var completed = new ManualResetEventSlim();
+        var thread = new Thread(() =>
+        {
+            Window[]? dialogs = null;
+            try
+            {
+                var custom = new CustomWebsiteDialog();
+                var product = new ProductWebsiteDialog(ProductWebsiteSettings.Default);
+                var nginx = new NginxProxyDialog(new EnvironmentRuntimeService());
+                custom.ApplyTheme(dark: false);
+                product.ApplyTheme(dark: false);
+                nginx.ApplyTheme(dark: false);
+                dialogs = [custom, product, nginx];
+
+                foreach (var dialog in dialogs)
+                {
+                    Assert.IsNotNull(dialog.FindResource("DialogButton"));
+                    Assert.IsNotNull(dialog.FindResource(typeof(TextBox)));
+                    dialog.ApplyTemplate();
+                    dialog.UpdateLayout();
+                }
+            }
+            catch (Exception ex)
+            {
+                failure = ex;
+            }
+            finally
+            {
+                if (dialogs is not null)
+                {
+                    foreach (var dialog in dialogs)
+                    {
+                        dialog.Close();
+                    }
+                }
+
+                completed.Set();
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.IsTrue(completed.Wait(TimeSpan.FromSeconds(20)), "共享弹窗资源加载测试超时。");
+        if (failure is not null)
+        {
+            Assert.Fail($"配置类弹窗无法加载共享资源：{failure}");
+        }
+    }
+
+    [TestMethod]
+    public void SharedScrollBarResourcesLoadStandalonePages()
+    {
+        Exception? failure = null;
+        var completed = new ManualResetEventSlim();
+        var thread = new Thread(() =>
+        {
+            AiAnalysisPage? aiPage = null;
+            AccountApiPage? accountPage = null;
+            try
+            {
+                aiPage = new AiAnalysisPage();
+                accountPage = new AccountApiPage();
+                Assert.IsNotNull(aiPage.FindResource("CompactScrollBar"));
+                Assert.IsNotNull(accountPage.FindResource("ModernVerticalScrollBar"));
+                aiPage.ApplyTemplate();
+                accountPage.ApplyTemplate();
+            }
+            catch (Exception ex)
+            {
+                failure = ex;
+            }
+            finally
+            {
+                aiPage?.Dispose();
+                accountPage?.Dispose();
+                completed.Set();
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.IsTrue(completed.Wait(TimeSpan.FromSeconds(20)), "独立页面滚动条资源测试超时。");
+        if (failure is not null)
+        {
+            Assert.Fail($"独立页面无法加载共享滚动条资源：{failure}");
         }
     }
 
@@ -1506,6 +1779,18 @@ public sealed class ReliabilityTests
 
         Assert.AreEqual("未安装", tool.StatusText);
         Assert.AreEqual("（SSMS 22）", tool.MatchedVersionText);
+    }
+
+    [TestMethod]
+    public void DatabaseToolViewModelBuildsStableActionTags()
+    {
+        var tool = new DatabaseToolViewModel("MySQL 连接工具", "Navicat", "Navicat");
+
+        Assert.AreEqual("NavicatPath", tool.PathActionTag);
+        Assert.AreEqual("NavicatInstall", tool.InstallActionTag);
+        Assert.AreEqual("NavicatUninstall", tool.UninstallActionTag);
+        Assert.AreEqual("NavicatConnect", tool.ConnectActionTag);
+        Assert.AreEqual("NavicatConfigure", tool.ConfigureActionTag);
     }
 
     [TestMethod]

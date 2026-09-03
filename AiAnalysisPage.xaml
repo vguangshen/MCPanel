@@ -5,6 +5,10 @@
              Focusable="True"
              KeyboardNavigation.TabNavigation="Local">
     <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Resources/PanelScrollbars.xaml" />
+            </ResourceDictionary.MergedDictionaries>
         <Style x:Key="AiTargetOptionButton" TargetType="Button">
             <Setter Property="Height" Value="38" />
             <Setter Property="Padding" Value="14,0" />
@@ -132,49 +136,10 @@
             </Setter>
         </Style>
 
-        <Style TargetType="ScrollBar">
-            <Setter Property="Width" Value="9" />
-            <Setter Property="Margin" Value="3,2,2,2" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ScrollBar">
-                        <Grid Width="{TemplateBinding Width}" Background="Transparent">
-                            <Track x:Name="PART_Track" IsDirectionReversed="True">
-                                <Track.DecreaseRepeatButton>
-                                    <RepeatButton Command="{x:Static ScrollBar.PageUpCommand}"
-                                                  Background="Transparent" BorderThickness="0" Opacity="0" />
-                                </Track.DecreaseRepeatButton>
-                                <Track.Thumb>
-                                    <Thumb MinHeight="34">
-                                        <Thumb.Template>
-                                            <ControlTemplate TargetType="Thumb">
-                                                <Border x:Name="ThumbBody"
-                                                        Margin="1"
-                                                        CornerRadius="4"
-                                                        Background="{DynamicResource CardLineBrush}" />
-                                                <ControlTemplate.Triggers>
-                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter TargetName="ThumbBody" Property="Background" Value="{DynamicResource AccentBrush}" />
-                                                    </Trigger>
-                                                    <Trigger Property="IsDragging" Value="True">
-                                                        <Setter TargetName="ThumbBody" Property="Background" Value="{DynamicResource AccentBrush}" />
-                                                    </Trigger>
-                                                </ControlTemplate.Triggers>
-                                            </ControlTemplate>
-                                        </Thumb.Template>
-                                    </Thumb>
-                                </Track.Thumb>
-                                <Track.IncreaseRepeatButton>
-                                    <RepeatButton Command="{x:Static ScrollBar.PageDownCommand}"
-                                                  Background="Transparent" BorderThickness="0" Opacity="0" />
-                                </Track.IncreaseRepeatButton>
-                            </Track>
-                        </Grid>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
+        <Style TargetType="ScrollBar" BasedOn="{StaticResource CompactScrollBar}" />
+
+
+        </ResourceDictionary>
     </UserControl.Resources>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto"

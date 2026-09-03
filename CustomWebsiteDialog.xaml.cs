@@ -3,7 +3,6 @@ using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media;
 
 namespace MCPanel;
 
@@ -43,13 +42,7 @@ public partial class CustomWebsiteDialog : Window
 
     public void ApplyTheme(bool dark)
     {
-        SetBrush("PageBrush", dark ? "#101419" : "#F5F7FB");
-        SetBrush("SurfaceBrush", dark ? "#1B2027" : "#FFFFFF");
-        SetBrush("TextBrush", dark ? "#F8FAFC" : "#202124");
-        SetBrush("MutedBrush", dark ? "#D0D6DD" : "#5F6368");
-        SetBrush("LineBrush", dark ? "#4B5561" : "#DADCE0");
-        SetBrush("PrimaryBrush", dark ? "#4C8DFF" : "#1A73E8");
-        SetBrush("TonalBrush", dark ? "#243D63" : "#E8F0FE");
+        PanelThemeService.Apply(dark, Resources);
     }
 
     private void BrowseRoot_Click(object sender, RoutedEventArgs e)
@@ -137,6 +130,4 @@ public partial class CustomWebsiteDialog : Window
         return value;
     }
 
-    private void SetBrush(string key, string color) =>
-        Resources[key] = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
 }

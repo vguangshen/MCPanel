@@ -2,7 +2,6 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media;
 
 namespace MCPanel;
 
@@ -38,19 +37,7 @@ public partial class NginxProxyDialog : Window
 
     public void ApplyTheme(bool dark)
     {
-        Background = Brush(dark ? "#101419" : "#F5F7FB");
-        SetBrush("PageBrush", dark ? "#101419" : "#F5F7FB");
-        SetBrush("PrimaryBrush", dark ? "#4C8DFF" : "#1A73E8");
-        SetBrush("PrimaryDarkBrush", dark ? "#6EA3FF" : "#1765CC");
-        SetBrush("SurfaceBrush", dark ? "#1B2027" : "#FFFFFF");
-        SetBrush("SurfaceAltBrush", dark ? "#222A33" : "#F8FAFD");
-        SetBrush("TextBrush", dark ? "#F8FAFC" : "#202124");
-        SetBrush("MutedBrush", dark ? "#D0D6DD" : "#5F6368");
-        SetBrush("LineBrush", dark ? "#4B5561" : "#DADCE0");
-        SetBrush("InputBrush", dark ? "#151A20" : "#FFFFFF");
-        SetBrush("TonalBrush", dark ? "#243D63" : "#E8F0FE");
-        SetBrush("TonalTextBrush", dark ? "#D7E3FF" : "#174EA6");
-        SetBrush("DangerBrush", dark ? "#F28B82" : "#D93025");
+        PanelThemeService.Apply(dark, Resources);
     }
 
     private void AddRule_Click(object sender, RoutedEventArgs e)
@@ -145,24 +132,6 @@ public partial class NginxProxyDialog : Window
     private void UpdateRuleCount()
     {
         RuleCountText.Text = $"{_rules.Count} 条规则";
-    }
-
-    private void SetBrush(string key, string hex)
-    {
-        var color = (Color)ColorConverter.ConvertFromString(hex);
-        if (Resources[key] is SolidColorBrush brush && !brush.IsFrozen && !brush.IsSealed)
-        {
-            brush.Color = color;
-        }
-        else
-        {
-            Resources[key] = new SolidColorBrush(color);
-        }
-    }
-
-    private static SolidColorBrush Brush(string hex)
-    {
-        return new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
     }
 
     public sealed class NginxProxyRuleRow

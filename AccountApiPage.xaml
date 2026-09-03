@@ -5,6 +5,10 @@
              Focusable="True"
              KeyboardNavigation.TabNavigation="Local">
     <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Resources/PanelScrollbars.xaml" />
+            </ResourceDictionary.MergedDictionaries>
         <Style x:Key="AccountMetricValue" TargetType="TextBlock">
             <Setter Property="FontSize" Value="16" />
             <Setter Property="FontWeight" Value="SemiBold" />
@@ -176,6 +180,7 @@
                 </Grid>
             </Border>
         </DataTemplate>
+        </ResourceDictionary>
     </UserControl.Resources>
 
     <Grid Margin="0" MinHeight="0">
@@ -494,85 +499,14 @@
                                   VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled"
                                   CanContentScroll="False"
-                                  Background="#101820"
+                                  Background="{DynamicResource LogBackgroundBrush}"
                                   Padding="8"
                                   MinHeight="110"
                                   Margin="0,7,0,0"
                                   VerticalAlignment="Stretch"
                                   HorizontalAlignment="Stretch">
                         <ScrollViewer.Resources>
-                            <Style x:Key="AccountLogScrollThumb" TargetType="Thumb">
-                                <Setter Property="Background" Value="{DynamicResource ScrollThumbBrush}" />
-                                <Setter Property="MinHeight" Value="60" />
-                                <Setter Property="HorizontalAlignment" Value="Center" />
-                                <Setter Property="Cursor" Value="Hand" />
-                                <Setter Property="Template">
-                                    <Setter.Value>
-                                        <ControlTemplate TargetType="Thumb">
-                                            <Grid Background="Transparent" MinHeight="60">
-                                                <Border x:Name="ThumbBody"
-                                                        Width="6"
-                                                        Height="48"
-                                                        HorizontalAlignment="Center"
-                                                        VerticalAlignment="Center"
-                                                        CornerRadius="3"
-                                                        Background="{TemplateBinding Background}" />
-                                            </Grid>
-                                            <ControlTemplate.Triggers>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter TargetName="ThumbBody" Property="Width" Value="8" />
-                                                    <Setter TargetName="ThumbBody" Property="CornerRadius" Value="4" />
-                                                    <Setter TargetName="ThumbBody" Property="Background" Value="{DynamicResource ScrollThumbHoverBrush}" />
-                                                </Trigger>
-                                                <Trigger Property="IsDragging" Value="True">
-                                                    <Setter TargetName="ThumbBody" Property="Width" Value="8" />
-                                                    <Setter TargetName="ThumbBody" Property="CornerRadius" Value="4" />
-                                                    <Setter TargetName="ThumbBody" Property="Background" Value="{DynamicResource PrimaryBrush}" />
-                                                </Trigger>
-                                            </ControlTemplate.Triggers>
-                                        </ControlTemplate>
-                                    </Setter.Value>
-                                </Setter>
-                            </Style>
-                            <Style TargetType="ScrollBar">
-                                <Setter Property="Width" Value="18" />
-                                <Setter Property="MinWidth" Value="18" />
-                                <Setter Property="Margin" Value="0,0,3,0" />
-                                <Setter Property="Background" Value="Transparent" />
-                                <Setter Property="Template">
-                                    <Setter.Value>
-                                        <ControlTemplate TargetType="ScrollBar">
-                                            <Grid Width="18" Background="Transparent" ClipToBounds="False">
-                                                <Track x:Name="PART_Track"
-                                                       Margin="5,7"
-                                                       IsDirectionReversed="True"
-                                                       Focusable="False"
-                                                       Minimum="{TemplateBinding Minimum}"
-                                                       Maximum="{TemplateBinding Maximum}"
-                                                       Value="{Binding Value, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
-                                                       ViewportSize="NaN"
-                                                       ClipToBounds="False">
-                                                    <Track.DecreaseRepeatButton>
-                                                        <RepeatButton Command="{x:Static ScrollBar.PageUpCommand}"
-                                                                      Focusable="False"
-                                                                      IsTabStop="False"
-                                                                      Opacity="0" />
-                                                    </Track.DecreaseRepeatButton>
-                                                    <Track.Thumb>
-                                                        <Thumb Style="{StaticResource AccountLogScrollThumb}" />
-                                                    </Track.Thumb>
-                                                    <Track.IncreaseRepeatButton>
-                                                        <RepeatButton Command="{x:Static ScrollBar.PageDownCommand}"
-                                                                      Focusable="False"
-                                                                      IsTabStop="False"
-                                                                      Opacity="0" />
-                                                    </Track.IncreaseRepeatButton>
-                                                </Track>
-                                            </Grid>
-                                        </ControlTemplate>
-                                    </Setter.Value>
-                                </Setter>
-                            </Style>
+                            <Style TargetType="ScrollBar" BasedOn="{StaticResource ModernVerticalScrollBar}" />
                         </ScrollViewer.Resources>
                         <TextBox Text="{Binding LogsText, Mode=OneWay}"
                                  IsReadOnly="True"
@@ -581,7 +515,7 @@
                                  VerticalScrollBarVisibility="Disabled"
                                  HorizontalScrollBarVisibility="Disabled"
                                  Background="Transparent"
-                                 Foreground="#CBD5E1"
+                                 Foreground="{DynamicResource LogTextBrush}"
                                  BorderThickness="0"
                                  Padding="0"
                                  FontFamily="Consolas"
