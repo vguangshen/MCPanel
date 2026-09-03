@@ -964,6 +964,7 @@ public sealed class ProductInstallQueueItemViewModel : ObservableObject
             }
 
             OnPropertyChanged(nameof(PauseActionText));
+            OnPropertyChanged(nameof(PauseActionGlyph));
             OnPropertyChanged(nameof(PauseActionToolTip));
             OnPropertyChanged(nameof(StateText));
             OnPropertyChanged(nameof(CanTogglePause));
@@ -992,7 +993,9 @@ public sealed class ProductInstallQueueItemViewModel : ObservableObject
                                   (IsDownloading || IsPaused);
     public bool CanRemove => !IsRemovalRequested;
     public string PauseActionText => IsPaused ? "继续" : "暂停";
+    public string PauseActionGlyph => IsPaused ? "\uE768" : "\uE769";
     public string PauseActionToolTip => IsPaused ? "继续下载此软件" : "暂停下载此软件";
+    public string RemoveActionGlyph => "\uE74D";
     public string RemoveToolTip => IsTerminal ? "删除此记录" : "取消并删除此任务";
     public string QueueNumberText => QueuePosition > 0 ? $"第{QueuePosition}" : $"#{Sequence}";
     public string StateText => IsRemovalRequested

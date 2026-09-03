@@ -76,6 +76,9 @@ public partial class MainWindowTemplates : ResourceDictionary
     private void InstalledProductUrl_Click(object sender, MouseButtonEventArgs e) =>
         GetOwner(sender)?.InstalledProductUrl_Click(sender, e);
 
+    private void InstalledProductOpen_Click(object sender, RoutedEventArgs e) =>
+        GetOwner(sender)?.InstalledProductOpen_Click(sender, e);
+
     private void InstalledProductManageToggle_Click(object sender, RoutedEventArgs e) =>
         GetOwner(sender)?.InstalledProductManageToggle_Click(sender, e);
 

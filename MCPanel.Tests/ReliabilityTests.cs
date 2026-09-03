@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Diagnostics;
 using System.IO;
@@ -15,6 +16,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Media;
 using System.Windows.Threading;
 using System.Xml.Linq;
 using MarchCenter.AccountApi;
@@ -41,6 +43,36 @@ public sealed class ReliabilityTests
         var popupRightOnScreen = left * scaleX + popupWidth;
         var targetRightOnScreen = targetWidth * scaleX;
         Assert.AreEqual(targetRightOnScreen, popupRightOnScreen, 0.001d);
+    }
+
+    [TestMethod]
+    public void ThemeServiceUpdatesNestedPaletteResourcesWithoutShadowCopies()
+    {
+        var root = new ResourceDictionary();
+        var theme = new ResourceDictionary
+        {
+            ["SurfaceBrush"] = new SolidColorBrush(Colors.White),
+            ["PageBrush"] = new SolidColorBrush(Colors.White),
+            ["TonalTextBrush"] = new SolidColorBrush(Colors.Blue),
+            ["DialogTonalTextBrush"] = new SolidColorBrush(Colors.Blue)
+        };
+        root.MergedDictionaries.Add(theme);
+
+        PanelThemeService.Apply(dark: true, root);
+
+        Assert.AreEqual(Color.FromRgb(0x1B, 0x20, 0x27), ((SolidColorBrush)theme["SurfaceBrush"]).Color);
+        Assert.AreEqual(Color.FromRgb(0x10, 0x14, 0x19), ((SolidColorBrush)theme["PageBrush"]).Color);
+        Assert.AreEqual(Color.FromRgb(0xB8, 0xF2, 0xE6), ((SolidColorBrush)theme["TonalTextBrush"]).Color);
+        Assert.AreEqual(Color.FromRgb(0xB8, 0xF2, 0xE6), ((SolidColorBrush)theme["DialogTonalTextBrush"]).Color);
+        Assert.IsFalse(
+            root.Keys.Cast<object>().Any(key => Equals(key, "TonalTextBrush")),
+            "主题键已存在于合并字典时，不应在外层创建副本遮蔽它。");
+
+        PanelThemeService.Apply(dark: false, root);
+
+        Assert.AreEqual(Color.FromRgb(0xFF, 0xFF, 0xFF), ((SolidColorBrush)theme["SurfaceBrush"]).Color);
+        Assert.AreEqual(Color.FromRgb(0xF5, 0xF7, 0xFB), ((SolidColorBrush)theme["PageBrush"]).Color);
+        Assert.AreEqual(Color.FromRgb(0x17, 0x4E, 0xA6), ((SolidColorBrush)theme["TonalTextBrush"]).Color);
     }
 
     [TestMethod]
@@ -104,10 +136,10 @@ public sealed class ReliabilityTests
                 button.ApplyTemplate();
                 var buttonRoot = button.Template.FindName("Root", button) as Border;
                 Assert.IsNotNull(buttonRoot, "下载队列入口模板必须包含可验证的根边框。");
-                Assert.AreEqual(10d, buttonRoot!.CornerRadius.TopLeft, 0.1d, "下载队列入口应使用圆角正方形，而不是胶囊或圆形。");
-                Assert.AreEqual(10d, buttonRoot.CornerRadius.TopRight, 0.1d);
-                Assert.AreEqual(10d, buttonRoot.CornerRadius.BottomRight, 0.1d);
-                Assert.AreEqual(10d, buttonRoot.CornerRadius.BottomLeft, 0.1d);
+                Assert.AreEqual(20d, buttonRoot!.CornerRadius.TopLeft, 0.1d, "下载队列入口应保持圆形图标按钮外观。");
+                Assert.AreEqual(20d, buttonRoot.CornerRadius.TopRight, 0.1d);
+                Assert.AreEqual(20d, buttonRoot.CornerRadius.BottomRight, 0.1d);
+                Assert.AreEqual(20d, buttonRoot.CornerRadius.BottomLeft, 0.1d);
 
                 button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
@@ -125,9 +157,24 @@ public sealed class ReliabilityTests
                     "队列任务必须逐行全部呈现。");
                 for (var index = initialQueueCount; index < itemsControl.Items.Count; index++)
                 {
-                    Assert.IsNotNull(
-                        itemsControl.ItemContainerGenerator.ContainerFromIndex(index),
-                        $"第 {index + 1} 条队列任务没有生成可视行。");
+                    var container = itemsControl.ItemContainerGenerator.ContainerFromIndex(index);
+                    Assert.IsNotNull(container, $"第 {index + 1} 条队列任务没有生成可视行。");
+
+                    var visibleButtons = FindVisualChildren<Button>(container!)
+                        .Where(candidate => candidate.Visibility == Visibility.Visible)
+                        .ToArray();
+                    Assert.AreEqual(1, visibleButtons.Length, $"第 {index + 1} 条队列任务的删除按钮数量不正确。");
+                    var removeButton = visibleButtons[0];
+                    Assert.AreEqual("\uE74D", removeButton.Content, "队列删除操作应使用图标而不是挤压文字按钮。");
+                    Assert.AreEqual(32d, removeButton.ActualWidth, 0.1d, "队列操作按钮宽度必须固定为 32。");
+                    Assert.AreEqual(32d, removeButton.ActualHeight, 0.1d, "队列操作按钮高度必须固定为 32。");
+                    removeButton.ApplyTemplate();
+                    var removeButtonRoot = removeButton.Template.FindName("Root", removeButton) as Border;
+                    Assert.IsNotNull(removeButtonRoot, "队列操作按钮模板必须包含可验证的根边框。");
+                    Assert.AreEqual(8d, removeButtonRoot!.CornerRadius.TopLeft, 0.1d, "队列操作按钮应使用圆角正方形。");
+                    Assert.AreEqual(8d, removeButtonRoot.CornerRadius.TopRight, 0.1d);
+                    Assert.AreEqual(8d, removeButtonRoot.CornerRadius.BottomRight, 0.1d);
+                    Assert.AreEqual(8d, removeButtonRoot.CornerRadius.BottomLeft, 0.1d);
                 }
                 if (dispatcherFailure is not null)
                 {
@@ -599,10 +646,13 @@ public sealed class ReliabilityTests
 
             Assert.IsTrue(active.CanTogglePause);
             Assert.IsFalse(waiting.CanTogglePause);
+            Assert.AreEqual("\uE769", active.PauseActionGlyph);
+            Assert.AreEqual("\uE74D", active.RemoveActionGlyph);
             Assert.AreEqual(true, queue.TogglePause(active.QueueId));
             Assert.IsTrue(active.IsPaused);
             Assert.IsTrue(active.CanTogglePause, "暂停后必须保留同一按钮，供用户继续下载。");
             Assert.AreEqual("继续", active.PauseActionText);
+            Assert.AreEqual("\uE768", active.PauseActionGlyph);
             Assert.IsTrue(File.Exists(active.PausePath));
             Assert.IsNull(queue.TogglePause(waiting.QueueId), "等待项不能错误地暂停当前下载。");
 
@@ -2833,6 +2883,23 @@ public sealed class ReliabilityTests
         finally
         {
             DeleteTemporaryTree(root);
+        }
+    }
+
+    private static IEnumerable<T> FindVisualChildren<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        if (root is T matchingChild)
+        {
+            yield return matchingChild;
+        }
+
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            foreach (var child in FindVisualChildren<T>(VisualTreeHelper.GetChild(root, index)))
+            {
+                yield return child;
+            }
         }
     }
 

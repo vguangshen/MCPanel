@@ -206,9 +206,41 @@
                     </Grid>
                     <TextBlock Grid.Row="1" Text="{Binding EnvironmentSummary}" Foreground="{DynamicResource MutedBrush}"
                                FontSize="12" Margin="0,10,0,0" TextTrimming="CharacterEllipsis" />
-                    <TextBlock Grid.Row="2" Text="{Binding InstallPath}" ToolTip="{Binding InstallPath}"
-                               Foreground="{DynamicResource MutedBrush}" FontSize="11" Margin="0,8,0,0"
-                               TextTrimming="CharacterEllipsis" />
+                    <Border Grid.Row="2"
+                            Margin="0,8,0,0"
+                            Padding="6,1"
+                            Background="{DynamicResource InputBrush}"
+                            BorderBrush="{DynamicResource CardLineBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="30" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button Width="24"
+                                    Height="24"
+                                    MinWidth="0"
+                                    Padding="0"
+                                    Margin="0"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Style="{DynamicResource EnvironmentTonalButton}"
+                                    FontFamily="Segoe MDL2 Assets"
+                                    FontSize="13"
+                                    Content="&#xE8B7;"
+                                    ToolTip="打开软件安装目录"
+                                    AutomationProperties.Name="打开软件安装目录"
+                                    Click="InstalledProductOpen_Click" />
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding InstallPath}"
+                                       ToolTip="{Binding InstallPath}"
+                                       Foreground="{DynamicResource TextBrush}"
+                                       FontSize="11"
+                                       VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis" />
+                        </Grid>
+                    </Border>
                 </Grid>
 
                 <Grid Grid.Column="2" Margin="0,0,20,0">
@@ -403,8 +435,9 @@
                                     Tag="Stop" Click="InstalledProductTomcatAction_Click"
                                     IsEnabled="{Binding CanStopTomcatProduct}"
                                     Visibility="{Binding IsTomcatDeployment, Converter={StaticResource BooleanToVisibility}}" />
-                            <Button Content="{Binding ManagementButtonText}" Style="{DynamicResource WebsiteActionButton}" MinWidth="98" Margin="0,0,8,0"
+                            <Button Content="IIS 管理" Style="{DynamicResource WebsiteActionButton}" MinWidth="98" Margin="0,0,8,0"
                                     VerticalAlignment="Center"
+                                    Visibility="{Binding IsIisDeployment, Converter={StaticResource BooleanToVisibility}}"
                                     Click="InstalledProductIis_Click" />
                             <Button Content="修复绑定" Style="{DynamicResource WebsiteActionButton}" Margin="0,0,8,0"
                                     VerticalAlignment="Center"
@@ -685,8 +718,8 @@
                     <ColumnDefinition Width="36" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="54" />
-                    <ColumnDefinition Width="62" />
-                    <ColumnDefinition Width="44" />
+                    <ColumnDefinition Width="40" />
+                    <ColumnDefinition Width="40" />
                 </Grid.ColumnDefinitions>
 
                 <TextBlock Text="{Binding QueueNumberText}"
@@ -717,27 +750,18 @@
                            VerticalAlignment="Center"
                            Margin="0,0,8,0" />
                 <Button Grid.Column="3"
-                        Content="{Binding PauseActionText}"
+                        Content="{Binding PauseActionGlyph}"
                         ToolTip="{Binding PauseActionToolTip}"
-                        Width="56"
-                        Height="28"
-                        Padding="7,0"
-                        FontSize="10.5"
-                        FontWeight="SemiBold"
-                        HorizontalAlignment="Right"
-                        Style="{DynamicResource RoundedRectTonalButton}"
+                        AutomationProperties.Name="{Binding PauseActionToolTip}"
+                        Style="{DynamicResource QueueIconButton}"
                         IsEnabled="{Binding CanTogglePause}"
                         Visibility="{Binding CanTogglePause, Converter={StaticResource BooleanToVisibility}}"
                         Click="ToggleQueuedProductPause_Click" />
                 <Button Grid.Column="4"
-                        Content="删除"
+                        Content="{Binding RemoveActionGlyph}"
                         ToolTip="{Binding RemoveToolTip}"
-                        Width="38"
-                        Height="28"
-                        Padding="4,0"
-                        FontSize="10"
-                        HorizontalAlignment="Right"
-                        Style="{DynamicResource RoundedRectDangerButton}"
+                        AutomationProperties.Name="{Binding RemoveToolTip}"
+                        Style="{DynamicResource QueueDangerIconButton}"
                         IsEnabled="{Binding CanRemove}"
                         Click="RemoveQueuedProduct_Click" />
                 <ProgressBar Grid.Row="1"

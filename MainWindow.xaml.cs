@@ -1908,7 +1908,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void InstalledProductOpen_Click(object sender, RoutedEventArgs e)
+    internal void InstalledProductOpen_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is InstalledProductItem item && Directory.Exists(item.InstallPath))
         {
@@ -4838,7 +4838,6 @@ public sealed class InstalledProductItem : ObservableObject
             {
                 OnPropertyChanged(nameof(IsIisDeployment));
                 OnPropertyChanged(nameof(DeploymentLabel));
-                OnPropertyChanged(nameof(ManagementButtonText));
                 OnPropertyChanged(nameof(CanStartTomcatProduct));
                 OnPropertyChanged(nameof(CanStopTomcatProduct));
             }
@@ -4862,7 +4861,6 @@ public sealed class InstalledProductItem : ObservableObject
                 : "Tomcat 端口待自动修复";
         }
     }
-    public string ManagementButtonText => IsTomcatDeployment ? "Tomcat 目录" : "IIS 管理";
     public void SetOperationState(string text)
     {
         RuntimeStatusText = text;
