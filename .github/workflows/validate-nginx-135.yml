@@ -1,0 +1,51 @@
+name: Validate Nginx 1.3.5 lifecycle
+
+on:
+  push:
+    branches:
+      - fix/1.3.5-nginx-watchdog
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install SharpSvn native runtime dependencies
+        shell: pwsh
+        run: |
+          choco install vcredist-all -y --no-progress
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Failed to install the VC++ runtime bundle required by the vendored SharpSvn build.'
+          }
+
+      - name: Guard original product download chain
+        shell: pwsh
+        run: |
+          git fetch origin main
+          $changed = @(git diff --name-only origin/main...HEAD)
+          $forbidden = @('McPanelStoreClient.cs', 'SvnProductTransferService.cs', 'DownloadService.cs')
+          $touched = @($changed | Where-Object { $forbidden -contains $_ })
+          if ($touched.Count -gt 0) {
+            throw "Nginx lifecycle fix unexpectedly touched product download chain: $($touched -join ', ')"
+          }
+          Write-Host 'Original product download chain is unchanged.'
+
+      - name: Test and publish
+        shell: pwsh
+        run: |
+          $publishDir = Join-Path $env:RUNNER_TEMP 'MCPanel135Publish'
+          & .\Publish-WinX64.ps1 -OutputDirectory $publishDir
