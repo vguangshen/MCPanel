@@ -3,7 +3,7 @@ name: Validate Account API 1.3.4 fix
 on:
   push:
     branches:
-      - integration/1.3.4-account-api-lifecycle
+      - main
 
 permissions:
   contents: write
@@ -35,12 +35,92 @@ jobs:
       - name: Apply targeted Account API patch
         shell: pwsh
         run: |
+          $scriptPath = 'tools\apply-account-api-134-fix.ps1'
+          $script = [IO.File]::ReadAllText($scriptPath).Replace("`r`n", "`n")
+
+          $oldExact = @'
+          function Replace-Exact([string]$Text, [string]$Old, [string]$New, [string]$Label) {
+              if (-not $Text.Contains($Old)) {
+                  throw "Patch anchor not found: $Label"
+              }
+              return $Text.Replace($Old, $New)
+          }
+          '@.Trim().Replace("`r`n", "`n")
+          $newExact = @'
+          function Replace-Exact([string]$Text, [string]$Old, [string]$New, [string]$Label) {
+              $Old = $Old.Replace("`r`n", "`n")
+              $New = $New.Replace("`r`n", "`n")
+              if (-not $Text.Contains($Old)) {
+                  throw "Patch anchor not found: $Label"
+              }
+              return $Text.Replace($Old, $New)
+          }
+          '@.Trim().Replace("`r`n", "`n")
+          if (-not $script.Contains($oldExact)) { throw 'Replace-Exact helper anchor not found.' }
+          $script = $script.Replace($oldExact, $newExact)
+
+          $oldRegex = @'
+          function Replace-RegexOnce([string]$Text, [string]$Pattern, [string]$Replacement, [string]$Label) {
+              $matches = [regex]::Matches($Text, $Pattern)
+              if ($matches.Count -ne 1) {
+                  throw "Expected exactly one match for $Label, found $($matches.Count)."
+              }
+              return [regex]::Replace($Text, $Pattern, $Replacement, 1)
+          }
+          '@.Trim().Replace("`r`n", "`n")
+          $newRegex = @'
+          function Replace-RegexOnce([string]$Text, [string]$Pattern, [string]$Replacement, [string]$Label) {
+              $Replacement = $Replacement.Replace("`r`n", "`n")
+              $matches = [regex]::Matches($Text, $Pattern)
+              if ($matches.Count -ne 1) {
+                  throw "Expected exactly one match for $Label, found $($matches.Count)."
+              }
+              return [regex]::Replace($Text, $Pattern, $Replacement, 1)
+          }
+          '@.Trim().Replace("`r`n", "`n")
+          if (-not $script.Contains($oldRegex)) { throw 'Replace-RegexOnce helper anchor not found.' }
+          $script = $script.Replace($oldRegex, $newRegex)
+
+          # PowerShell variable names are case-insensitive; $Host is reserved.
+          $script = $script.Replace('$host = Read-Normalized $hostPath', '$hostText = Read-Normalized $hostPath')
+          $script = $script.Replace('$host = Replace-Exact $host', '$hostText = Replace-Exact $hostText')
+          $script = $script.Replace('Write-Utf8 $hostPath $host', 'Write-Utf8 $hostPath $hostText')
+          [IO.File]::WriteAllText($scriptPath, $script, [Text.UTF8Encoding]::new($false))
+
           & .\tools\apply-account-api-134-fix.ps1
+
           $testPath = 'MCPanel.Tests\ReliabilityTests.AccountApiLifecycle.cs'
           $test = [IO.File]::ReadAllText($testPath).Replace("`r`n", "`n")
           if (-not $test.StartsWith('using System.IO;')) {
             $test = "using System.IO;`n" + $test
           }
+
+          # The host creates its persistent identity below AccountApiStorage.RootPath.
+          # Real MCPanel startup initializes that directory before constructing the host;
+          # reproduce that prerequisite in the focused lifecycle fixture.
+          $test = $test.Replace(
+            "    public void AccountApiHostReportsRealListenerLifecycle()`n    {",
+            "    public void AccountApiHostReportsRealListenerLifecycle()`n    {`n        Directory.CreateDirectory(AccountApiStorage.RootPath);")
+          $test = $test.Replace(
+            "    public void EmbeddedAccountApiRuntimeCanStopAndImmediatelyRestartSamePort()`n    {",
+            "    public void EmbeddedAccountApiRuntimeCanStopAndImmediatelyRestartSamePort()`n    {`n        Directory.CreateDirectory(AccountApiStorage.RootPath);")
+          $test = $test.Replace(
+            "    public void AccountApiHostFailsOnlyWhenThePortIsActuallyBound()`n    {",
+            "    public void AccountApiHostFailsOnlyWhenThePortIsActuallyBound()`n    {`n        Directory.CreateDirectory(AccountApiStorage.RootPath);")
+
+          # TcpListener is not IDisposable on net462.
+          $test = $test.Replace(
+            '        using var blocker = new TcpListener(IPAddress.Loopback, 0);',
+            '        var blocker = new TcpListener(IPAddress.Loopback, 0);')
+          $test = $test.Replace(
+            '        using var listener = new TcpListener(IPAddress.Loopback, 0);',
+            '        var listener = new TcpListener(IPAddress.Loopback, 0);')
+          $test = $test.Replace(
+            "        finally`n        {`n            host.Dispose();`n        }`n    }`n`n    private static int ReserveFreeTcpPort()",
+            "        finally`n        {`n            host.Dispose();`n            blocker.Stop();`n        }`n    }`n`n    private static int ReserveFreeTcpPort()")
+          $test = $test.Replace(
+            "        listener.Start();`n        return ((IPEndPoint)listener.LocalEndpoint).Port;",
+            "        listener.Start();`n        var port = ((IPEndPoint)listener.LocalEndpoint).Port;`n        listener.Stop();`n        return port;")
           [IO.File]::WriteAllText($testPath, $test, [Text.UTF8Encoding]::new($false))
 
       - name: Guard original product download chain
@@ -67,10 +147,11 @@ jobs:
       - name: Commit validated fix to integration branch
         shell: pwsh
         run: |
+          git checkout 'bec11776678c9cce3bfb039dc1cfe0c91e8c6999' -- '.github/workflows/release.yml'
           Remove-Item -LiteralPath '.github\workflows\account-api-134-fix.yml' -Force
           Remove-Item -LiteralPath 'tools\apply-account-api-134-fix.ps1' -Force
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
           git commit -m 'fix: stabilize Account API restart lifecycle [skip ci]'
-          git push origin HEAD:integration/1.3.4-account-api-lifecycle
+          git push --force-with-lease origin HEAD:integration/1.3.4-account-api-lifecycle
