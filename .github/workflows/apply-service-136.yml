@@ -23,7 +23,7 @@ jobs:
 
       - name: Apply patch
         shell: pwsh
-        run: .\tools\apply-service-136.ps1
+        run: .\tools\apply-service-136-v2.ps1
 
       - name: Guard original product download chain
         shell: pwsh
