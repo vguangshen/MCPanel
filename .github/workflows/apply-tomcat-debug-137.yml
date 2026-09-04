@@ -29,6 +29,14 @@ jobs:
           choco install vcredist-all -y --no-progress
           if ($LASTEXITCODE -ne 0) { throw 'Failed to install VC++ runtime bundle.' }
 
+      - name: Fix temporary patch script syntax
+        shell: pwsh
+        run: |
+          $path = '.\tools\apply-tomcat-debug-137.ps1'
+          $text = [IO.File]::ReadAllText($path)
+          $text = $text.Replace('$Path:', '${Path}:')
+          [IO.File]::WriteAllText($path, $text, [Text.UTF8Encoding]::new($false))
+
       - name: Apply 1.3.7 patch
         shell: pwsh
         run: .\tools\apply-tomcat-debug-137.ps1
