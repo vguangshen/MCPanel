@@ -52,85 +52,6 @@
             </Setter>
         </Style>
 
-        <Style x:Key="AccountApiSwitch" TargetType="ToggleButton">
-            <Setter Property="Width" Value="150" />
-            <Setter Property="Height" Value="34" />
-            <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource CardLineBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ToggleButton">
-                        <Border x:Name="SwitchRoot"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="7"
-                                Padding="5">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="39" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <Border x:Name="SwitchTrack"
-                                        Width="35"
-                                        Height="20"
-                                        HorizontalAlignment="Left"
-                                        VerticalAlignment="Center"
-                                        Background="{DynamicResource DisabledBrush}"
-                                        BorderBrush="{DynamicResource CardLineBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="5">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="17" />
-                                            <ColumnDefinition Width="17" />
-                                        </Grid.ColumnDefinitions>
-                                        <Border x:Name="SwitchThumb"
-                                                Grid.Column="0"
-                                                Width="13"
-                                                Height="13"
-                                                HorizontalAlignment="Center"
-                                                VerticalAlignment="Center"
-                                                Background="{DynamicResource MutedBrush}"
-                                                CornerRadius="3" />
-                                    </Grid>
-                                </Border>
-                                <TextBlock x:Name="SwitchText"
-                                           Grid.Column="1"
-                                           Text="启用账号 API"
-                                    FontSize="12"
-                                           FontWeight="SemiBold"
-                                           Foreground="{DynamicResource MutedBrush}"
-                                           VerticalAlignment="Center"
-                                           TextTrimming="CharacterEllipsis" />
-                            </Grid>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="SwitchRoot" Property="Background" Value="{DynamicResource TonalBrush}" />
-                                <Setter TargetName="SwitchRoot" Property="BorderBrush" Value="{DynamicResource TonalTextBrush}" />
-                                <Setter TargetName="SwitchTrack" Property="Background" Value="{DynamicResource MemoryBrush}" />
-                                <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="{DynamicResource MemoryBrush}" />
-                                <Setter TargetName="SwitchThumb" Property="Grid.Column" Value="1" />
-                                <Setter TargetName="SwitchThumb" Property="Background" Value="White" />
-                                <Setter TargetName="SwitchText" Property="Text" Value="账号 API 已启用" />
-                                <Setter TargetName="SwitchText" Property="Foreground" Value="{DynamicResource TextBrush}" />
-                            </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="SwitchRoot" Property="BorderBrush" Value="{DynamicResource TonalTextBrush}" />
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="SwitchRoot" Property="Opacity" Value="0.62" />
-                                <Setter TargetName="SwitchText" Property="Foreground" Value="{DynamicResource DisabledTextBrush}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
         <DataTemplate x:Key="ProviderStatusTemplate">
             <Border Background="{DynamicResource SurfaceAltBrush}"
                     BorderBrush="{DynamicResource CardLineBrush}"
@@ -206,11 +127,31 @@
                     <TextBlock Text="统一管理内置 Account API、HMAC 密钥和连接状态。" Margin="0,3,0,0" FontSize="11" Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                    <ToggleButton IsChecked="{Binding AccountApiEnabled, Mode=OneWay}"
-                                  Style="{StaticResource AccountApiSwitch}"
-                                  Click="Enabled_Click"
-                                  IsEnabled="{Binding CanToggleEnabled}"
-                                  ToolTip="开启后由 MCPanel 托管运行；关闭后停止内置 Account API。" />
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <ToggleButton IsChecked="{Binding AccountApiEnabled, Mode=OneWay}"
+                                      Style="{DynamicResource PanelToggleSwitch}"
+                                      Click="Enabled_Click"
+                                      IsEnabled="{Binding CanToggleEnabled}"
+                                      ToolTip="开启后由 MCPanel 托管运行；关闭后停止内置 Account API。"
+                                      AutomationProperties.Name="启用账号 API" />
+                        <TextBlock Margin="8,0,0,0"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   FontWeight="SemiBold">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="未启用" />
+                                    <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding AccountApiEnabled}" Value="True">
+                                            <Setter Property="Text" Value="已启用" />
+                                            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
                     <Border x:Name="ServiceStatusBadge"
                             MinWidth="92"
                             Height="30"

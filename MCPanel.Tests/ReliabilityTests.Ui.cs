@@ -375,6 +375,200 @@ public sealed partial class ReliabilityTests
     }
 
     [TestMethod]
+    public void ProductCompletionIndicatorUsesTransparentSurfaceAndRoundedCheckmark()
+    {
+        Exception? failure = null;
+        var completed = new ManualResetEventSlim();
+        var thread = new Thread(() =>
+        {
+            MainWindow? window = null;
+            try
+            {
+                window = new MainWindow
+                {
+                    Width = 520,
+                    Height = 260
+                };
+
+                var productCardTemplate = (DataTemplate)window.FindResource("ProductCardTemplate");
+                var productCard = productCardTemplate.LoadContent() as FrameworkElement;
+                Assert.IsNotNull(productCard, "产品卡片模板必须生成可渲染的根元素。");
+
+                productCard!.DataContext = new ProductItem(
+                    "UI-COMPLETE",
+                    "已安装产品",
+                    "测试",
+                    string.Empty,
+                    ProductSource.Online)
+                {
+                    IsInstalled = true
+                };
+                window.Content = productCard;
+                window.Show();
+                window.UpdateLayout();
+
+                var indicator = FindVisualChildren<Border>(productCard)
+                    .Single(border => border.ToolTip as string == "已安装");
+                Assert.AreEqual(Colors.Transparent, ((SolidColorBrush)indicator.Background).Color,
+                    "已安装完成图标内部必须透出卡片背景。");
+                Assert.AreEqual(2d, indicator.BorderThickness.Left, 0.01d,
+                    "已安装完成图标外圈应使用轻量描边。");
+
+                var checkmark = FindVisualChildren<System.Windows.Shapes.Path>(indicator).Single();
+                var borderBrush = indicator.BorderBrush as SolidColorBrush;
+                var checkmarkBrush = checkmark.Stroke as SolidColorBrush;
+                Assert.IsNotNull(borderBrush, "已安装完成图标外圈必须使用主题色画笔。");
+                Assert.IsNotNull(checkmarkBrush, "已安装完成图标勾线必须使用主题色画笔。");
+                Assert.AreEqual(borderBrush!.Color, checkmarkBrush!.Color,
+                    "完成图标外圈和勾线必须保持同一主题绿色。");
+                Assert.AreEqual(2.8d, checkmark.StrokeThickness, 0.01d);
+                Assert.AreEqual(PenLineCap.Round, checkmark.StrokeStartLineCap);
+                Assert.AreEqual(PenLineCap.Round, checkmark.StrokeEndLineCap);
+                Assert.AreEqual(PenLineJoin.Round, checkmark.StrokeLineJoin);
+            }
+            catch (Exception ex)
+            {
+                failure = ex;
+            }
+            finally
+            {
+                window?.Close();
+                completed.Set();
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.IsTrue(completed.Wait(TimeSpan.FromSeconds(20)), "已安装完成图标的 UI 渲染测试超时。");
+        if (failure is not null)
+        {
+            Assert.Fail($"已安装完成图标未按空心圆角样式渲染：{failure}");
+        }
+    }
+
+    [TestMethod]
+    public void SettingsPagePlacesThemeAfterDatabaseToolsAndUsesCompactSwitch()
+    {
+        Exception? failure = null;
+        var completed = new ManualResetEventSlim();
+        var thread = new Thread(() =>
+        {
+            MainWindow? window = null;
+            try
+            {
+                window = new MainWindow();
+                var navItems = (StackPanel)window.FindName("NavItemsPanel");
+                var settingsNav = navItems.Children
+                    .OfType<RadioButton>()
+                    .Single(button => string.Equals(button.Content as string, "面板设置", StringComparison.Ordinal));
+                settingsNav.IsChecked = true;
+
+                window.Show();
+                window.UpdateLayout();
+
+                var settingsPage = (ScrollViewer)window.FindName("SettingsPage");
+                var databaseHeading = FindVisualChildren<TextBlock>(settingsPage)
+                    .Single(textBlock => textBlock.Text == "数据库工具");
+                var themeHeading = FindVisualChildren<TextBlock>(settingsPage)
+                    .Single(textBlock => textBlock.Text == "外观主题");
+                var databasePoint = databaseHeading.TransformToAncestor(settingsPage).Transform(new Point(0, 0));
+                var themePoint = themeHeading.TransformToAncestor(settingsPage).Transform(new Point(0, 0));
+                Assert.IsTrue(themePoint.Y > databasePoint.Y,
+                    "外观主题应排列在数据库工具之后。");
+
+                var startupToggle = FindVisualChildren<ToggleButton>(settingsPage)
+                    .Single(toggle => AutomationProperties.GetName(toggle) == "开机自启动");
+                startupToggle.ApplyTemplate();
+                var switchRoot = startupToggle.Template.FindName("SwitchRoot", startupToggle) as Border;
+                var switchTrack = startupToggle.Template.FindName("SwitchTrack", startupToggle) as Border;
+                Assert.IsNotNull(switchRoot, "开机自启动必须使用紧凑滑动开关模板。");
+                Assert.IsNotNull(switchTrack, "开机自启动开关必须包含独立滑轨。");
+                Assert.AreEqual(52d, startupToggle.Width, 0.01d);
+                Assert.AreEqual(32d, startupToggle.Height, 0.01d);
+                Assert.AreEqual(42d, switchTrack!.Width, 0.01d);
+                Assert.AreEqual(22d, switchTrack.Height, 0.01d);
+            }
+            catch (Exception ex)
+            {
+                failure = ex;
+            }
+            finally
+            {
+                window?.Close();
+                completed.Set();
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.IsTrue(completed.Wait(TimeSpan.FromSeconds(20)), "设置页布局与开关渲染测试超时。");
+        if (failure is not null)
+        {
+            Assert.Fail($"设置页布局或开机自启动开关不符合设计：{failure}");
+        }
+    }
+
+    [TestMethod]
+    public void HomeSystemSummaryKeepsHardwareLinesInsideCard()
+    {
+        Exception? failure = null;
+        var completed = new ManualResetEventSlim();
+        var thread = new Thread(() =>
+        {
+            MainWindow? window = null;
+            try
+            {
+                window = new MainWindow();
+                window.Show();
+                window.UpdateLayout();
+
+                var card = (Border)window.FindName("HomeSystemSummaryCard");
+                var hardwareLines = new[]
+                {
+                    (TextBlock)window.FindName("HomeHardwareCpuText"),
+                    (TextBlock)window.FindName("HomeHardwareMemoryText"),
+                    (TextBlock)window.FindName("HomeHardwareOsText")
+                };
+                var contentBottom = card.ActualHeight - card.BorderThickness.Bottom - card.Padding.Bottom;
+                var previousBottom = double.MinValue;
+
+                Assert.AreEqual(92d, card.Height, 0.01d);
+                foreach (var line in hardwareLines)
+                {
+                    Assert.IsTrue(line.ActualWidth > 0 && line.ActualHeight > 0,
+                        "首页硬件信息行必须实际参与布局。");
+                    var top = line.TransformToAncestor(card).Transform(new Point(0, 0)).Y;
+                    var bottom = top + line.ActualHeight;
+                    Assert.IsTrue(top >= previousBottom - 0.01d,
+                        "首页硬件信息行不能互相覆盖。");
+                    Assert.IsTrue(bottom <= contentBottom + 1d,
+                        "首页系统版本行必须完整位于卡片内容区域内。");
+                    previousBottom = bottom;
+                }
+
+                Assert.AreEqual(TextWrapping.NoWrap, hardwareLines[2].TextWrapping);
+            }
+            catch (Exception ex)
+            {
+                failure = ex;
+            }
+            finally
+            {
+                window?.Close();
+                completed.Set();
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.IsTrue(completed.Wait(TimeSpan.FromSeconds(20)), "首页系统概览渲染测试超时。");
+        if (failure is not null)
+        {
+            Assert.Fail($"首页系统版本文字布局异常：{failure}");
+        }
+    }
+
+    [TestMethod]
     public void UpdateBusyPanelRendersWhenLocalUpdatePreparationStarts()
     {
         Exception? failure = null;

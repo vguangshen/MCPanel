@@ -172,6 +172,72 @@
         </Setter>
     </Style>
 
+    <Style x:Key="PanelToggleSwitch" TargetType="ToggleButton">
+        <Setter Property="Width" Value="52" />
+        <Setter Property="Height" Value="32" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource CardLineBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Focusable" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="SwitchRoot"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="8"
+                            Padding="4">
+                        <Border x:Name="SwitchTrack"
+                                Width="42"
+                                Height="22"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Background="{DynamicResource DisabledBrush}"
+                                BorderBrush="{DynamicResource CardLineBrush}"
+                                BorderThickness="1"
+                                CornerRadius="6">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="21" />
+                                    <ColumnDefinition Width="21" />
+                                </Grid.ColumnDefinitions>
+                                <Border x:Name="SwitchThumb"
+                                        Grid.Column="0"
+                                        Width="16"
+                                        Height="16"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        Background="{DynamicResource MutedBrush}"
+                                        CornerRadius="4" />
+                            </Grid>
+                        </Border>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="SwitchRoot" Property="Background" Value="{DynamicResource TonalBrush}" />
+                            <Setter TargetName="SwitchRoot" Property="BorderBrush" Value="{DynamicResource TonalTextBrush}" />
+                            <Setter TargetName="SwitchTrack" Property="Background" Value="{DynamicResource MemoryBrush}" />
+                            <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="{DynamicResource MemoryBrush}" />
+                            <Setter TargetName="SwitchThumb" Property="Grid.Column" Value="1" />
+                            <Setter TargetName="SwitchThumb" Property="Background" Value="White" />
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="SwitchRoot" Property="BorderBrush" Value="{DynamicResource TonalTextBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter TargetName="SwitchRoot" Property="BorderBrush" Value="{DynamicResource TonalTextBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="SwitchRoot" Property="Opacity" Value="0.62" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style x:Key="ProductCategoryChip" TargetType="Button">
         <Setter Property="Height" Value="32" />
         <Setter Property="MinWidth" Value="82" />
