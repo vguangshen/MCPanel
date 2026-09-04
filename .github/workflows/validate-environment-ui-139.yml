@@ -1,0 +1,76 @@
+name: Validate Environment UI 1.3.9
+
+on:
+  push:
+    branches:
+      - fix/1.3.9-environment-page-render
+    paths:
+      - .github/workflows/validate-environment-ui-139.yml
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: windows-2025
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install SharpSvn native runtime dependencies
+        shell: pwsh
+        run: |
+          choco install vcredist-all -y --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to install VC++ runtime dependencies.' }
+
+      - name: Apply Environment page XAML hotfix
+        shell: pwsh
+        run: |
+          $path = 'Resources/MainWindowTemplates.xaml'
+          $content = [System.IO.File]::ReadAllText($path)
+          $old = 'BasedOn="{DynamicResource EnvironmentVersionComboBoxItem}"'
+          $new = 'BasedOn="{StaticResource EnvironmentVersionComboBoxItem}"'
+          $count = ([regex]::Matches($content, [regex]::Escape($old))).Count
+          if ($count -ne 1) {
+            throw "Expected exactly one invalid DynamicResource BasedOn occurrence, found $count."
+          }
+          $content = $content.Replace($old, $new)
+          [System.IO.File]::WriteAllText($path, $content, [System.Text.UTF8Encoding]::new($false))
+
+      - name: Guard original product download chain
+        shell: pwsh
+        run: |
+          git fetch origin main --quiet
+          $protected = @('McPanelStoreClient.cs','SvnProductTransferService.cs','DownloadService.cs')
+          foreach ($file in $protected) {
+            git diff --exit-code origin/main -- $file
+            if ($LASTEXITCODE -ne 0) { throw "Protected product download-chain file changed: $file" }
+          }
+
+      - name: Test and publish
+        shell: pwsh
+        run: |
+          dotnet test .\MCPanel.Tests\MCPanel.Tests.csproj -c Release -p:Platform=x64
+          if ($LASTEXITCODE -ne 0) { throw 'Reliability tests failed.' }
+          $publishDir = Join-Path $env:RUNNER_TEMP 'MCPanelPublish139'
+          .\Publish-WinX64.ps1 -OutputDirectory $publishDir
+          if ($LASTEXITCODE -ne 0) { throw 'Publish failed.' }
+          if (!(Test-Path (Join-Path $publishDir 'MCPanel.exe'))) { throw 'Published MCPanel.exe not found.' }
+
+      - name: Commit validated XAML fix
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Resources/MainWindowTemplates.xaml
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) { throw 'Environment XAML hotfix produced no change.' }
+          git commit -m 'Fix Environment page SQL Server selector rendering'
+          git push origin HEAD:fix/1.3.9-environment-page-render
