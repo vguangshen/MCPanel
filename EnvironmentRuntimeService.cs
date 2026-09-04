@@ -423,9 +423,16 @@ public sealed class EnvironmentRuntimeService
         {
             await StopAsync(kind, cancellationToken);
         }
-        catch
+        catch (Exception stopError)
         {
-            // Continue with start even when the service was already stopped.
+            // A stop command may report an error even though the process/service
+            // actually reached Stopped. Continue only in that benign case.
+            if (IsRunning(kind))
+            {
+                throw new InvalidOperationException(
+                    $"{DisplayName(kind)} 停止失败，当前仍在运行，已取消重启：{stopError.Message}",
+                    stopError);
+            }
         }
 
         await Task.Delay(1200, cancellationToken);
@@ -456,7 +463,7 @@ public sealed class EnvironmentRuntimeService
                 return "MySQL 已卸载。";
             case EnvironmentKind.SqlServer:
                 await UninstallSqlServerCompletelyAsync(cancellationToken);
-                return "SQL Server 已执行完整卸载清理。建议重启 Windows 后再重新安装。";
+                return "SQL Server 默认实例及 MCPanel 管理的数据、安装缓存和防火墙规则已卸载；共享驱动、其他实例及全局 SQL Server 目录已保留。";
             case EnvironmentKind.Iis:
                 return await UninstallIisCompletelyAsync(cancellationToken);
             default:
@@ -1199,26 +1206,14 @@ public sealed class EnvironmentRuntimeService
                 Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
             }
 
-            Invoke-Step '停止 SQL Server 服务' {
-                Get-Service | Where-Object {
-                    $_.Name -eq 'MSSQLSERVER' -or
-                    $_.Name -like 'MSSQL$*' -or
-                    $_.Name -like 'SQLAgent$*' -or
-                    $_.Name -like 'SQLTELEMETRY*' -or
-                    $_.Name -in @('SQLBrowser','SQLWriter','MsDtsServer140','MsDtsServer150','MsDtsServer160','MsDtsServer170','ReportServer')
+            Invoke-Step '停止 MCPanel SQL Server 默认实例服务' {
+                Get-Service -ErrorAction SilentlyContinue | Where-Object {
+                    $_.Name -in @('MSSQLSERVER','SQLSERVERAGENT')
                 } | ForEach-Object { Stop-Sql-Service $_.Name }
             }
 
-            Invoke-Step '调用官方安装器卸载 SQL Server 实例' {
+            Invoke-Step '调用官方安装器卸载 SQL Server 默认实例' {
                 $instanceNames = @('MSSQLSERVER')
-                $instanceKey = 'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL'
-                if (Test-Path $instanceKey) {
-                    $instanceNames += (Get-ItemProperty $instanceKey -ErrorAction SilentlyContinue).PSObject.Properties |
-                        Where-Object { $_.Name -notlike 'PS*' } |
-                        ForEach-Object { $_.Name }
-                }
-                $instanceNames = $instanceNames | Where-Object { $_ } | Sort-Object -Unique
-
                 $setupCandidates = @()
                 foreach ($root in @(
                     (Join-Path $workRoot 'SqlServer2012ExpressMedia'),
@@ -1228,9 +1223,7 @@ public sealed class EnvironmentRuntimeService
                     (Join-Path $workRoot 'SqlServer2017ExpressMedia'),
                     $componentRoot,
                     $migratedDataRoot,
-                    $legacyDataRoot,
-                    (Join-Path $env:ProgramFiles 'Microsoft SQL Server'),
-                    (Join-Path ${env:ProgramFiles(x86)} 'Microsoft SQL Server')
+                    $legacyDataRoot
                 )) {
                     if (Test-Path $root) {
                         $setupCandidates += Get-ChildItem $root -Filter setup.exe -Recurse -ErrorAction SilentlyContinue
@@ -1250,48 +1243,17 @@ public sealed class EnvironmentRuntimeService
                     }
             }
 
-            Invoke-Step '卸载 SQL Server MSI 组件' {
-                $uninstallRoots = @(
-                    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
-                    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
-                )
-
-                $items = foreach ($root in $uninstallRoots) {
-                    if (Test-Path $root) {
-                        Get-ChildItem $root -ErrorAction SilentlyContinue | ForEach-Object {
-                            $props = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
-                            if ($props.DisplayName -and $props.DisplayName -match 'SQL Server|SQL Native Client|SQL Server Browser|SQL Server VSS Writer|Microsoft ODBC Driver.*SQL|Microsoft OLE DB Driver.*SQL') {
-                                [pscustomobject]@{ Name = $props.DisplayName; KeyName = $_.PSChildName; UninstallString = $props.UninstallString }
-                            }
-                        }
-                    }
-                }
-
-                $items |
-                    Sort-Object Name -Unique |
-                    ForEach-Object {
-                        Write-Output ('Uninstalling MSI component: ' + $_.Name)
-                        if ($_.KeyName -match '^\{[0-9A-Fa-f-]+\}$') {
-                            $process = Start-Process -FilePath msiexec.exe -ArgumentList ('/x ' + $_.KeyName + ' /qn /norestart') -Wait -PassThru -WindowStyle Hidden -ErrorAction SilentlyContinue
-                            if ($process) { Write-Output ('msiexec exit code: ' + $process.ExitCode) }
-                        }
-                        elseif ($_.UninstallString) {
-                            Write-Output ('Non-MSI uninstall entry retained for manual reference: ' + $_.UninstallString)
-                        }
-                    }
+            Invoke-Step '保留共享 SQL Server 客户端组件' {
+                Write-Output '保留 SQL Native Client、ODBC/OLE DB Driver、SQL Browser、VSS Writer 等共享组件，避免影响其他软件或 SQL Server 实例。'
             }
 
-            Invoke-Step '删除残留 SQL Server 服务项' {
-                Get-Service | Where-Object {
-                    $_.Name -eq 'MSSQLSERVER' -or
-                    $_.Name -like 'MSSQL$*' -or
-                    $_.Name -like 'SQLAgent$*' -or
-                    $_.Name -like 'SQLTELEMETRY*' -or
-                    $_.Name -in @('SQLBrowser','SQLWriter','MsDtsServer110','MsDtsServer140','MsDtsServer150','MsDtsServer160','MsDtsServer170','ReportServer')
+            Invoke-Step '删除 MCPanel SQL Server 默认实例残留服务项' {
+                Get-Service -ErrorAction SilentlyContinue | Where-Object {
+                    $_.Name -in @('MSSQLSERVER','SQLSERVERAGENT')
                 } | ForEach-Object { Delete-Sql-Service $_.Name }
             }
 
-            Invoke-Step '删除残留目录' {
+            Invoke-Step '删除 MCPanel 管理目录和安装缓存' {
                 $paths = @(
                     $componentRoot,
                     $migratedDataRoot,
@@ -1300,49 +1262,24 @@ public sealed class EnvironmentRuntimeService
                     (Join-Path $workRoot 'SqlServer2022ExpressMedia'),
                     (Join-Path $workRoot 'SqlServer2025ExpressMedia'),
                     (Join-Path $workRoot 'SqlServer2025EnterpriseDeveloperMedia'),
-                    (Join-Path $workRoot 'SqlServer2017ExpressMedia'),
-                    (Join-Path $env:ProgramFiles 'Microsoft SQL Server'),
-                    (Join-Path ${env:ProgramFiles(x86)} 'Microsoft SQL Server'),
-                    (Join-Path $env:ProgramData 'Microsoft\SQL Server'),
-                    (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\Microsoft SQL Server 2012'),
-                    (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\Microsoft SQL Server 2017'),
-                    (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\Microsoft SQL Server 2022'),
-                    (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\Microsoft SQL Server 2025'),
-                    (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\Microsoft SQL Server Tools')
+                    (Join-Path $workRoot 'SqlServer2017ExpressMedia')
                 )
                 foreach ($path in $paths) { Remove-Tree $path }
             }
 
-            Invoke-Step '清理 SQL Server 注册表' {
-                $registryPaths = @(
-                    'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server',
-                    'HKLM:\SOFTWARE\Microsoft\MSSQLServer',
-                    'HKLM:\SOFTWARE\Microsoft\SQL Server',
-                    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Microsoft SQL Server',
-                    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\MSSQLServer',
-                    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\SQL Server'
-                )
-                foreach ($path in $registryPaths) {
-                    if (Test-Path $path) {
-                        Write-Output ('Removing registry key: ' + $path)
-                        Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
-                    }
-                }
+            Invoke-Step '保留共享 SQL Server 注册表与程序目录' {
+                Write-Output '全局 Microsoft SQL Server 注册表树、Program Files 和 ProgramData 由官方卸载器管理；MCPanel 不再强制删除，以保护其他实例。'
                 Write-Output '保留 Windows NVMe 4KB 扇区兼容项，避免 SQL Server 卸载后立即重装需要重启系统。'
             }
 
-            Invoke-Step '清理防火墙规则和环境项' {
+            Invoke-Step '清理 MCPanel SQL Server 防火墙规则' {
                 Get-NetFirewallRule -ErrorAction SilentlyContinue |
-                    Where-Object { $_.DisplayName -match 'SQL Server|MSSQL|SQL Browser' } |
+                    Where-Object { $_.DisplayName -like 'MCPanel SQL Server *' } |
                     Remove-NetFirewallRule -ErrorAction SilentlyContinue
             }
 
             $remainingServices = @(Get-Service -ErrorAction SilentlyContinue | Where-Object {
-                $_.Name -eq 'MSSQLSERVER' -or
-                $_.Name -like 'MSSQL$*' -or
-                $_.Name -like 'SQLAgent$*' -or
-                $_.Name -like 'SQLTELEMETRY*' -or
-                $_.Name -in @('SQLBrowser','SQLWriter','MsDtsServer140','MsDtsServer150','MsDtsServer160','MsDtsServer170','ReportServer')
+                $_.Name -in @('MSSQLSERVER','SQLSERVERAGENT')
             })
             $remainingManagedPaths = @($componentRoot, $migratedDataRoot, $legacyDataRoot) |
                 Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and (Test-Path $_) }
@@ -2015,14 +1952,14 @@ public sealed class EnvironmentRuntimeService
                     }
                     'start' {
                         $paths = Start-MySqlService
-                        if (!(Test-RootPassword $paths)) { Reset-RootPassword $paths }
+                        if (!(Test-RootPassword $paths)) { Fail 'MySQL 已启动，但保存的 root 凭据无法验证。为避免意外修改数据库密码，MCPanel 已停止自动重置；请恢复正确的凭据文件后重试。' }
                         Set-Result ('MySQL80 服务已启动。连接信息：127.0.0.1:' + $port + '，账号 root。')
                     }
                     'restart' {
                         Stop-MySqlService
                         Start-Sleep -Seconds 2
                         $paths = Start-MySqlService
-                        if (!(Test-RootPassword $paths)) { Reset-RootPassword $paths }
+                        if (!(Test-RootPassword $paths)) { Fail 'MySQL 已启动，但保存的 root 凭据无法验证。为避免意外修改数据库密码，MCPanel 已停止自动重置；请恢复正确的凭据文件后重试。' }
                         Set-Result ('MySQL80 服务已重启。连接信息：127.0.0.1:' + $port + '，账号 root。')
                     }
                     default {

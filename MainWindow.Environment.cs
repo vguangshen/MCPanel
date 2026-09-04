@@ -294,7 +294,7 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
         EnvironmentKind.Iis => "确定卸载 IIS 吗？\n会禁用 MCPanel 使用的 IIS Windows 功能并卸载 URL Rewrite；Windows 可能要求重启后继续。",
         EnvironmentKind.Nginx => "确定卸载 Nginx 吗？\n会停止并删除 MCPanel 的 Nginx Windows 服务，然后删除 Nginx 组件目录和代理配置。",
         EnvironmentKind.MySql => "确定卸载 MySQL 吗？\n会停止并删除 MySQL80 服务，以及 MCPanel 的 MySQL 程序、数据和配置目录。",
-        EnvironmentKind.SqlServer => "确定完整卸载 SQL Server 吗？\n会停止并移除 SQL Server 服务、相关系统组件、注册表项、Program Files/ProgramData 残留目录，以及 MCPanel 的 MSSQL 数据目录。\n仅在确认本机没有其他需要保留的 SQL Server 实例时执行。",
+        EnvironmentKind.SqlServer => "确定卸载 MCPanel 使用的 SQL Server 默认实例吗？\n会停止并移除 MSSQLSERVER 默认实例，以及 MCPanel 的数据、安装缓存和防火墙规则；其他 SQL Server 实例、共享 ODBC/OLE DB 驱动和全局程序目录会保留。",
         EnvironmentKind.Tomcat => "确定卸载 Tomcat 吗？\n会停止 MCPanel 管理的全部 Tomcat 进程，并删除 Tomcat 组件目录；已部署产品数据不会随此按钮删除。",
         EnvironmentKind.FrpTunnel => "确定卸载 FRP 吗？\n会停止 frpc，并删除 FRP 客户端、frpc.toml 映射配置以及下载缓存。此操作不会影响其他五个环境。",
         _ => $"确定卸载 {item.Title} 吗？"

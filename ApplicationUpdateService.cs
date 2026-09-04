@@ -645,8 +645,29 @@ public sealed class ApplicationUpdateService
             if (!File.Exists(Path.Combine(payload, "MCPanel.exe.config")))
                 throw new InvalidDataException("更新包缺少 MCPanel.exe.config，不是完整发布包。");
             var fileVersion = FileVersionInfo.GetVersionInfo(executable).FileVersion ?? string.Empty;
-            var version = string.IsNullOrWhiteSpace(declaredVersion) ? NormalizeVersionText(fileVersion) : NormalizeVersionText(declaredVersion);
-            if (!Version.TryParse(version, out _)) throw new InvalidDataException("更新包版本号无效。");
+            var executableVersionText = NormalizeVersionText(fileVersion);
+            var version = string.IsNullOrWhiteSpace(declaredVersion) ? executableVersionText : NormalizeVersionText(declaredVersion);
+            if (!Version.TryParse(version, out var parsedVersion)) throw new InvalidDataException("更新包版本号无效。");
+            if (!Version.TryParse(executableVersionText, out var executableVersion))
+                throw new InvalidDataException("更新包中的 MCPanel.exe FileVersion 无效，无法确认版本绑定。");
+            if (!string.IsNullOrWhiteSpace(declaredVersion))
+            {
+                var normalizedDeclared = new Version(
+                    parsedVersion.Major,
+                    parsedVersion.Minor,
+                    Math.Max(0, parsedVersion.Build),
+                    Math.Max(0, parsedVersion.Revision));
+                var normalizedExecutable = new Version(
+                    executableVersion.Major,
+                    executableVersion.Minor,
+                    Math.Max(0, executableVersion.Build),
+                    Math.Max(0, executableVersion.Revision));
+                if (!normalizedDeclared.Equals(normalizedExecutable))
+                {
+                    throw new InvalidDataException(
+                        $"更新清单声明版本 {version}，但包内 MCPanel.exe FileVersion 为 {executableVersionText}，已拒绝应用该更新包。");
+                }
+            }
             progress?.Report(100);
             status?.Report($"更新包已就绪：版本 {version}");
             return new PreparedApplicationUpdate

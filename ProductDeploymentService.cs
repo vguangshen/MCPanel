@@ -46,9 +46,9 @@ public sealed class ProductDeploymentService
                     DeleteDirectoryIfExists(Path.Combine(ComponentPaths.LegacyRuntimeRoot, "TomcatInstances", SafeName(state.ProductId)));
                 }
             }
-            catch
+            catch (Exception error)
             {
-                DeleteFileIfExists(stateFile);
+                QuarantineCorruptDeploymentState(stateFile, error);
             }
         }
 
@@ -63,10 +63,40 @@ public sealed class ProductDeploymentService
                     DeleteFileIfExists(stateFile);
                 }
             }
-            catch
+            catch (Exception error)
             {
-                DeleteFileIfExists(stateFile);
+                QuarantineCorruptDeploymentState(stateFile, error);
             }
+        }
+    }
+
+    private static void QuarantineCorruptDeploymentState(string stateFile, Exception error)
+    {
+        try
+        {
+            if (!File.Exists(stateFile))
+            {
+                return;
+            }
+
+            var timestamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+            var quarantine = stateFile + $".corrupt-{timestamp}";
+            for (var suffix = 1; File.Exists(quarantine); suffix++)
+            {
+                quarantine = stateFile + $".corrupt-{timestamp}-{suffix}";
+            }
+
+            File.Move(stateFile, quarantine);
+            Directory.CreateDirectory(ComponentPaths.WorkRoot);
+            RollingLogWriter.Append(
+                Path.Combine(ComponentPaths.WorkRoot, "deployment-state-recovery.log"),
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] 部署状态文件损坏，已隔离而不是删除：{stateFile} -> {quarantine}{Environment.NewLine}{error}{Environment.NewLine}{Environment.NewLine}",
+                Encoding.UTF8);
+        }
+        catch
+        {
+            // A damaged state file must not prevent MCPanel from opening. If it
+            // cannot be quarantined, leave it in place for a later repair.
         }
     }
 

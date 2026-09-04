@@ -1,9 +1,0 @@
-name: Branch actions diagnostic
-on:
-  push:
-    branches: [fix/1.2.9-reliability]
-jobs:
-  test:
-    runs-on: windows-latest
-    steps:
-      - run: echo actions-ok

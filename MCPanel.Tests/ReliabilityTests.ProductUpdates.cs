@@ -353,7 +353,7 @@ public sealed partial class ReliabilityTests
     {
         var sourceRoot = CreateTemporaryDirectory();
         var service = new ApplicationUpdateService();
-        const string version = "999.0.0.1";
+        var version = ApplicationUpdateService.CurrentVersion.ToString();
         var packageFile = Path.Combine(service.UpdatesRoot, "Downloads", $"MCPanel-{version}.zip");
         var temporaryFile = packageFile + ".part";
         PreparedApplicationUpdate? first = null;
