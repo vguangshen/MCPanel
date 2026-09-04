@@ -81,6 +81,14 @@ jobs:
           '@.Trim().Replace("`r`n", "`n")
           if (-not $script.Contains($oldRegex)) { throw 'Replace-RegexOnce helper anchor not found.' }
           $script = $script.Replace($oldRegex, $newRegex)
+
+          # PowerShell variable names are case-insensitive and $Host is a
+          # read-only automatic variable. Rename the patch script's local
+          # AccountApiHost source buffer before executing it.
+          $script = $script.Replace('$host = Read-Normalized $hostPath', '$hostText = Read-Normalized $hostPath')
+          $script = $script.Replace('$host = Replace-Exact $host', '$hostText = Replace-Exact $hostText')
+          $script = $script.Replace('Write-Utf8 $hostPath $host', 'Write-Utf8 $hostPath $hostText')
+
           [IO.File]::WriteAllText($scriptPath, $script, [Text.UTF8Encoding]::new($false))
 
           & .\tools\apply-account-api-134-fix.ps1
