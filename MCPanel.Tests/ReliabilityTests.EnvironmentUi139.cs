@@ -40,7 +40,9 @@ public sealed partial class ReliabilityTests
                 sqlServerComboBox = FindVisualChildren<ComboBox>(environmentPage)
                     .SingleOrDefault(candidate =>
                         candidate.DataContext is EnvironmentItem item &&
-                        item.Kind == EnvironmentKind.SqlServer);
+                        item.Kind == EnvironmentKind.SqlServer &&
+                        candidate.Items.Count > 0 &&
+                        candidate.Items[0] is SqlServerReleaseDefinition);
                 Assert.IsNotNull(sqlServerComboBox, "环境页面必须成功渲染 SQL Server 版本选择器。");
 
                 var sqlServerItem = (EnvironmentItem)sqlServerComboBox!.DataContext;
