@@ -356,6 +356,8 @@ public sealed class ApplicationUpdateService
         Directory.CreateDirectory(downloadRoot);
         var safeVersion = SafeName(manifest.Version);
         var packageFile = Path.Combine(downloadRoot, $"MCPanel-{safeVersion}.zip");
+        status?.Report("正在准备下载更新包...");
+        using var packageLock = await AcquirePackageFileLockAsync(packageFile, cancellationToken);
         var temporary = packageFile + ".part";
         var expectedHash = NormalizeSha256(manifest.Sha256);
         var reusedCachedPackage = false;
@@ -415,7 +417,14 @@ public sealed class ApplicationUpdateService
             }
             finally
             {
-                if (File.Exists(temporary)) File.Delete(temporary);
+                try
+                {
+                    if (File.Exists(temporary)) File.Delete(temporary);
+                }
+                catch
+                {
+                    // DownloadService already performs best-effort partial-file cleanup.
+                }
             }
 
             status?.Report("正在校验 SHA-256...");
@@ -436,6 +445,41 @@ public sealed class ApplicationUpdateService
             status,
             cancellationToken,
             deletePackageFileAfterApply: true);
+    }
+
+    private static async Task<FileStream> AcquirePackageFileLockAsync(
+        string packageFile,
+        CancellationToken cancellationToken)
+    {
+        var lockFile = packageFile + ".lock";
+        var deadline = DateTime.UtcNow + TimeSpan.FromMinutes(2);
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                // A kernel-backed file lock also coordinates separate MCPanel
+                // processes. DeleteOnClose releases stale locks after a crash.
+                return new FileStream(
+                    lockFile,
+                    FileMode.OpenOrCreate,
+                    FileAccess.ReadWrite,
+                    FileShare.None,
+                    1,
+                    FileOptions.DeleteOnClose);
+            }
+            catch (IOException error)
+            {
+                if (DateTime.UtcNow >= deadline)
+                {
+                    throw new IOException(
+                        "更新包正在被其他更新任务使用，等待超时。请关闭其他 MCPanel 更新任务后重试。",
+                        error);
+                }
+
+                await Task.Delay(100, cancellationToken);
+            }
+        }
     }
 
     public async Task<PreparedApplicationUpdate> PrepareLocalAsync(

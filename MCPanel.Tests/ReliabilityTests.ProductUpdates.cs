@@ -389,13 +389,45 @@ public sealed partial class ReliabilityTests
                 Sha256 = hash
             };
             var downloadCount = 0;
-            Task<HttpResponseMessage> Download(CancellationToken _)
+            async Task<HttpResponseMessage> Download(CancellationToken _)
             {
-                downloadCount++;
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                Interlocked.Increment(ref downloadCount);
+                await Task.Delay(100);
+                return new HttpResponseMessage(HttpStatusCode.OK)
                 {
                     Content = new ByteArrayContent(packageBytes)
-                });
+                };
+            }
+
+            var parallelTasks = new[]
+            {
+                service.PrepareRemotePackageAsync(
+                    manifest,
+                    Download,
+                    response => response.EnsureSuccessStatusCode(),
+                    progress: null,
+                    status: null,
+                    CancellationToken.None),
+                service.PrepareRemotePackageAsync(
+                    manifest,
+                    Download,
+                    response => response.EnsureSuccessStatusCode(),
+                    progress: null,
+                    status: null,
+                    CancellationToken.None)
+            };
+            try
+            {
+                var parallel = await Task.WhenAll(parallelTasks);
+                Assert.AreEqual(2, parallel.Length);
+                Assert.AreEqual(1, downloadCount, "同一更新包的并发准备任务应串行化，避免 .part 文件互相覆盖。");
+            }
+            finally
+            {
+                foreach (var task in parallelTasks.Where(task => task.Status == TaskStatus.RanToCompletion))
+                {
+                    service.DiscardPreparedUpdate(task.Result);
+                }
             }
 
             first = await service.PrepareRemotePackageAsync(

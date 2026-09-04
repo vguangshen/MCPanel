@@ -28,6 +28,7 @@ internal static class ProcessRunner
         bool captureOutput = false,
         ProcessWindowStyle windowStyle = ProcessWindowStyle.Hidden)
     {
+        var redirectOutput = !elevated && captureOutput;
         var startInfo = new ProcessStartInfo
         {
             FileName = fileName,
@@ -39,11 +40,18 @@ internal static class ProcessRunner
             Verb = elevated && !IsAdministrator() ? "runas" : string.Empty,
             CreateNoWindow = !elevated && windowStyle == ProcessWindowStyle.Hidden,
             WindowStyle = windowStyle,
-            RedirectStandardOutput = !elevated && captureOutput,
-            RedirectStandardError = !elevated && captureOutput,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8
+            RedirectStandardOutput = redirectOutput,
+            RedirectStandardError = redirectOutput
         };
+
+        // .NET Framework rejects these properties unless the corresponding
+        // standard streams are redirected. Detached and elevated processes
+        // intentionally do not redirect their output.
+        if (redirectOutput)
+        {
+            startInfo.StandardOutputEncoding = Encoding.UTF8;
+            startInfo.StandardErrorEncoding = Encoding.UTF8;
+        }
 
         return Process.Start(startInfo)
             ?? throw new InvalidOperationException($"无法启动进程：{fileName}");

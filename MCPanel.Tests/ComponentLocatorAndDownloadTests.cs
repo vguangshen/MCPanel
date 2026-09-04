@@ -200,6 +200,20 @@ public sealed class ComponentLocatorAndDownloadTests
     }
 
     [TestMethod]
+    public void ProcessRunnerStartsWithoutOutputRedirection()
+    {
+        using var process = ProcessRunner.Start(
+            "cmd.exe",
+            "/d /c exit 0",
+            ComponentPaths.ApplicationRoot,
+            elevated: false,
+            captureOutput: false);
+
+        process.WaitForExit();
+        Assert.AreEqual(0, process.ExitCode);
+    }
+
+    [TestMethod]
     public void EnvironmentDownloadCatalogMatchesTheSettingsContract()
     {
         Assert.AreEqual(13, EnvironmentDownloadCatalog.All.Count);
