@@ -30,6 +30,18 @@ jobs:
           [IO.File]::WriteAllText((Resolve-Path $patchPath), $patchText, (New-Object Text.UTF8Encoding($false)))
           python $patchPath
 
+          $installerPath = 'EnvironmentInstaller.cs'
+          $installerText = Get-Content -LiteralPath $installerPath -Raw
+          $rewriteLine = @'
+        sb.AppendLine("  $rewriteProcess = Start-Process msiexec.exe -ArgumentList ('/i \"' + $rewriteMsi + '\" /qn /norestart') -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop");
+'@.Trim()
+          $installerText = [regex]::Replace(
+            $installerText,
+            '(?m)^\s*sb\.AppendLine\("  \$rewriteProcess = Start-Process msiexec\.exe.*$',
+            $rewriteLine,
+            1)
+          [IO.File]::WriteAllText((Resolve-Path $installerPath), $installerText, (New-Object Text.UTF8Encoding($false)))
+
       - name: Verify protected product download chain unchanged
         shell: pwsh
         run: |
@@ -40,6 +52,10 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+
+      - name: Compile patched application
+        shell: pwsh
+        run: dotnet build MCPanel.csproj -c Release
 
       - name: Install SharpSvn native runtime dependencies
         shell: pwsh
