@@ -6,12 +6,16 @@ $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectFile = Join-Path $projectRoot 'MCPanel.csproj'
+$testProject = Join-Path $projectRoot 'MCPanel.Tests\MCPanel.Tests.csproj'
 $outputDir = [IO.Path]::GetFullPath($OutputDirectory)
 $frameworkBuildDir = Join-Path $projectRoot 'bin\Release\net462'
 $stagingDir = Join-Path $projectRoot 'obj\publish\net462'
 $layoutManifestPath = Join-Path $projectRoot 'deployment-layout.json'
 if (!(Test-Path -LiteralPath $layoutManifestPath)) {
     throw "Deployment layout manifest was not found: $layoutManifestPath"
+}
+if (!(Test-Path -LiteralPath $testProject)) {
+    throw "Reliability test project was not found: $testProject"
 }
 $layoutManifest = Get-Content -LiteralPath $layoutManifestPath -Raw | ConvertFrom-Json
 $preservedNames = @($layoutManifest.preservedTopLevelNames | ForEach-Object { [string]$_ })
@@ -53,6 +57,16 @@ if (Test-Path -LiteralPath $stagingDir) {
     Remove-Item -LiteralPath $stagingDir -Recurse -Force
 }
 
+Write-Host "Running MCPanel reliability tests before publish..."
+dotnet test $testProject `
+    -c Release `
+    -f net462 `
+    $frameworkRootArgument
+if ($LASTEXITCODE -ne 0) {
+    throw "dotnet test failed with exit code $LASTEXITCODE. Publish was stopped."
+}
+
+Write-Host "Reliability tests passed. Publishing MCPanel..."
 dotnet publish $projectFile `
     -c Release `
     -f net462 `
