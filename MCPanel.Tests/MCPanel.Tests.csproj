@@ -17,6 +17,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\MCPanel.csproj" />
+    <Reference Include="System.ServiceProcess" />
     <Reference Include="SharpSvn">
       <HintPath>..\Vendor\SharpSvn\SharpSvn.dll</HintPath>
       <Private>true</Private>
