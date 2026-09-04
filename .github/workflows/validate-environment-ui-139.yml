@@ -33,16 +33,63 @@ jobs:
       - name: Apply Environment page XAML hotfix
         shell: pwsh
         run: |
-          $path = 'Resources/MainWindowTemplates.xaml'
-          $content = [System.IO.File]::ReadAllText($path)
-          $old = 'BasedOn="{DynamicResource EnvironmentVersionComboBoxItem}"'
-          $new = 'BasedOn="{StaticResource EnvironmentVersionComboBoxItem}"'
-          $count = ([regex]::Matches($content, [regex]::Escape($old))).Count
-          if ($count -ne 1) {
-            throw "Expected exactly one invalid DynamicResource BasedOn occurrence, found $count."
+          $templatesPath = 'Resources/MainWindowTemplates.xaml'
+          $templates = [System.IO.File]::ReadAllText($templatesPath)
+          $comboOld = @'
+                            <ComboBox Style="{DynamicResource EnvironmentVersionComboBox}"
+                                      ItemsSource="{Binding SqlServerReleaseOptions}"
+'@
+          $comboNew = @'
+                            <ComboBox Style="{DynamicResource EnvironmentVersionComboBox}"
+                                      ItemContainerStyle="{DynamicResource SqlServerEnvironmentVersionComboBoxItem}"
+                                      ItemsSource="{Binding SqlServerReleaseOptions}"
+'@
+          if (([regex]::Matches($templates, [regex]::Escape($comboOld))).Count -ne 1) {
+            throw 'Could not uniquely locate the SQL Server version ComboBox.'
           }
-          $content = $content.Replace($old, $new)
-          [System.IO.File]::WriteAllText($path, $content, [System.Text.UTF8Encoding]::new($false))
+          $templates = $templates.Replace($comboOld, $comboNew)
+
+          $nestedStyle = @'
+                                <ComboBox.ItemContainerStyle>
+                                    <Style TargetType="ComboBoxItem" BasedOn="{DynamicResource EnvironmentVersionComboBoxItem}">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsSupported}" Value="False">
+                                                <Setter Property="IsEnabled" Value="False" />
+                                                <Setter Property="ToolTip" Value="{Binding SupportNote}" />
+                                                <Setter Property="Opacity" Value="0.55" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </ComboBox.ItemContainerStyle>
+'@
+          if (([regex]::Matches($templates, [regex]::Escape($nestedStyle))).Count -ne 1) {
+            throw 'Could not uniquely locate the invalid inline SQL Server item style.'
+          }
+          $templates = $templates.Replace($nestedStyle, '')
+          [System.IO.File]::WriteAllText($templatesPath, $templates, [System.Text.UTF8Encoding]::new($false))
+
+          $themePath = 'Resources/PanelTheme.xaml'
+          $theme = [System.IO.File]::ReadAllText($themePath)
+          $anchor = '    <Style x:Key="ProductUpdateButton" TargetType="Button" BasedOn="{StaticResource EnvironmentWarningButton}">'
+          if (([regex]::Matches($theme, [regex]::Escape($anchor))).Count -ne 1) {
+            throw 'Could not uniquely locate the PanelTheme insertion point.'
+          }
+          $derivedStyle = @'
+    <Style x:Key="SqlServerEnvironmentVersionComboBoxItem"
+           TargetType="ComboBoxItem"
+           BasedOn="{StaticResource EnvironmentVersionComboBoxItem}">
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding IsSupported}" Value="False">
+                <Setter Property="IsEnabled" Value="False" />
+                <Setter Property="ToolTip" Value="{Binding SupportNote}" />
+                <Setter Property="Opacity" Value="0.55" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+'@
+          $theme = $theme.Replace($anchor, $derivedStyle + $anchor)
+          [System.IO.File]::WriteAllText($themePath, $theme, [System.Text.UTF8Encoding]::new($false))
 
       - name: Guard original product download chain
         shell: pwsh
@@ -69,7 +116,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add Resources/MainWindowTemplates.xaml
+          git add Resources/MainWindowTemplates.xaml Resources/PanelTheme.xaml
           git diff --cached --quiet
           if ($LASTEXITCODE -eq 0) { throw 'Environment XAML hotfix produced no change.' }
           git commit -m 'Fix Environment page SQL Server selector rendering'
