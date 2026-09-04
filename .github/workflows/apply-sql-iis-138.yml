@@ -32,13 +32,11 @@ jobs:
           $path = 'MCPanel.Tests/ReliabilityTests.Configuration.cs'
           $text = Get-Content -LiteralPath $path -Raw
           $old = '        StringAssert.Contains(script, "$rewriteProcess.ExitCode -notin @(0, 3010)");'
-          $new = @'
-        StringAssert.Contains(script, "$rewriteProcess.ExitCode -eq 3010");
-        StringAssert.Contains(script, "Mark-RestartRequired");
-        StringAssert.Contains(script, "$rewriteProcess.ExitCode -ne 0");
-'@
+          $new = '        StringAssert.Contains(script, "$rewriteProcess.ExitCode -eq 3010");' + "`r`n" +
+                 '        StringAssert.Contains(script, "Mark-RestartRequired");' + "`r`n" +
+                 '        StringAssert.Contains(script, "$rewriteProcess.ExitCode -ne 0");'
           if (-not $text.Contains($old)) { throw 'Legacy IIS MSI exit-code assertion was not found.' }
-          $text = $text.Replace($old, $new.TrimEnd("`r", "`n"))
+          $text = $text.Replace($old, $new)
           [IO.File]::WriteAllText((Resolve-Path $path), $text, (New-Object Text.UTF8Encoding($false)))
 
       - name: Verify protected product download chain unchanged
