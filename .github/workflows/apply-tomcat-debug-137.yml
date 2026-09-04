@@ -23,18 +23,36 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Install SharpSvn native runtime dependencies
-        shell: pwsh
-        run: |
-          choco install vcredist-all -y --no-progress
-          if ($LASTEXITCODE -ne 0) { throw 'Failed to install VC++ runtime bundle.' }
-
-      - name: Fix temporary patch script syntax
+      - name: Fix temporary patch script
         shell: pwsh
         run: |
           $path = '.\tools\apply-tomcat-debug-137.ps1'
           $text = [IO.File]::ReadAllText($path)
           $text = $text.Replace('$Path:', '${Path}:')
+
+          # Replace-Once should mutate only the first exact occurrence. Some UI
+          # notification pairs intentionally occur more than once in the source.
+          $condition = '    if ($count -ne 1) {'
+          $index = $text.IndexOf($condition, [StringComparison]::Ordinal)
+          if ($index -lt 0) { throw 'Replace-Once condition was not found.' }
+          $text = $text.Remove($index, $condition.Length).Insert($index, '    if ($count -lt 1) {')
+
+          $write = '    Write-Normalized $Path ($text.Replace($Old, $New))'
+          $index = $text.IndexOf($write, [StringComparison]::Ordinal)
+          if ($index -lt 0) { throw 'Replace-Once write statement was not found.' }
+          $replacement = @'
+              $matchIndex = $text.IndexOf($Old, [StringComparison]::Ordinal)
+              $updated = $text.Substring(0, $matchIndex) + $New + $text.Substring($matchIndex + $Old.Length)
+              Write-Normalized $Path $updated
+          '@.TrimStart()
+          $text = $text.Remove($index, $write.Length).Insert($index, $replacement)
+
+          # The template contains a 180-degree arrow rotation as well as a 180px
+          # management-panel animation. Widen only the panel animation.
+          $text = $text.Replace(
+            'Replace-AllExact $path ''To="180"'' ''To="250"'' 1',
+            'Replace-AllExact $path ''From="0" To="180"'' ''From="0" To="250"'' 1')
+
           [IO.File]::WriteAllText($path, $text, [Text.UTF8Encoding]::new($false))
 
       - name: Apply 1.3.7 patch
@@ -52,6 +70,12 @@ jobs:
             throw "1.3.7 unexpectedly touched product download chain: $($touched -join ', ')"
           }
           Write-Host 'Original product download chain is unchanged.'
+
+      - name: Install SharpSvn native runtime dependencies
+        shell: pwsh
+        run: |
+          choco install vcredist-all -y --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to install VC++ runtime bundle.' }
 
       - name: Test and publish
         shell: pwsh
