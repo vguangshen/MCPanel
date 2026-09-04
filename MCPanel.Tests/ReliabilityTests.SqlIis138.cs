@@ -21,6 +21,17 @@ public partial class ReliabilityTests
     }
 
     [TestMethod]
+    public void SqlServer138_UnknownWindows_LeavesEveryVersionEnabled()
+    {
+        foreach (var release in SqlServerReleaseCatalog.Options)
+        {
+            var support = SqlServerOsCompatibility.GetSupport(release.Id, WindowsSqlCompatibilityFamily.Unknown, "无法识别的 Windows");
+            Assert.IsTrue(support.IsSupported, $"{release.DisplayName} should remain selectable when Windows cannot be identified.");
+            StringAssert.Contains(support.Message, "未应用 SQL Server 版本限制");
+        }
+    }
+
+    [TestMethod]
     public void SqlServer138_LegacyWindows_RespectsMicrosoftServicePackRequirements()
     {
         Assert.AreEqual(WindowsSqlCompatibilityFamily.Windows7, SqlServerOsCompatibility.Classify(false, 7600));
