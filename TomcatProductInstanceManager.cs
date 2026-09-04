@@ -9,6 +9,39 @@ using System.Xml.Linq;
 
 namespace MCPanel;
 
+public enum TomcatProductRuntimeMode
+{
+    Stopped,
+    Shared,
+    Independent,
+    Catalina,
+    PortConflict
+}
+
+public sealed class TomcatProductRuntimeInfo
+{
+    public TomcatProductRuntimeInfo(
+        TomcatProductRuntimeMode mode,
+        int port,
+        bool portListening,
+        int? processId = null,
+        DateTime? startedAt = null)
+    {
+        Mode = mode;
+        Port = port;
+        PortListening = portListening;
+        ProcessId = processId;
+        StartedAt = startedAt;
+    }
+
+    public TomcatProductRuntimeMode Mode { get; }
+    public int Port { get; }
+    public bool PortListening { get; }
+    public int? ProcessId { get; }
+    public DateTime? StartedAt { get; }
+    public bool IsRunning => Mode is TomcatProductRuntimeMode.Shared or TomcatProductRuntimeMode.Independent or TomcatProductRuntimeMode.Catalina;
+}
+
 public sealed class TomcatProductInstanceManager
 {
     internal static readonly TimeSpan ProductStartupTimeout = TimeSpan.FromMinutes(3);
@@ -38,6 +71,178 @@ public sealed class TomcatProductInstanceManager
     public string GetLogDirectory(string productId) =>
         Path.Combine(GetInstanceRoot(productId), "logs");
 
+    public string GetInstanceDirectory(string productId) => GetInstanceRoot(productId);
+
+    public static TomcatProductRuntimeInfo GetRuntimeInfo(string productId)
+    {
+        var deployment = ProductDeploymentService.LoadTomcatDeploymentInfo(productId);
+        if (deployment is null || deployment.Port is <= 0 or > 65535)
+        {
+            return new TomcatProductRuntimeInfo(TomcatProductRuntimeMode.Stopped, deployment?.Port ?? 0, false);
+        }
+
+        var port = deployment.Port;
+        var portListening = IsTcpPortListening(port);
+        var tomcatHome = FindTomcatRoot();
+        var instanceRoot = GetInstanceRoot(productId);
+        var instanceProcessIds = Directory.Exists(instanceRoot)
+            ? GetJavaProcessIdsForBase(instanceRoot).ToArray()
+            : Array.Empty<int>();
+
+        if (tomcatHome is not null && portListening &&
+            (TomcatWindowsServiceManager.IsRunningForRoot(tomcatHome) ||
+             (IsSharedTomcatRunning() && instanceProcessIds.Length == 0)))
+        {
+            return new TomcatProductRuntimeInfo(TomcatProductRuntimeMode.Shared, port, true);
+        }
+
+        var listeningProcessIds = portListening
+            ? GetListeningProcessIds(new[] { port })
+            : Array.Empty<int>();
+        var processId = instanceProcessIds.FirstOrDefault();
+        if (processId <= 0)
+        {
+            var recorded = ReadInstanceProcessId(instanceRoot);
+            if (recorded.HasValue && listeningProcessIds.Contains(recorded.Value) && IsJavaProcessId(recorded.Value))
+            {
+                processId = recorded.Value;
+            }
+        }
+
+        if (processId > 0 || instanceProcessIds.Length > 0)
+        {
+            if (processId <= 0)
+            {
+                processId = instanceProcessIds[0];
+            }
+
+            var mode = string.Equals(ReadInstanceRunMode(instanceRoot), "Catalina", StringComparison.OrdinalIgnoreCase)
+                ? TomcatProductRuntimeMode.Catalina
+                : TomcatProductRuntimeMode.Independent;
+            return new TomcatProductRuntimeInfo(
+                mode,
+                port,
+                portListening,
+                processId,
+                TryGetProcessStartTime(processId));
+        }
+
+        if (portListening)
+        {
+            return new TomcatProductRuntimeInfo(TomcatProductRuntimeMode.PortConflict, port, true);
+        }
+
+        return new TomcatProductRuntimeInfo(TomcatProductRuntimeMode.Stopped, port, false);
+    }
+
+    public static IReadOnlyList<string> GetRunningProductIds() =>
+        ProductDeploymentService.LoadTomcatDeploymentInfos()
+            .Select(info => info.ProductId)
+            .Where(productId => GetRuntimeInfo(productId).Mode is TomcatProductRuntimeMode.Independent or TomcatProductRuntimeMode.Catalina)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(productId => productId, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+    internal static string FormatRuntimeStatus(TomcatProductRuntimeInfo runtime)
+    {
+        var processText = runtime.ProcessId.HasValue ? $" · PID {runtime.ProcessId.Value}" : string.Empty;
+        var uptimeText = string.Empty;
+        if (runtime.StartedAt.HasValue)
+        {
+            var elapsed = DateTime.Now - runtime.StartedAt.Value;
+            if (elapsed < TimeSpan.Zero)
+            {
+                elapsed = TimeSpan.Zero;
+            }
+            uptimeText = elapsed.TotalMinutes < 1
+                ? " · 刚刚启动"
+                : elapsed.TotalHours < 1
+                    ? $" · 运行 {(int)elapsed.TotalMinutes} 分钟"
+                    : $" · 运行 {(int)elapsed.TotalHours} 小时 {elapsed.Minutes} 分钟";
+        }
+
+        return runtime.Mode switch
+        {
+            TomcatProductRuntimeMode.Shared => "总 Tomcat 运行",
+            TomcatProductRuntimeMode.Independent => $"独立运行{processText}{uptimeText}",
+            TomcatProductRuntimeMode.Catalina => $"Catalina 运行{processText}{uptimeText}",
+            TomcatProductRuntimeMode.PortConflict => $"端口 {runtime.Port} 被其他进程占用",
+            _ => "已部署，未运行"
+        };
+    }
+
+    public async Task<string> PrepareProductInstanceAsync(string productId, CancellationToken cancellationToken = default)
+    {
+        var info = ProductDeploymentService.LoadTomcatDeploymentInfo(productId)
+            ?? throw new InvalidOperationException($"未找到 {productId} 的 Tomcat 部署信息，请先修复绑定。");
+        var tomcatHome = FindTomcatRoot()
+            ?? throw new DirectoryNotFoundException("未找到 Tomcat 安装目录。");
+
+        await ProductDeploymentService.EnsureTomcatProductServiceAsync(info, cancellationToken);
+        info = ProductDeploymentService.LoadTomcatDeploymentInfo(productId) ?? info;
+        return await PrepareInstanceAsync(tomcatHome, info, cancellationToken);
+    }
+
+    public async Task<string> RestartAsync(string productId, CancellationToken cancellationToken = default)
+    {
+        var runtime = GetRuntimeInfo(productId);
+        if (runtime.Mode == TomcatProductRuntimeMode.Shared)
+        {
+            throw new InvalidOperationException($"{productId} 当前由总 Tomcat Server 运行。请先使用“单独启动”切换到独立模式，再单独重启该应用。");
+        }
+        if (runtime.Mode == TomcatProductRuntimeMode.PortConflict)
+        {
+            throw new InvalidOperationException($"端口 {runtime.Port} 已被其他进程占用，无法重启 {productId}。");
+        }
+
+        var catalinaMode = runtime.Mode == TomcatProductRuntimeMode.Catalina;
+        if (runtime.Mode is TomcatProductRuntimeMode.Independent or TomcatProductRuntimeMode.Catalina)
+        {
+            await StopAsync(productId, cancellationToken);
+        }
+
+        return await StartAsync(productId, catalinaMode, cancellationToken);
+    }
+
+    public async Task<string> ClearCacheAsync(string productId, bool restart, CancellationToken cancellationToken = default)
+    {
+        var runtime = GetRuntimeInfo(productId);
+        if (runtime.Mode == TomcatProductRuntimeMode.Shared)
+        {
+            throw new InvalidOperationException($"{productId} 当前由总 Tomcat Server 运行。为避免影响其他应用，请先切换到独立模式后再清理独立实例缓存。");
+        }
+        if (runtime.Mode == TomcatProductRuntimeMode.PortConflict)
+        {
+            throw new InvalidOperationException($"端口 {runtime.Port} 被其他进程占用，无法安全清理 {productId} 的调试实例。");
+        }
+
+        var wasRunning = runtime.Mode is TomcatProductRuntimeMode.Independent or TomcatProductRuntimeMode.Catalina;
+        var catalinaMode = runtime.Mode == TomcatProductRuntimeMode.Catalina;
+        if (wasRunning)
+        {
+            await StopAsync(productId, cancellationToken);
+        }
+
+        var instanceRoot = await PrepareProductInstanceAsync(productId, cancellationToken);
+        foreach (var name in new[] { "work", "temp" })
+        {
+            var directory = Path.Combine(instanceRoot, name);
+            DeleteDirectory(directory);
+            Directory.CreateDirectory(directory);
+        }
+        WriteOperationLog(productId, "已清理独立实例 work/temp 缓存。");
+
+        if (restart && wasRunning)
+        {
+            var startMessage = await StartAsync(productId, catalinaMode, cancellationToken);
+            return $"{productId} 的 work/temp 已清理并按原运行模式重新启动。{Environment.NewLine}{startMessage}";
+        }
+
+        return restart
+            ? $"{productId} 的 work/temp 已清理；该应用原本未运行，因此未自动启动。"
+            : $"{productId} 的 work/temp 已清理。";
+    }
+
     public async Task<string> StartAsync(string productId, bool catalinaMode, CancellationToken cancellationToken = default)
     {
         var info = ProductDeploymentService.LoadTomcatDeploymentInfo(productId)
@@ -64,7 +269,10 @@ public sealed class TomcatProductInstanceManager
             {
                 TomcatWindowsServiceManager.Stop();
             }
-            await StopCatalinaBaseAsync(tomcatHome, cancellationToken, GetTomcatHttpPorts(tomcatHome));
+            // Stop only the shared CATALINA_BASE. Do not use every product HTTP port as
+            // a fallback here: those ports may belong to other independently running
+            // debug instances and must remain untouched.
+            await StopCatalinaBaseAsync(tomcatHome, cancellationToken, Array.Empty<int>());
             await StopInstanceAsync(tomcatHome, instanceRoot, info.Port, cancellationToken, throwOnFailure: true);
             if (IsTcpPortListening(info.Port))
             {
@@ -73,7 +281,10 @@ public sealed class TomcatProductInstanceManager
 
             if (catalinaMode)
             {
-                StartCatalinaConsole(tomcatHome, instanceRoot, productId);
+                var process = StartCatalinaConsole(tomcatHome, instanceRoot, productId);
+                SaveInstanceProcessId(instanceRoot, info.Port, process.Id);
+                WriteInstanceRunMode(instanceRoot, "Catalina");
+                WriteOperationLog(productId, $"Catalina 方式启动，端口 {info.Port}，PID {process.Id}。");
                 return $"已打开 {productId} 的 Catalina 诊断窗口，仅加载该应用，端口 {info.Port}。";
             }
 
@@ -86,6 +297,7 @@ public sealed class TomcatProductInstanceManager
                     TimeSpan.FromSeconds(1),
                     cancellationToken);
                 SaveInstanceProcessId(instanceRoot, info.Port);
+                WriteInstanceRunMode(instanceRoot, "Independent");
                 WriteOperationLog(productId, $"单应用启动成功，端口 {info.Port}，PID {ReadInstanceProcessId(instanceRoot)?.ToString() ?? "未识别"}。");
             }
             catch (OperationCanceledException)
@@ -149,6 +361,7 @@ public sealed class TomcatProductInstanceManager
                 ForceStopRecordedProcess(instanceRoot, recordedProcessId, info.Port);
                 await WaitForPortAsync(info.Port, listening: false, TimeSpan.FromSeconds(8), cancellationToken);
                 ClearInstanceProcessId(instanceRoot);
+                ClearInstanceRunMode(instanceRoot);
                 WriteOperationLog(productId, "单应用停止成功。");
                 return $"{productId} 已停止，其他单独运行的应用不受影响。";
             }
@@ -156,6 +369,7 @@ public sealed class TomcatProductInstanceManager
             if (!IsTcpPortListening(info.Port))
             {
                 ClearInstanceProcessId(instanceRoot);
+                ClearInstanceRunMode(instanceRoot);
                 return $"{productId} 当前未运行。";
             }
 
@@ -825,13 +1039,13 @@ public sealed class TomcatProductInstanceManager
         }
     }
 
-    private static void StartCatalinaConsole(string tomcatHome, string instanceRoot, string productId)
+    private static Process StartCatalinaConsole(string tomcatHome, string instanceRoot, string productId)
     {
         EnvironmentInstaller.NormalizeTomcatJvmPropertiesFile(
             instanceRoot,
             useInstanceLocalErrorFile: true);
         var startInfo = BuildTomcatJavaStartInfo(tomcatHome, instanceRoot, redirectOutput: false);
-        _ = Process.Start(startInfo)
+        return Process.Start(startInfo)
             ?? throw new InvalidOperationException($"无法打开 {SafeName(productId)} 的 Tomcat Catalina 诊断窗口。");
     }
 
@@ -1036,9 +1250,13 @@ public sealed class TomcatProductInstanceManager
         await Task.CompletedTask;
     }
 
-    private static void SaveInstanceProcessId(string instanceRoot, int expectedHttpPort)
+    private static void SaveInstanceProcessId(string instanceRoot, int expectedHttpPort, int? knownProcessId = null)
     {
-        var processId = GetJavaProcessIdsForBase(instanceRoot).FirstOrDefault();
+        var processId = knownProcessId.GetValueOrDefault();
+        if (processId <= 0)
+        {
+            processId = GetJavaProcessIdsForBase(instanceRoot).FirstOrDefault();
+        }
         if (processId <= 0)
         {
             processId = GetListeningProcessIds(new[] { expectedHttpPort })
@@ -1118,6 +1336,61 @@ public sealed class TomcatProductInstanceManager
     }
 
     private static string GetInstancePidFile(string instanceRoot) => Path.Combine(instanceRoot, "tomcat.pid");
+    private static string GetInstanceRunModeFile(string instanceRoot) => Path.Combine(instanceRoot, "tomcat.mode");
+
+    private static void WriteInstanceRunMode(string instanceRoot, string mode)
+    {
+        try
+        {
+            Directory.CreateDirectory(instanceRoot);
+            File.WriteAllText(GetInstanceRunModeFile(instanceRoot), mode, new UTF8Encoding(false));
+        }
+        catch
+        {
+            // Runtime mode is diagnostic metadata only; process ownership remains authoritative.
+        }
+    }
+
+    private static string? ReadInstanceRunMode(string instanceRoot)
+    {
+        try
+        {
+            var file = GetInstanceRunModeFile(instanceRoot);
+            return File.Exists(file) ? File.ReadAllText(file).Trim() : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void ClearInstanceRunMode(string instanceRoot)
+    {
+        try
+        {
+            var file = GetInstanceRunModeFile(instanceRoot);
+            if (File.Exists(file))
+            {
+                File.Delete(file);
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    private static DateTime? TryGetProcessStartTime(int processId)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+            return process.StartTime;
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     public static void WriteOperationLog(string productId, string message)
     {
