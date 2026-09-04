@@ -316,6 +316,22 @@ public sealed class PanelSettingsService
             try {
                 $instance=(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL' -ErrorAction Stop).MSSQLSERVER
                 if ([string]::IsNullOrWhiteSpace($instance)) { throw '未找到 MSSQLSERVER 默认实例。' }
+                $reg="HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\$instance\MSSQLServer\SuperSocketNetLib"
+                $current=((Get-ItemProperty $reg -Name Certificate -ErrorAction SilentlyContinue).Certificate + '').Trim()
+                if (![string]::IsNullOrWhiteSpace($current)) {
+                    $configuredCert=Get-ChildItem "Cert:\LocalMachine\My\$current" -ErrorAction SilentlyContinue
+                    if ($configuredCert -and $configuredCert.FriendlyName -ne 'MCPanel SQL Server Local Certificate') {
+                        Write-Output ('SQL Server 已配置现有证书，保持不变：' + $configuredCert.Subject + ' [' + $configuredCert.Thumbprint + ']')
+                        Stop-Transcript | Out-Null
+                        exit 0
+                    }
+                    if (!$configuredCert) {
+                        Write-Output ('SQL Server 已配置证书指纹但证书存储中未找到对应证书，保持现有配置不变：' + $current)
+                        Stop-Transcript | Out-Null
+                        exit 0
+                    }
+                }
+
                 $subject='CN=localhost'
                 $cert=Get-ChildItem Cert:\LocalMachine\My | Where-Object {
                     $_.Subject -eq $subject -and $_.FriendlyName -eq 'MCPanel SQL Server Local Certificate' -and $_.NotAfter -gt (Get-Date).AddDays(30)
@@ -333,9 +349,7 @@ public sealed class PanelSettingsService
                 $keyPath=Join-Path $env:ProgramData ('Microsoft\Crypto\RSA\MachineKeys\' + $keyName)
                 & icacls.exe $keyPath /grant '*S-1-5-20:R' | Out-Null
                 if ($LASTEXITCODE -ne 0) { throw '无法授权 SQL Server 服务读取证书私钥。' }
-                $reg="HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\$instance\MSSQLServer\SuperSocketNetLib"
                 $target=$cert.Thumbprint.ToLowerInvariant()
-                $current=(Get-ItemProperty $reg -Name Certificate -ErrorAction SilentlyContinue).Certificate
                 if ($current -ne $target) {
                     Set-ItemProperty -Path $reg -Name Certificate -Value $target
                     Set-ItemProperty -Path $reg -Name ForceEncryption -Value 0
@@ -363,6 +377,7 @@ public sealed class PanelSettingsService
 
         SqlServerCredentialStore.Save(SqlServerCredentialStore.Load() with { Host = "localhost" });
     }
+
     public bool TryOpenSqlManagementStudioForSqlServer()
     {
         var path = FindSqlManagementStudioPath();
