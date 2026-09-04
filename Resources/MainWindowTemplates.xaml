@@ -112,27 +112,21 @@
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center"
                                    Visibility="{Binding ProgressIndicatorVisibility}" />
-                        <Border Width="40"
-                                Height="40"
-                                CornerRadius="20"
-                                Background="Transparent"
-                                BorderBrush="{DynamicResource MemoryBrush}"
-                                BorderThickness="2"
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center"
-                                ToolTip="已安装"
-                                Visibility="{Binding CompletedIndicatorVisibility}">
-                            <Path x:Name="CompletedCheckmark"
-                                  Data="M 10.5,20.5 L 16.6,26.5 L 29.5,13.5"
-                                  Stretch="None"
-                                  Stroke="{DynamicResource MemoryBrush}"
-                                  StrokeThickness="2.8"
-                                  StrokeStartLineCap="Round"
-                                  StrokeEndLineCap="Round"
-                                  StrokeLineJoin="Round"
-                                  HorizontalAlignment="Center"
-                                  VerticalAlignment="Center" />
-                        </Border>
+                        <Viewbox Width="40"
+                                 Height="40"
+                                 Stretch="Uniform"
+                                 HorizontalAlignment="Center"
+                                 VerticalAlignment="Center"
+                                 ToolTip="已安装"
+                                 AutomationProperties.Name="已安装"
+                                 Visibility="{Binding CompletedIndicatorVisibility}">
+                            <Canvas Width="1024" Height="1024">
+                                <Path Data="M460.8 694.044444L312.888889 546.133333c-2.844444-2.844444-2.844444-11.377778 0-14.222222l28.444444-28.444444c2.844444-2.844444 8.533333-2.844444 11.377778 0l108.088889 108.088889 247.466667-219.022223c5.688889-5.688889 11.377778-2.844444 17.066666 0l22.755556 25.6c5.688889 5.688889 5.688889 14.222222 0 19.911111l-287.288889 256z"
+                                      Fill="#1afa29" />
+                                <Path Data="M512 56.888889c250.311111 0 455.111111 204.8 455.111111 455.111111s-204.8 455.111111-455.111111 455.111111S56.888889 762.311111 56.888889 512 261.688889 56.888889 512 56.888889m0-56.888889C230.4 0 0 230.4 0 512s230.4 512 512 512 512-230.4 512-512S793.6 0 512 0z"
+                                      Fill="#1afa29" />
+                            </Canvas>
+                        </Viewbox>
                     </Grid>
                 </Grid>
             </Grid>

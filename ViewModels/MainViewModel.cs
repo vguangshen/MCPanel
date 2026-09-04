@@ -31,7 +31,7 @@ public sealed class MainViewModel : ObservableObject
     private string _hardwareOsText = "系统：检测中";
     private bool _isStartupEnabled;
     private PanelThemeMode _themeMode = PanelThemeMode.System;
-    private string _productCacheSizeText = "正在计算...";
+    private string _panelMemoryUsageText = "正在读取...";
     private string _updateStatus = "支持 HTTPS 在线更新与经过校验的本地更新包。";
     private double _updateProgress;
     private bool _isUpdateBusy;
@@ -143,7 +143,7 @@ public sealed class MainViewModel : ObservableObject
     public string SettingsStatus { get => _settingsStatus; set => SetProperty(ref _settingsStatus, value); }
     public string StoreDataRoot { get => _storeDataRoot; set => SetProperty(ref _storeDataRoot, value); }
     public bool IsStartupEnabled { get => _isStartupEnabled; set => SetProperty(ref _isStartupEnabled, value); }
-    public string ProductCacheSizeText { get => _productCacheSizeText; set => SetProperty(ref _productCacheSizeText, value); }
+    public string PanelMemoryUsageText { get => _panelMemoryUsageText; set => SetProperty(ref _panelMemoryUsageText, value); }
     public string UpdateStatus { get => _updateStatus; set => SetProperty(ref _updateStatus, value); }
     public double UpdateProgress { get => _updateProgress; set => SetProperty(ref _updateProgress, value); }
     public bool IsUpdateBusy

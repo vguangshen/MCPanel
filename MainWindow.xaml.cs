@@ -53,7 +53,7 @@ public partial class MainWindow : Window
     private int _runtimeRefreshTick;
     private int _runtimeRefreshGeneration;
     private bool _isClosed;
-    private CancellationTokenSource? _cleanupUsageRefreshCancellation;
+    private int _panelMemoryCleanupInProgress;
     private bool _productUninstallInProgress;
     private CancellationTokenSource? _productUninstallCancellation;
     private CancellationTokenSource? _applicationUpdateCancellation;
@@ -107,8 +107,6 @@ public partial class MainWindow : Window
             SystemEvents.DisplaySettingsChanged -= SystemEvents_DisplaySettingsChanged;
             _timer.Stop();
             DownloadQueuePopup.IsOpen = false;
-            _cleanupUsageRefreshCancellation?.Cancel();
-            _cleanupUsageRefreshCancellation?.Dispose();
             _productInstallQueue.Dispose();
             _productUninstallCancellation?.Cancel();
             _productUninstallCancellation?.Dispose();
@@ -124,6 +122,7 @@ public partial class MainWindow : Window
             _environmentInstaller.Dispose();
         };
         DataContext = _model;
+        RefreshPanelMemoryUsage();
         _timer.Tick += async (_, _) =>
         {
             _model.TickSystemState();
@@ -179,7 +178,7 @@ public partial class MainWindow : Window
                 _productInstallQueue.ResumePending();
                 await NginxProductProxyService.TrySyncAsync();
                 await RefreshEnvironmentStatesAsync();
-                await RefreshCleanupStorageUsageAsync();
+                RefreshPanelMemoryUsage();
             }
             catch (Exception ex)
             {
@@ -600,7 +599,7 @@ public partial class MainWindow : Window
         else if (page == "Settings")
         {
             RefreshDatabaseToolState();
-            _ = RefreshCleanupStorageUsageAsync();
+            RefreshPanelMemoryUsage();
         }
 
     }

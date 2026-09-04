@@ -14,8 +14,6 @@ public enum PanelThemeMode
     Dark
 }
 
-public sealed record CleanupStorageUsage(long ProductCacheBytes);
-
 public sealed class PanelSettingsService
 {
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
@@ -178,23 +176,6 @@ public sealed class PanelSettingsService
 
     public void OpenLogDirectory() => OpenDirectory(ComponentPaths.WorkRoot);
 
-    public void ClearProductCache()
-    {
-        DeleteDirectory(ComponentPaths.CacheRoot);
-        DeleteDirectory(ComponentPaths.LegacyProductIconsRoot);
-    }
-
-    public Task<CleanupStorageUsage> GetCleanupStorageUsageAsync(CancellationToken cancellationToken = default)
-    {
-        var cacheDirectories = new[]
-        {
-            ComponentPaths.CacheRoot,
-            ComponentPaths.LegacyProductIconsRoot
-        };
-        return Task.Run(() => new CleanupStorageUsage(
-            CalculateDirectoryBytes(cacheDirectories, cancellationToken)), cancellationToken);
-    }
-
     public static string FormatStorageSize(long bytes)
     {
         if (bytes <= 0) return "0 B";
@@ -207,47 +188,6 @@ public sealed class PanelSettingsService
             unit++;
         }
         return unit == 0 ? $"{value:0} {units[unit]}" : $"{value:0.##} {units[unit]}";
-    }
-
-    private static long CalculateDirectoryBytes(IEnumerable<string> directories, CancellationToken cancellationToken)
-    {
-        long total = 0;
-        foreach (var root in directories.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-            if (!Directory.Exists(root)) continue;
-            var pending = new Stack<string>();
-            pending.Push(root);
-            while (pending.Count > 0)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var directory = pending.Pop();
-                try
-                {
-                    foreach (var file in Directory.EnumerateFiles(directory))
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        try { total = checked(total + new FileInfo(file).Length); }
-                        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                        {
-                        }
-                    }
-                    foreach (var child in Directory.EnumerateDirectories(directory))
-                    {
-                        try
-                        {
-                            if ((File.GetAttributes(child) & FileAttributes.ReparsePoint) == 0) pending.Push(child);
-                        }
-                        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                        {
-                        }
-                    }
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                }
-            }
-        }
-        return total;
     }
 
     public string NavicatInstallRoot => ComponentPaths.NavicatLiteRoot;
@@ -553,21 +493,6 @@ public sealed class PanelSettingsService
             FileName = path,
             UseShellExecute = true
         });
-    }
-
-    private static void DeleteDirectory(string path)
-    {
-        var fullPath = Path.GetFullPath(path);
-        var baseDirectory = ComponentPaths.ApplicationRoot;
-        if (!fullPath.StartsWith(baseDirectory, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException("清理目录不在软件目录下，已取消。");
-        }
-
-        if (Directory.Exists(fullPath))
-        {
-            Directory.Delete(fullPath, recursive: true);
-        }
     }
 
     private string RequireSqlManagementStudioPath()

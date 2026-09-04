@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -303,14 +302,14 @@ public partial class App : Application
                 return;
             }
 
-            await Task.Run(() => ReleaseUiMemory(collectManagedObjects: true));
+            await Task.Run(() => PanelMemoryService.Release(collectManagedObjects: true));
 
             // Closing the first WPF window can finish a few dispatcher and thread-pool
             // callbacks after Closed. Trim once more after those pages become idle.
             await Task.Delay(5000);
             if (CanReleaseUiMemory(closedGeneration))
             {
-                await Task.Run(() => ReleaseUiMemory(collectManagedObjects: false));
+                await Task.Run(() => PanelMemoryService.Release(collectManagedObjects: false));
             }
         }
         catch (Exception ex)
@@ -321,19 +320,6 @@ public partial class App : Application
 
     private bool CanReleaseUiMemory(int generation) =>
         !_isExiting && _mainWindow is null && generation == Volatile.Read(ref _uiGeneration);
-
-    private static void ReleaseUiMemory(bool collectManagedObjects)
-    {
-        if (collectManagedObjects)
-        {
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
-            GC.WaitForPendingFinalizers();
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
-        }
-
-        using var process = Process.GetCurrentProcess();
-        SetProcessWorkingSetSize(process.Handle, new IntPtr(-1), new IntPtr(-1));
-    }
 
     private void InitializeActivationListener()
     {
@@ -446,11 +432,6 @@ public partial class App : Application
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr windowHandle, int command);
 
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool SetProcessWorkingSetSize(
-        IntPtr process,
-        IntPtr minimumWorkingSetSize,
-        IntPtr maximumWorkingSetSize);
 }
 
 internal static class ApplicationLaunchMode

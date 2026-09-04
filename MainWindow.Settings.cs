@@ -1,6 +1,5 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Net.NetworkInformation;
@@ -68,11 +67,8 @@ private void StartupToggle_Click(object sender, RoutedEventArgs e)
                     _settingsService.OpenLogDirectory();
                     _model.SettingsStatus = "已打开脚本和日志目录。";
                     break;
-                case "ClearProductCache":
-                    _settingsService.ClearProductCache();
-                    _model.SettingsStatus = "已清理产品列表缓存和图标缓存。";
-                    await RefreshCleanupStorageUsageAsync();
-                    MessageBox.Show(_model.SettingsStatus, "面板设置", MessageBoxButton.OK, MessageBoxImage.Information);
+                case "ClearPanelMemory":
+                    await ClearPanelMemoryAsync(button);
                     break;
             }
         }
@@ -415,33 +411,50 @@ private void StartupToggle_Click(object sender, RoutedEventArgs e)
         }
     }
 
-    private async Task RefreshCleanupStorageUsageAsync()
+    private async Task ClearPanelMemoryAsync(Button button)
     {
-        var cancellation = new CancellationTokenSource();
-        var previous = Interlocked.Exchange(ref _cleanupUsageRefreshCancellation, cancellation);
-        previous?.Cancel();
-        previous?.Dispose();
-        _model.ProductCacheSizeText = "正在计算...";
+        if (Interlocked.Exchange(ref _panelMemoryCleanupInProgress, 1) != 0)
+        {
+            return;
+        }
+
+        button.IsEnabled = false;
         try
         {
-            var usage = await _settingsService.GetCleanupStorageUsageAsync(cancellation.Token);
-            if (cancellation.IsCancellationRequested) return;
-            _model.ProductCacheSizeText = $"占用空间  {PanelSettingsService.FormatStorageSize(usage.ProductCacheBytes)}";
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch
-        {
-            _model.ProductCacheSizeText = "暂时无法统计";
+            _model.SettingsStatus = "正在清理面板运行内存...";
+            var result = await Task.Run(() => PanelMemoryService.Release(collectManagedObjects: true));
+            RefreshPanelMemoryUsage(result.WorkingSetAfterBytes);
+
+            var releasedBytes = Math.Max(0, result.WorkingSetBeforeBytes - result.WorkingSetAfterBytes);
+            var releasedText = releasedBytes > 0
+                ? $"工作集减少 {PanelSettingsService.FormatStorageSize(releasedBytes)}"
+                : "当前工作集没有明显下降";
+            _model.SettingsStatus = result.WorkingSetTrimmed
+                ? $"已清理面板运行内存，{releasedText}。"
+                : $"已完成托管内存回收，但 Windows 工作集整理未生效；{releasedText}。";
+
+            if (!_isClosed)
+            {
+                MessageBox.Show(_model.SettingsStatus, "面板设置", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
         }
         finally
         {
-            if (ReferenceEquals(_cleanupUsageRefreshCancellation, cancellation))
-            {
-                _cleanupUsageRefreshCancellation = null;
-            }
-            cancellation.Dispose();
+            button.IsEnabled = true;
+            Volatile.Write(ref _panelMemoryCleanupInProgress, 0);
+        }
+    }
+
+    private void RefreshPanelMemoryUsage(long? workingSetBytes = null)
+    {
+        try
+        {
+            var bytes = workingSetBytes ?? PanelMemoryService.GetWorkingSetBytes();
+            _model.PanelMemoryUsageText = $"当前占用  {PanelSettingsService.FormatStorageSize(bytes)}";
+        }
+        catch
+        {
+            _model.PanelMemoryUsageText = "暂时无法读取";
         }
     }
 

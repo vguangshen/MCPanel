@@ -375,7 +375,7 @@ public sealed partial class ReliabilityTests
     }
 
     [TestMethod]
-    public void ProductCompletionIndicatorUsesTransparentSurfaceAndRoundedCheckmark()
+    public void ProductCompletionIndicatorUsesProvidedGreenOutlineSvg()
     {
         Exception? failure = null;
         var completed = new ManualResetEventSlim();
@@ -407,24 +407,32 @@ public sealed partial class ReliabilityTests
                 window.Show();
                 window.UpdateLayout();
 
-                var indicator = FindVisualChildren<Border>(productCard)
-                    .Single(border => border.ToolTip as string == "已安装");
-                Assert.AreEqual(Colors.Transparent, ((SolidColorBrush)indicator.Background).Color,
-                    "已安装完成图标内部必须透出卡片背景。");
-                Assert.AreEqual(2d, indicator.BorderThickness.Left, 0.01d,
-                    "已安装完成图标外圈应使用轻量描边。");
+                var indicator = FindVisualChildren<Viewbox>(productCard)
+                    .Single(viewbox => viewbox.ToolTip as string == "已安装");
+                Assert.AreEqual(40d, indicator.Width, 0.01d,
+                    "已安装完成图标应保持 40 像素点击区域内的视觉尺寸。");
+                Assert.AreEqual(40d, indicator.Height, 0.01d,
+                    "已安装完成图标应保持正方形比例。");
 
-                var checkmark = FindVisualChildren<System.Windows.Shapes.Path>(indicator).Single();
-                var borderBrush = indicator.BorderBrush as SolidColorBrush;
-                var checkmarkBrush = checkmark.Stroke as SolidColorBrush;
-                Assert.IsNotNull(borderBrush, "已安装完成图标外圈必须使用主题色画笔。");
-                Assert.IsNotNull(checkmarkBrush, "已安装完成图标勾线必须使用主题色画笔。");
-                Assert.AreEqual(borderBrush!.Color, checkmarkBrush!.Color,
-                    "完成图标外圈和勾线必须保持同一主题绿色。");
-                Assert.AreEqual(2.8d, checkmark.StrokeThickness, 0.01d);
-                Assert.AreEqual(PenLineCap.Round, checkmark.StrokeStartLineCap);
-                Assert.AreEqual(PenLineCap.Round, checkmark.StrokeEndLineCap);
-                Assert.AreEqual(PenLineJoin.Round, checkmark.StrokeLineJoin);
+                var paths = FindVisualChildren<System.Windows.Shapes.Path>(indicator).ToArray();
+                Assert.AreEqual(2, paths.Length, "已安装完成图标必须由 SVG 的勾线和圆环两段路径组成。");
+                var expectedGreen = Color.FromRgb(0x1A, 0xFA, 0x29);
+                foreach (var path in paths)
+                {
+                    var fill = path.Fill as SolidColorBrush;
+                    Assert.IsNotNull(fill, "SVG 路径必须使用填充颜色渲染。");
+                    Assert.AreEqual(expectedGreen, fill!.Color, "完成图标必须使用指定的绿色。");
+                    Assert.IsNull(path.Stroke, "SVG 图标不应再叠加旧式描边。");
+                }
+
+                var circlePath = paths.Single(path => path.Data.Bounds.Width > 900d);
+                Assert.AreEqual(1024d, circlePath.Data.Bounds.Width, 0.5d,
+                    "完成图标圆环必须使用指定 SVG 的 1024 视图范围。");
+                Assert.AreEqual(1024d, circlePath.Data.Bounds.Height, 0.5d,
+                    "完成图标圆环必须使用指定 SVG 的 1024 视图范围。");
+                var checkPath = paths.Single(path => path.Data.Bounds.Width < 900d);
+                Assert.IsTrue(checkPath.Data.Bounds.Width > 400d,
+                    "完成图标勾线必须使用指定 SVG 的宽比例。");
             }
             catch (Exception ex)
             {
@@ -442,7 +450,7 @@ public sealed partial class ReliabilityTests
         Assert.IsTrue(completed.Wait(TimeSpan.FromSeconds(20)), "已安装完成图标的 UI 渲染测试超时。");
         if (failure is not null)
         {
-            Assert.Fail($"已安装完成图标未按空心圆角样式渲染：{failure}");
+            Assert.Fail($"已安装完成图标未按指定 SVG 渲染：{failure}");
         }
     }
 
@@ -476,8 +484,40 @@ public sealed partial class ReliabilityTests
                 Assert.IsTrue(themePoint.Y > databasePoint.Y,
                     "外观主题应排列在数据库工具之后。");
 
+                var appearanceCard = (Border)window.FindName("AppearanceSettingsCard");
+                var softwareUpdateCard = (Border)window.FindName("SoftwareUpdateCard");
+                var startupCard = (Border)window.FindName("StartupSettingsCard");
+                Assert.IsTrue(FindVisualChildren<TextBlock>(settingsPage)
+                    .Any(textBlock => textBlock.Text == "面板运行内存"),
+                    "设置页应显示面板运行内存，而不是产品缓存清理入口。");
+                var clearMemoryButton = FindVisualChildren<Button>(settingsPage)
+                    .Single(button => string.Equals(button.Tag as string, "ClearPanelMemory", StringComparison.Ordinal));
+                Assert.AreEqual("清理内存", clearMemoryButton.Content as string,
+                    "设置页的清理按钮必须执行面板运行内存整理。");
+                Assert.IsFalse(FindVisualChildren<Button>(settingsPage)
+                    .Any(button => string.Equals(button.Tag as string, "ClearProductCache", StringComparison.Ordinal)),
+                    "设置页不能继续暴露会删除产品缓存的按钮。");
+                var appearancePoint = appearanceCard.TransformToAncestor(settingsPage).Transform(new Point(0, 0));
+                var softwareUpdatePoint = softwareUpdateCard.TransformToAncestor(settingsPage).Transform(new Point(0, 0));
+                var startupPoint = startupCard.TransformToAncestor(settingsPage).Transform(new Point(0, 0));
+                Assert.IsTrue(startupPoint.Y > softwareUpdatePoint.Y,
+                    "开机自启动卡片应排列在软件更新卡片下方。");
+                Assert.IsTrue(startupCard.ActualHeight > 82d,
+                    "开机自启动卡片应在保留内容空间的基础上适当拉长。");
+                Assert.AreEqual(
+                    appearancePoint.Y + appearanceCard.ActualHeight,
+                    startupPoint.Y + startupCard.ActualHeight,
+                    0.01d,
+                    "开机自启动卡片底边应与外观主题卡片底边对齐。");
+
                 var startupToggle = FindVisualChildren<ToggleButton>(settingsPage)
                     .Single(toggle => AutomationProperties.GetName(toggle) == "开机自启动");
+                Assert.IsFalse(FindVisualChildren<ToggleButton>(appearanceCard)
+                    .Any(toggle => AutomationProperties.GetName(toggle) == "开机自启动"),
+                    "开机自启动不能继续嵌套在外观主题卡片内。");
+                Assert.IsTrue(FindVisualChildren<ToggleButton>(startupCard)
+                    .Contains(startupToggle),
+                    "开机自启动开关必须属于独立设置卡片。");
                 startupToggle.ApplyTemplate();
                 var switchRoot = startupToggle.Template.FindName("SwitchRoot", startupToggle) as Border;
                 var switchTrack = startupToggle.Template.FindName("SwitchTrack", startupToggle) as Border;
@@ -580,6 +620,11 @@ public sealed partial class ReliabilityTests
             try
             {
                 window = new MainWindow();
+                var navItems = (StackPanel)window.FindName("NavItemsPanel");
+                var settingsNav = navItems.Children
+                    .OfType<RadioButton>()
+                    .Single(button => string.Equals(button.Content as string, "面板设置", StringComparison.Ordinal));
+                settingsNav.IsChecked = true;
                 window.Dispatcher.UnhandledException += (_, args) =>
                 {
                     dispatcherFailure ??= args.Exception;
@@ -590,6 +635,19 @@ public sealed partial class ReliabilityTests
                 window.Show();
                 window.UpdateLayout();
 
+                var updateCard = (Border)window.FindName("SoftwareUpdateCard");
+                var updateProgress = (ProgressBar)window.FindName("ApplicationUpdateProgress");
+                var updateProgressText = (TextBlock)window.FindName("ApplicationUpdateProgressText");
+                var idleCardHeight = updateCard.ActualHeight;
+                Assert.AreEqual(Visibility.Visible, updateProgress.Visibility,
+                    "软件更新进度条必须在非更新状态下保留固定位置。");
+                Assert.AreEqual("0%", updateProgressText.Text,
+                    "软件更新进度条在空闲状态应显示 0%。");
+                Assert.IsTrue(updateProgress.ActualWidth > 100d,
+                    "软件更新进度条应横向填充更新卡片的可用空间。");
+                Assert.AreEqual(10d, updateProgress.ActualHeight, 0.01d,
+                    "软件更新进度条的轨道高度必须保持固定。");
+
                 // This is the first UI transition performed after a user selects
                 // a local update ZIP. Keep the deferred StaticResource bindings
                 // covered so a broken update progress panel cannot mask a valid
@@ -599,6 +657,13 @@ public sealed partial class ReliabilityTests
                 model.UpdateStatus = "正在校验本地更新包...";
                 window.UpdateLayout();
                 window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+
+                Assert.AreEqual(idleCardHeight, updateCard.ActualHeight, 0.01d,
+                    "更新开始后软件更新卡片高度不能因进度区域显示而变化。");
+                Assert.AreEqual("10%", updateProgressText.Text,
+                    "软件更新进度条中心必须显示当前百分比。");
+                Assert.AreEqual(Visibility.Visible, updateProgress.Visibility,
+                    "更新进行中软件更新进度条必须保持可见。");
 
                 if (dispatcherFailure is not null)
                 {

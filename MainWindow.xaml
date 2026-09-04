@@ -538,7 +538,7 @@
                                 </Grid>
                             </Border>
 
-                            <Border Grid.Row="1" Style="{StaticResource Card}" Padding="20,16" Margin="0,10,0,0">
+                            <Border x:Name="AppearanceSettingsCard" Grid.Row="1" Style="{StaticResource Card}" Padding="20,16" Margin="0,10,0,0">
                                 <StackPanel>
                                     <TextBlock Text="外观主题" Style="{StaticResource SectionTitle}" FontSize="18" />
                                     <TextBlock Text="选择面板的显示主题，支持跟随系统、浅色与夜间模式。"
@@ -549,33 +549,13 @@
                                         <RadioButton Content="浅色" Tag="Light" GroupName="ThemeMode" Style="{StaticResource ThemeSegmentButton}" Margin="0,0,8,0" IsChecked="{Binding IsThemeLightSelected, Mode=OneWay}" Click="ThemeMode_Click" />
                                         <RadioButton Content="夜间" Tag="Dark" GroupName="ThemeMode" Style="{StaticResource ThemeSegmentButton}" IsChecked="{Binding IsThemeDarkSelected, Mode=OneWay}" Click="ThemeMode_Click" />
                                     </UniformGrid>
-
-                                    <Border Height="1" Background="{DynamicResource LineBrush}" Margin="0,16,0,14" />
-
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel VerticalAlignment="Center">
-                                            <TextBlock Text="开机自启动" Foreground="{DynamicResource TextBrush}" FontSize="14" FontWeight="SemiBold" />
-                                            <TextBlock Text="登录 Windows 后仅驻留托盘，单击托盘图标再打开面板"
-                                                       Foreground="{DynamicResource MutedBrush}" FontSize="11" Margin="0,3,0,0"
-                                                       TextWrapping="Wrap" />
-                                        </StackPanel>
-                                        <ToggleButton Grid.Column="1"
-                                                      Style="{StaticResource PanelToggleSwitch}"
-                                                      IsChecked="{Binding IsStartupEnabled, Mode=TwoWay}"
-                                                      Click="StartupToggle_Click"
-                                                      ToolTip="登录 Windows 后自动启动 MCPanel 并驻留托盘"
-                                                      AutomationProperties.Name="开机自启动" />
-                                    </Grid>
                                 </StackPanel>
                             </Border>
                         </Grid>
 
                         <Grid Grid.Column="1" Margin="7,0,0,0">
                             <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
@@ -613,16 +593,17 @@
                                     <Grid Grid.Row="4" HorizontalAlignment="Right" Margin="0,8,0,0">
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
-                                            <TextBlock Text="产品缓存" Foreground="{DynamicResource TextBrush}" FontSize="12" FontWeight="SemiBold" />
-                                            <TextBlock Text="{Binding ProductCacheSizeText}" Foreground="{DynamicResource MutedBrush}" FontSize="11" Margin="8,1,0,0" />
+                                            <TextBlock Text="面板运行内存" Foreground="{DynamicResource TextBrush}" FontSize="12" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding PanelMemoryUsageText}" Foreground="{DynamicResource MutedBrush}" FontSize="11" Margin="8,1,0,0" />
                                         </StackPanel>
-                                        <Button Grid.Column="1" Content="清理" Width="66" Height="30" FontSize="11" Style="{StaticResource RoundedRectTonalButton}"
-                                                Click="SettingsAction_Click" Tag="ClearProductCache" />
+                                        <Button Grid.Column="1" Content="清理内存" Width="78" Height="30" FontSize="11" Style="{StaticResource RoundedRectTonalButton}"
+                                                ToolTip="回收可释放的托管内存并整理面板工作集，不会删除产品文件。"
+                                                Click="SettingsAction_Click" Tag="ClearPanelMemory" />
                                     </Grid>
                                 </Grid>
                             </Border>
 
-                            <Border Grid.Row="1" Style="{StaticResource Card}" Padding="20,10" Margin="0,0,0,8">
+                            <Border x:Name="SoftwareUpdateCard" Grid.Row="1" Style="{StaticResource Card}" Padding="20,10" Margin="0,0,0,8">
                                 <Grid>
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
@@ -630,7 +611,7 @@
                                         <RowDefinition Height="1" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="48" />
                                     </Grid.RowDefinitions>
                                     <StackPanel>
                                         <TextBlock Text="软件更新" Style="{StaticResource SectionTitle}" FontSize="18" />
@@ -681,19 +662,67 @@
                                                    FontSize="11" TextTrimming="CharacterEllipsis" ToolTip="{Binding UpdateStatus}" />
                                     </Grid>
 
-                                    <Grid Grid.Row="5" Margin="0,8,0,0"
-                                          Visibility="{Binding IsUpdateBusy, Converter={StaticResource BooleanToVisibility}}">
-                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                        <ProgressBar Style="{StaticResource MetricProgress}" Value="{Binding UpdateProgress}" Maximum="100"
-                                                     Height="6" VerticalAlignment="Center" Margin="0,0,14,0" />
+                                    <Grid Grid.Row="5" Height="40" Margin="0,8,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid Grid.Column="0" Height="30" Margin="0,0,14,0" VerticalAlignment="Center">
+                                            <ProgressBar x:Name="ApplicationUpdateProgress"
+                                                         Style="{StaticResource ProductNativeProgress}"
+                                                         Value="{Binding UpdateProgress, Mode=OneWay}"
+                                                         Maximum="100"
+                                                         Height="10"
+                                                         VerticalAlignment="Center"
+                                                         AutomationProperties.Name="软件更新进度" />
+                                            <TextBlock x:Name="ApplicationUpdateProgressText"
+                                                       Text="{Binding UpdateProgress, StringFormat={}{0:N0}%}"
+                                                       Foreground="{DynamicResource TextBrush}"
+                                                       FontSize="11"
+                                                       FontWeight="SemiBold"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       IsHitTestVisible="False" />
+                                        </Grid>
                                         <Button Grid.Column="1" Content="取消" Width="70" Height="30" FontSize="11"
-                                                Style="{StaticResource WebsiteActionButton}" IsEnabled="{Binding CanCancelUpdate}"
+                                                HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                Style="{StaticResource WebsiteActionButton}"
+                                                IsEnabled="{Binding CanCancelUpdate}"
+                                                Visibility="{Binding IsUpdateBusy, Converter={StaticResource BooleanToVisibility}}"
                                                 Click="CancelApplicationUpdate_Click" />
-                                     </Grid>
+                                    </Grid>
                                  </Grid>
-                             </Border>
+                              </Border>
 
-                        </Grid>
+                            <Border x:Name="StartupSettingsCard"
+                                    Grid.Row="2"
+                                    Style="{StaticResource Card}"
+                                    Height="{Binding ActualHeight, ElementName=AppearanceSettingsCard, Converter={StaticResource SubtractConverter}, ConverterParameter=21.5, Mode=OneWay}"
+                                    MinHeight="82"
+                                    Padding="20,14"
+                                    Margin="0,0,0,8">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="开机自启动" Style="{StaticResource SectionTitle}" FontSize="17" />
+                                        <TextBlock Text="登录 Windows 后仅驻留托盘，单击托盘图标再打开面板"
+                                                   Foreground="{DynamicResource MutedBrush}" FontSize="11" Margin="0,3,0,0"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <ToggleButton Grid.Column="1"
+                                                  Style="{StaticResource PanelToggleSwitch}"
+                                                  IsChecked="{Binding IsStartupEnabled, Mode=TwoWay}"
+                                                  Click="StartupToggle_Click"
+                                                  ToolTip="登录 Windows 后自动启动 MCPanel 并驻留托盘"
+                                                  AutomationProperties.Name="开机自启动"
+                                                  Margin="18,0,0,0" />
+                                </Grid>
+                            </Border>
+
+                         </Grid>
                     </Grid>
                     </Grid>
                 </ScrollViewer>

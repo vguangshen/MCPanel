@@ -59,7 +59,7 @@ jobs:
             -PublishDirectory $env:MCPANEL_PUBLISH_DIR `
             -OutputDirectory $updatesDir `
             -GitHubRelease `
-            -ReleaseNotes '稳定性与使用体验优化：改进 SQL Server 安装恢复、Account API 状态一致性和发布可靠性。'
+            -ReleaseNotes '整合 PR #5 稳定性修复，并完成面板设置、运行内存清理、固定更新进度条与产品下载完成图标优化。'
           "MCPANEL_UPDATES_DIR=$updatesDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Create GitHub Release
@@ -81,6 +81,9 @@ jobs:
           - 已配置第三方 SQL Server 证书时保持原配置，不因打开 SSMS 而替换证书或重启服务。
           - Account API 启用失败自动回滚开关状态，避免下次启动反复重试。
           - Account API 数据库配置改为完整快照替换，避免热更新期间出现瞬时空配置。
+          - 面板设置将产品缓存清理改为面板运行内存整理，不删除产品数据或图标缓存。
+          - 软件更新区域保留固定横向进度条，更新过程中不再撑开窗口边界。
+          - 产品管理使用指定绿色 SVG 完成图标，开机自启动卡片布局同步优化。
           - 发布前强制运行可靠性测试，测试失败不生成发布包。
           "@
           gh release create $tag $zip $hash $manifest `
