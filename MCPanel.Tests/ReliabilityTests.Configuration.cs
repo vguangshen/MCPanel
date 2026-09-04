@@ -808,7 +808,9 @@ public sealed partial class ReliabilityTests
         var script = EnvironmentInstaller.BuildIisScript(Path.Combine(Path.GetTempPath(), "URLRewrite.msi"));
 
         StringAssert.Contains(script, "$rewriteProcess = Start-Process");
-        StringAssert.Contains(script, "$rewriteProcess.ExitCode -notin @(0, 3010)");
+        StringAssert.Contains(script, "$rewriteProcess.ExitCode -eq 3010");
+        StringAssert.Contains(script, "Mark-RestartRequired");
+        StringAssert.Contains(script, "$rewriteProcess.ExitCode -ne 0");
         StringAssert.Contains(script, "if ($LASTEXITCODE -ne 0)");
         StringAssert.Contains(script, "Enable-WindowsOptionalFeature -Online -FeatureName IIS-WebServer -All -NoRestart -ErrorAction Stop");
     }

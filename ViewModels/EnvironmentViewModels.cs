@@ -211,14 +211,18 @@ public sealed class EnvironmentItem(EnvironmentKind kind, string title, string o
         get => _selectedSqlServerReleaseId;
         set
         {
-            var normalized = SqlServerReleaseCatalog.Contains(value)
-                ? value
+            var candidate = SqlServerReleaseCatalog.Contains(value)
+                ? SqlServerReleaseCatalog.Resolve(value)
+                : SqlServerReleaseCatalog.Recommended;
+            var normalized = candidate.IsSupported
+                ? candidate.Id
                 : SqlServerReleaseCatalog.Recommended.Id;
             if (SetProperty(ref _selectedSqlServerReleaseId, normalized))
             {
                 OnPropertyChanged(nameof(SelectedSqlServerRelease));
                 OnPropertyChanged(nameof(SelectedInstallReleaseId));
                 OnPropertyChanged(nameof(OptionLabel));
+                OnPropertyChanged(nameof(CanInstall));
             }
         }
     }
@@ -244,7 +248,7 @@ public sealed class EnvironmentItem(EnvironmentKind kind, string title, string o
     public string ActionText => IsInstalled
         ? "已安装"
         : IsBusy ? "安装中" : _iisUninstallRestartRequired ? "继续卸载" : _installRestartRequired ? "继续安装" : "安装";
-    public bool CanInstall => !IsBusy;
+    public bool CanInstall => !IsBusy && (!IsSqlServerModule || SelectedSqlServerRelease.IsSupported);
     public bool CanSelectMySqlVersion => IsMySqlModule && !IsInstalled && !IsBusy;
     public bool CanSelectSqlServerVersion => IsSqlServerModule && !IsInstalled && !IsBusy;
     public bool IsFrpModule => Kind == EnvironmentKind.FrpTunnel;

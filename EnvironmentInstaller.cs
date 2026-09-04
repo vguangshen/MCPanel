@@ -75,6 +75,15 @@ public sealed class EnvironmentInstaller : IDisposable
     internal static string SqlServerInstallContinuationMessage =>
         "已写入 4KB 扇区兼容设置，请重启设备后点击“继续安装”。";
 
+    internal static string IisInstallRestartMarkerPath => Path.Combine(
+        ComponentPaths.RuntimeStateRoot,
+        "iis-install-restart.pending");
+
+    internal static bool HasIisInstallContinuation => File.Exists(IisInstallRestartMarkerPath);
+
+    internal static string IisInstallContinuationMessage =>
+        "IIS 或 URL Rewrite 安装需要重启 Windows 才能继续。请重启设备后再次点击“继续安装”。";
+
     public async Task InstallAsync(EnvironmentItem item, Action<InstallProgress> progress, CancellationToken cancellationToken = default)
     {
         var downloads = EnvironmentDownloadSettings.Load();
@@ -119,6 +128,7 @@ public sealed class EnvironmentInstaller : IDisposable
 
         progress(InstallingProgress(35, "正在启用 IIS 组件...", 8));
         await RunElevatedPowerShellAsync(script, progress, 10, 95, cancellationToken, requireExistingAdministrator: true);
+        TryDeleteFile(IisInstallRestartMarkerPath);
         TryDeleteFile(IisPendingUninstallMarker);
         TryDeleteFile(IisUninstalledMarker);
         progress(InstallingProgress(100, "IIS 安装和基础配置完成。"));
@@ -563,7 +573,13 @@ public sealed class EnvironmentInstaller : IDisposable
         Action<InstallProgress> progress,
         CancellationToken cancellationToken)
     {
-        var plan = GetSqlServerInstallPlan(downloads, selectedReleaseId);
+        var selectedRelease = SqlServerReleaseCatalog.Resolve(selectedReleaseId);
+        if (!selectedRelease.IsSupported)
+        {
+            throw new InvalidOperationException(selectedRelease.SupportNote);
+        }
+
+        var plan = GetSqlServerInstallPlan(downloads, selectedRelease.Id);
         var credentials = WindowsServiceExists("MSSQLSERVER")
             ? SqlServerCredentialStore.Load()
             : SqlServerCredentialStore.CreateNew();
@@ -879,78 +895,66 @@ public sealed class EnvironmentInstaller : IDisposable
 
     internal static string BuildIisScript(string rewriteMsi)
     {
-        var features = new[]
+        var requiredFeatures = new[]
         {
-            "IIS-WebServerRole",
-            "IIS-WebServer",
-            "IIS-CommonHttpFeatures",
-            "IIS-HttpErrors",
-            "IIS-HttpRedirect",
-            "IIS-ApplicationDevelopment",
-            "IIS-Security",
-            "IIS-URLAuthorization",
-            "IIS-RequestFiltering",
-            "IIS-NetFxExtensibility",
-            "IIS-NetFxExtensibility45",
-            "IIS-HealthAndDiagnostics",
-            "IIS-HttpLogging",
-            "IIS-RequestMonitor",
-            "IIS-HttpTracing",
-            "IIS-Performance",
-            "IIS-HttpCompressionStatic",
-            "IIS-HttpCompressionDynamic",
-            "IIS-ManagementConsole",
-            "IIS-ManagementScriptingTools",
-            "IIS-IIS6ManagementCompatibility",
-            "IIS-WebServerManagementTools",
-            "IIS-Metabase",
-            "IIS-ISAPIExtensions",
-            "IIS-ISAPIFilter",
-            "IIS-StaticContent",
-            "IIS-DefaultDocument",
-            "IIS-DirectoryBrowsing",
-            "IIS-ASPNET",
-            "IIS-ASPNET45",
-            "NetFx4Extended-ASPNET45",
-            "IIS-ASP",
-            "IIS-CGI",
-            "IIS-ServerSideIncludes",
-            "IIS-BasicAuthentication",
-            "IIS-WindowsAuthentication",
-            "IIS-ODBCLogging"
+            "IIS-WebServerRole", "IIS-WebServer", "IIS-CommonHttpFeatures", "IIS-HttpErrors",
+            "IIS-HttpRedirect", "IIS-ApplicationDevelopment", "IIS-Security", "IIS-URLAuthorization",
+            "IIS-RequestFiltering", "IIS-NetFxExtensibility45", "IIS-HealthAndDiagnostics", "IIS-HttpLogging",
+            "IIS-RequestMonitor", "IIS-HttpTracing", "IIS-Performance", "IIS-HttpCompressionStatic",
+            "IIS-HttpCompressionDynamic", "IIS-ManagementConsole", "IIS-ManagementScriptingTools",
+            "IIS-IIS6ManagementCompatibility", "IIS-WebServerManagementTools", "IIS-Metabase",
+            "IIS-ISAPIExtensions", "IIS-ISAPIFilter", "IIS-StaticContent", "IIS-DefaultDocument",
+            "IIS-DirectoryBrowsing", "IIS-ASPNET45", "NetFx4Extended-ASPNET45", "IIS-ASP", "IIS-CGI",
+            "IIS-ServerSideIncludes", "IIS-BasicAuthentication", "IIS-WindowsAuthentication", "IIS-ODBCLogging"
         };
-
+        var legacyFeatures = new[] { "IIS-NetFxExtensibility", "IIS-ASPNET" };
         var log = Path.Combine(GetTempDirectory(), "install-iis.log");
+        var restartMarker = IisInstallRestartMarkerPath;
         var sb = new StringBuilder();
-        sb.AppendLine("$ErrorActionPreference='Continue'");
+        sb.AppendLine("$ErrorActionPreference='Stop'");
         sb.AppendLine($"$log='{EscapePowerShellPath(log)}'");
+        sb.AppendLine($"$restartMarker='{EscapePowerShellPath(restartMarker)}'");
+        sb.AppendLine("$restartNeeded=$false");
+        sb.AppendLine("Remove-Item -LiteralPath $restartMarker -Force -ErrorAction SilentlyContinue");
         sb.AppendLine("Start-Transcript -Path $log -Append | Out-Null");
+        sb.AppendLine("function Test-RestartNeeded($result) { if ($null -eq $result -or $null -eq $result.RestartNeeded) { return $false }; $text=$result.RestartNeeded.ToString(); return $text -eq 'True' -or $text -eq 'Yes' }");
+        sb.AppendLine("function Mark-RestartRequired($reason) { $dir=Split-Path $restartMarker -Parent; New-Item -ItemType Directory -Path $dir -Force | Out-Null; Set-Content -LiteralPath $restartMarker -Value $reason -Encoding UTF8; Write-Output $reason }");
         sb.AppendLine("try {");
-        foreach (var feature in features)
+        foreach (var feature in requiredFeatures)
         {
-            sb.AppendLine($"  Enable-WindowsOptionalFeature -Online -FeatureName {feature} -All -NoRestart -ErrorAction Stop");
+            sb.AppendLine($"  $featureResult=Enable-WindowsOptionalFeature -Online -FeatureName {feature} -All -NoRestart -ErrorAction Stop");
+            sb.AppendLine("  if (Test-RestartNeeded $featureResult) { $restartNeeded=$true }");
         }
-
+        sb.AppendLine("  try {");
+        sb.AppendLine("    $netFx3=Get-WindowsOptionalFeature -Online -FeatureName NetFx3 -ErrorAction Stop");
+        sb.AppendLine("    if ($netFx3.State -ne 'Enabled') { $netFx3Result=Enable-WindowsOptionalFeature -Online -FeatureName NetFx3 -All -NoRestart -ErrorAction Stop; if (Test-RestartNeeded $netFx3Result) { $restartNeeded=$true } }");
+        foreach (var feature in legacyFeatures)
+        {
+            sb.AppendLine($"    $legacyResult=Enable-WindowsOptionalFeature -Online -FeatureName {feature} -All -NoRestart -ErrorAction Stop");
+            sb.AppendLine("    if (Test-RestartNeeded $legacyResult) { $restartNeeded=$true }");
+        }
+        sb.AppendLine("  } catch { Write-Output ('兼容性提示：ASP.NET 2.0/3.5 功能未完全启用；现代 ASP.NET 4.x/IIS 功能继续安装。原因：' + $_.Exception.Message) }");
+        sb.AppendLine("  if ($restartNeeded) { Mark-RestartRequired 'Windows 功能安装要求重启后继续 IIS 安装。'; throw 'IIS_RESTART_REQUIRED' }");
         sb.AppendLine(@"  $appcmd = Join-Path $env:windir 'System32\inetsrv\appcmd.exe'");
-        sb.AppendLine(@"  if (Test-Path $appcmd) {");
-        sb.AppendLine(@"    $docs=@('default.html','default.asp','default.aspx','index.php','index.asp','index.aspx')");
-        sb.AppendLine(@"    foreach($doc in $docs) { & $appcmd set config /section:defaultDocument /+files.[value=$doc] 2>$null }");
-        sb.AppendLine(@"    & $appcmd set config /section:asp /enableParentPaths:True");
-        sb.AppendLine(@"  }");
-        sb.AppendLine(@"  $aspnet = Join-Path $env:windir 'Microsoft.NET\Framework\v4.0.30319\aspnet_regiis.exe'");
-        sb.AppendLine(@"  if (Test-Path $aspnet) { & $aspnet -i }");
+        sb.AppendLine(@"  if (!(Test-Path $appcmd)) { throw '未找到 IIS 配置工具 appcmd.exe。' }");
+        sb.AppendLine(@"  $docs=@('default.html','default.asp','default.aspx','index.php','index.asp','index.aspx')");
+        sb.AppendLine(@"  foreach($doc in $docs) { & $appcmd set config /section:defaultDocument /+files.[value=$doc] 2>$null }");
+        sb.AppendLine(@"  & $appcmd set config /section:asp /enableParentPaths:True");
         var escapedRewriteMsi = EscapePowerShellPath(rewriteMsi);
         sb.AppendLine($"  $rewriteMsi = '{escapedRewriteMsi}'");
         sb.AppendLine("  if (!(Test-Path -LiteralPath $rewriteMsi)) { throw '未找到 URL Rewrite 安装包。' }");
         sb.AppendLine("  $rewriteProcess = Start-Process msiexec.exe -ArgumentList ('/i \"' + $rewriteMsi + '\" /qn /norestart') -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop");
-        sb.AppendLine("  if ($rewriteProcess.ExitCode -notin @(0, 3010)) { throw ('URL Rewrite 安装失败，退出码：' + $rewriteProcess.ExitCode) }");
+        sb.AppendLine("  if ($rewriteProcess.ExitCode -eq 3010) { Mark-RestartRequired 'URL Rewrite 安装完成，但 Windows Installer 要求重启后继续。'; throw 'IIS_RESTART_REQUIRED' }");
+        sb.AppendLine("  if ($rewriteProcess.ExitCode -ne 0) { throw ('URL Rewrite 安装失败，退出码：' + $rewriteProcess.ExitCode) }");
+        sb.AppendLine("  $moduleOutput = (& $appcmd list modules 2>&1 | Out-String)");
+        sb.AppendLine("  if ($LASTEXITCODE -ne 0 -or $moduleOutput -notmatch 'RewriteModule') { throw 'URL Rewrite MSI 已完成，但 IIS 未检测到 RewriteModule。' }");
         sb.AppendLine("  $iisreset = Join-Path $env:windir 'System32\\iisreset.exe'");
         sb.AppendLine("  if (!(Test-Path -LiteralPath $iisreset)) { throw '未找到 IIS 重置工具 iisreset.exe。' }");
         sb.AppendLine("  & $iisreset /START");
         sb.AppendLine("  if ($LASTEXITCODE -ne 0) { throw ('IIS 启动失败，退出码：' + $LASTEXITCODE) }");
-        sb.AppendLine("} finally {");
-        sb.AppendLine("  Stop-Transcript | Out-Null");
-        sb.AppendLine(@"}");
+        sb.AppendLine("  foreach($serviceName in @('WAS','W3SVC')) { $service=Get-Service -Name $serviceName -ErrorAction Stop; if ($service.Status -ne 'Running') { Start-Service -Name $serviceName -ErrorAction Stop }; $service=Get-Service -Name $serviceName -ErrorAction Stop; $service.WaitForStatus('Running',[TimeSpan]::FromSeconds(30)); if ($service.Status -ne 'Running') { throw ($serviceName + ' 未进入 Running 状态。') } }");
+        sb.AppendLine("  Remove-Item -LiteralPath $restartMarker -Force -ErrorAction SilentlyContinue");
+        sb.AppendLine("} finally { try { Stop-Transcript | Out-Null } catch { } }");
         sb.AppendLine("exit 0");
         return sb.ToString();
     }
@@ -1229,6 +1233,7 @@ public sealed class EnvironmentInstaller : IDisposable
         var logFileName = displayName.Contains("2012", StringComparison.OrdinalIgnoreCase)
             ? "install-sqlserver-2012.log"
             : "install-sqlserver-2008.log";
+        var features = displayName.Contains("2012", StringComparison.OrdinalIgnoreCase) ? "SQL" : "SQL,Tools";
         return $$"""
             $ErrorActionPreference='Continue'
             $ProgressPreference='SilentlyContinue'
@@ -1424,7 +1429,7 @@ public sealed class EnvironmentInstaller : IDisposable
                 $adminAccounts = Get-SqlAdminAccounts
                 $adminArgument = Format-SqlSysadminAccountsArgument $adminAccounts
                 Write-Output ('SQL Server 管理员账户：' + ($adminAccounts -join ', '))
-                $args='/QS /ACTION=Install /FEATURES=SQL,Tools /INSTANCENAME=MSSQLSERVER /SECURITYMODE=SQL /SAPWD="' + $saPassword + '" /SQLSVCACCOUNT="NT AUTHORITY\NETWORK SERVICE" /SQLSYSADMINACCOUNTS=' + $adminArgument + ' /TCPENABLED=1 /INSTALLSQLDATADIR="' + $dataRoot + '" /IACCEPTSQLSERVERLICENSETERMS'
+                $args='/QS /ACTION=Install /FEATURES={{features}} /INSTANCENAME=MSSQLSERVER /SECURITYMODE=SQL /SAPWD="' + $saPassword + '" /SQLSVCACCOUNT="NT AUTHORITY\NETWORK SERVICE" /SQLSYSADMINACCOUNTS=' + $adminArgument + ' /TCPENABLED=1 /INSTALLSQLDATADIR="' + $dataRoot + '" /IACCEPTSQLSERVERLICENSETERMS'
                 $install = Start-Process -FilePath $installer -ArgumentList $args -Wait -PassThru -WindowStyle Hidden
                 if ($install.ExitCode -ne 0 -and $install.ExitCode -ne 3010) { Fail ('官方安装包退出码：' + $install.ExitCode) }
 
@@ -1766,44 +1771,26 @@ public sealed class EnvironmentInstaller : IDisposable
             }
 
             function Remove-BrokenSqlServer {
-                Step '清理损坏的 SQL Server 实例残留'
+                Step '清理损坏的 SQL Server 默认实例残留'
                 Invoke-SqlSetupUninstallBestEffort
-                foreach ($serviceName in @('MSSQLSERVER','MSSQL$MSSQLSERVER','SQLAgent$MSSQLSERVER','SQLTELEMETRY','SQLTELEMETRY$MSSQLSERVER','SQLBrowser','SQLWriter','MsDtsServer140','MsDtsServer150','MsDtsServer160','MsDtsServer170','ReportServer','RsFx0700')) {
+                $instanceId = Get-SqlInstanceId
+                foreach ($serviceName in @('MSSQLSERVER','SQLAgent$MSSQLSERVER','SQLTELEMETRY$MSSQLSERVER')) {
                     $svc = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
                     if ($svc) {
-                        if ($svc.Status -ne 'Stopped') {
-                            Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
-                            Start-Sleep -Seconds 2
-                        }
+                        if ($svc.Status -ne 'Stopped') { Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2 }
                         & sc.exe delete $serviceName | Out-String | Write-Output
                     }
                 }
-
-                for ($i = 0; $i -lt 30; $i++) {
-                    if (-not (Get-Service -Name MSSQLSERVER -ErrorAction SilentlyContinue)) { break }
-                    Start-Sleep -Milliseconds 500
+                for ($i = 0; $i -lt 30; $i++) { if (-not (Get-Service -Name MSSQLSERVER -ErrorAction SilentlyContinue)) { break }; Start-Sleep -Milliseconds 500 }
+                foreach ($viewRoot in @('HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server','HKLM:\SOFTWARE\WOW6432Node\Microsoft\Microsoft SQL Server')) {
+                    $instanceNames = Join-Path $viewRoot 'Instance Names\SQL'
+                    if (Test-Path $instanceNames) { Remove-ItemProperty -Path $instanceNames -Name MSSQLSERVER -Force -ErrorAction SilentlyContinue }
+                    if (![string]::IsNullOrWhiteSpace($instanceId)) { Remove-Item -LiteralPath (Join-Path $viewRoot $instanceId) -Recurse -Force -ErrorAction SilentlyContinue }
                 }
-
-                Remove-SqlMsiComponentsBestEffort
-                foreach ($path in @(
-                    'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server',
-                    'HKLM:\SOFTWARE\Microsoft\MSSQLServer',
-                    'HKLM:\SOFTWARE\Microsoft\SQL Server',
-                    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Microsoft SQL Server',
-                    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\MSSQLServer',
-                    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\SQL Server',
-                    'HKLM:\SYSTEM\CurrentControlSet\Services\RsFx0700'
-                )) {
-                    Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
+                if (![string]::IsNullOrWhiteSpace($instanceId)) {
+                    Remove-PathSafe (Join-Path $env:ProgramFiles ('Microsoft SQL Server\' + $instanceId))
+                    Remove-PathSafe (Join-Path $env:ProgramData ('Microsoft\SQL Server\' + $instanceId))
                 }
-
-                Remove-PathSafe (Join-Path $env:ProgramFiles 'Microsoft SQL Server\MSSQL14.MSSQLSERVER')
-                Remove-PathSafe (Join-Path $env:ProgramFiles 'Microsoft SQL Server\MSSQL15.MSSQLSERVER')
-                Remove-PathSafe (Join-Path $env:ProgramFiles 'Microsoft SQL Server\MSSQL16.MSSQLSERVER')
-                Remove-PathSafe (Join-Path $env:ProgramFiles 'Microsoft SQL Server\MSSQL17.MSSQLSERVER')
-                Remove-PathSafe (Join-Path $env:ProgramFiles 'Microsoft SQL Server')
-                Remove-PathSafe (Join-Path ${env:ProgramFiles(x86)} 'Microsoft SQL Server')
-                Remove-PathSafe (Join-Path $env:ProgramData 'Microsoft\SQL Server')
                 Remove-PathSafe $dataRoot
             }
 
@@ -1838,55 +1825,31 @@ public sealed class EnvironmentInstaller : IDisposable
 
             function Ensure-SqlSectorCompatibility {
                 Step '检查 SQL Server 磁盘扇区兼容性'
-                $nvmeKey = 'HKLM:\SYSTEM\CurrentControlSet\Services\stornvme\Parameters\Device'
-                New-Item -Path $nvmeKey -Force | Out-Null
-
-                $expected = '* 4095'
-                $current = @((Get-ItemProperty -Path $nvmeKey -Name 'ForcedPhysicalSectorSizeInBytes' -ErrorAction SilentlyContinue).ForcedPhysicalSectorSizeInBytes)
-                $hasExpected = $false
-                foreach ($value in $current) {
-                    if ($value -eq $expected) { $hasExpected = $true }
-                }
-
-                if (!$hasExpected) {
-                    New-ItemProperty -Path $nvmeKey -Name 'ForcedPhysicalSectorSizeInBytes' -PropertyType MultiString -Value $expected -Force | Out-Null
-                    Write-Output '已写入 Windows NVMe 4KB 扇区兼容项：ForcedPhysicalSectorSizeInBytes = * 4095'
-                } else {
-                    Write-Output 'Windows NVMe 4KB 扇区兼容项已存在。'
-                }
-
                 $volumeRoot = [IO.Path]::GetPathRoot($dataRoot).TrimEnd('\')
                 $sectorText = (& fsutil fsinfo sectorinfo $volumeRoot 2>&1 | Out-String)
-                if (![string]::IsNullOrWhiteSpace($sectorText)) {
-                    Write-Output $sectorText
-                }
-
+                if (![string]::IsNullOrWhiteSpace($sectorText)) { Write-Output $sectorText }
                 $physicalAtomicity = $null
                 $physicalPerformance = $null
                 $effectiveAtomicity = $null
                 foreach ($line in ($sectorText -split "`r?`n")) {
-                    if ($line -match '^\s*PhysicalBytesPerSectorForAtomicity\s*:\s*(\d+)') {
-                        $physicalAtomicity = [int64]$Matches[1]
-                    }
-                    elseif ($line -match '^\s*PhysicalBytesPerSectorForPerformance\s*:\s*(\d+)') {
-                        $physicalPerformance = [int64]$Matches[1]
-                    }
-                    elseif ($line -match '^\s*FileSystemEffectivePhysicalBytesPerSectorForAtomicity\s*:\s*(\d+)') {
-                        $effectiveAtomicity = [int64]$Matches[1]
-                    }
+                    if ($line -match '^\s*PhysicalBytesPerSectorForAtomicity\s*:\s*(\d+)') { $physicalAtomicity = [int64]$Matches[1] }
+                    elseif ($line -match '^\s*PhysicalBytesPerSectorForPerformance\s*:\s*(\d+)') { $physicalPerformance = [int64]$Matches[1] }
+                    elseif ($line -match '^\s*FileSystemEffectivePhysicalBytesPerSectorForAtomicity\s*:\s*(\d+)') { $effectiveAtomicity = [int64]$Matches[1] }
                 }
-
                 $checkBytes = 0
-                foreach ($candidate in @($physicalAtomicity, $physicalPerformance, $effectiveAtomicity)) {
-                    if ($candidate -ne $null -and $candidate -gt $checkBytes) { $checkBytes = $candidate }
-                }
-
+                foreach ($candidate in @($physicalAtomicity, $physicalPerformance, $effectiveAtomicity)) { if ($candidate -ne $null -and $candidate -gt $checkBytes) { $checkBytes = $candidate } }
                 Write-Output ('SQL Server 扇区检查：physicalAtomicity=' + $physicalAtomicity + '; physicalPerformance=' + $physicalPerformance + '; effectiveAtomicity=' + $effectiveAtomicity + '; max=' + $checkBytes)
-                $unsupported = $checkBytes -gt 4096
-                if ($unsupported) {
-                    Mark-SqlRestartRequired
-                    Fail ('当前 ' + $volumeRoot + ' 盘 SQL Server 检测到大于 4KB 的物理扇区。已写入兼容设置，请重启设备后点击“继续安装”。')
-                }
+                if ($checkBytes -le 4096) { Write-Output '当前数据盘物理扇区不大于 4KB，无需修改 NVMe 兼容注册表。'; return }
+                $nvmeKey = 'HKLM:\SYSTEM\CurrentControlSet\Services\stornvme\Parameters\Device'
+                New-Item -Path $nvmeKey -Force | Out-Null
+                $expected = '* 4095'
+                $current = @((Get-ItemProperty -Path $nvmeKey -Name 'ForcedPhysicalSectorSizeInBytes' -ErrorAction SilentlyContinue).ForcedPhysicalSectorSizeInBytes)
+                if ($current -notcontains $expected) {
+                    New-ItemProperty -Path $nvmeKey -Name 'ForcedPhysicalSectorSizeInBytes' -PropertyType MultiString -Value $expected -Force | Out-Null
+                    Write-Output '检测到大于 4KB 的物理扇区，已按 Microsoft 官方 workaround 写入 ForcedPhysicalSectorSizeInBytes = * 4095。'
+                } else { Write-Output '大于 4KB 的物理扇区仍可见，NVMe 兼容项已存在但尚未生效。' }
+                Mark-SqlRestartRequired
+                Fail ('当前 ' + $volumeRoot + ' 盘 SQL Server 检测到大于 4KB 的物理扇区。请重启设备，使 Microsoft 官方 NVMe 兼容设置生效后再点击“继续安装”。')
             }
 
             function Find-SetupMedia {
@@ -2021,7 +1984,6 @@ public sealed class EnvironmentInstaller : IDisposable
                     '/SECURITYMODE=SQL',
                     ('/SAPWD="' + $saPassword + '"'),
                     '/TCPENABLED=1',
-                    '/UpdateEnabled=False',
                     ('/INSTALLSQLDATADIR="' + $dataRoot + '"'),
                     ('/SQLUSERDBDIR="' + (Join-Path $dataRoot 'Data') + '"'),
                     ('/SQLUSERDBLOGDIR="' + (Join-Path $dataRoot 'Log') + '"'),
@@ -2085,6 +2047,11 @@ public sealed class EnvironmentInstaller : IDisposable
                 if (HasSqlServerInstallContinuation)
                 {
                     throw new InstallRestartRequiredException(SqlServerInstallContinuationMessage);
+                }
+
+                if (HasIisInstallContinuation)
+                {
+                    throw new InstallRestartRequiredException(IisInstallContinuationMessage);
                 }
 
                 var message = $"安装脚本退出码：{process.ExitCode}。日志目录：{GetTempDirectory()}";
