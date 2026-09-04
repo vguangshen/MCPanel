@@ -59,7 +59,7 @@ jobs:
             -PublishDirectory $env:MCPANEL_PUBLISH_DIR `
             -OutputDirectory $updatesDir `
             -GitHubRelease `
-            -ReleaseNotes '整合 PR #5 稳定性修复，并完成面板设置、运行内存清理、固定更新进度条与产品下载完成图标优化。'
+            -ReleaseNotes '修复 Account API 快速关闭再开启时可能误报 8088 端口被占用的问题，并完善内置监听器生命周期状态判断。'
           "MCPANEL_UPDATES_DIR=$updatesDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Create GitHub Release
@@ -73,18 +73,15 @@ jobs:
           $hash = "$zip.sha256"
           $manifest = Join-Path $env:MCPANEL_UPDATES_DIR 'update-manifest.json'
           $notes = @"
-          本版本以稳定性和用户体验优化为主，不改变原有产品下载和部署链路。
+          本版本修复 Account API 启停生命周期问题，不改变原有产品下载和部署链路。
 
-          - 避免已有 SQL Server 启动异常时普通安装自动进入彻底清理流程。
-          - 保留 SQL 安装前已有的 Windows PendingFileRenameOperations，并与安装后新增项合并恢复。
-          - UAC 使用其他管理员账号时，安装后补充原桌面用户的 SQL Server 管理权限。
-          - 已配置第三方 SQL Server 证书时保持原配置，不因打开 SSMS 而替换证书或重启服务。
-          - Account API 启用失败自动回滚开关状态，避免下次启动反复重试。
-          - Account API 数据库配置改为完整快照替换，避免热更新期间出现瞬时空配置。
-          - 面板设置将产品缓存清理改为面板运行内存整理，不删除产品数据或图标缓存。
-          - 软件更新区域保留固定横向进度条，更新过程中不再撑开窗口边界。
-          - 产品管理使用指定绿色 SVG 完成图标，开机自启动卡片布局同步优化。
-          - 发布前强制运行可靠性测试，测试失败不生成发布包。
+          - 启动 Account API 时不再用预先 /health 探测猜测端口占用，改由 HttpListener 实际监听结果判断。
+          - Account API 启动、停止、启用和停用使用进程级统一生命周期锁，避免托盘启动与管理页面并发操作互相竞态。
+          - 停止操作会等待旧 HttpListener 完整关闭后再清除运行状态，关闭后可立即重新开启同一端口。
+          - 运行状态改为检查 HttpListener 与接收循环的真实状态，异常退出的旧 Host 可自动清理并重新启动。
+          - 非 Account API 的 HTTP 响应或无效 JSON 不再被识别为内置 Account API 在线。
+          - 新增 Account API Start → Stop → Start、真实端口冲突和监听状态回归测试。
+          - 发布前完整可靠性测试 118 项全部通过。
           "@
           gh release create $tag $zip $hash $manifest `
             --target '${{ github.sha }}' `
