@@ -1,16 +1,15 @@
-name: Release MCPanel
+name: Validate Account API 1.3.4 fix
 
 on:
   push:
     branches:
-      - main
+      - integration/1.3.4-account-api-lifecycle
 
 permissions:
   contents: write
 
 jobs:
-  release:
-    if: startsWith(github.event.head_commit.message, 'Release MCPanel ')
+  validate-and-commit:
     runs-on: windows-latest
     timeout-minutes: 45
 
@@ -30,10 +29,10 @@ jobs:
         run: |
           choco install vcredist-all -y --no-progress
           if ($LASTEXITCODE -ne 0) {
-            throw "Failed to install the VC++ runtime bundle required by the vendored SharpSvn build."
+            throw 'Failed to install the VC++ runtime bundle required by SharpSvn tests.'
           }
 
-      - name: Apply Account API 1.3.4 lifecycle fix
+      - name: Apply targeted Account API patch
         shell: pwsh
         run: |
           & .\tools\apply-account-api-134-fix.ps1
@@ -59,22 +58,17 @@ jobs:
           }
           Write-Host 'Original product download chain is unchanged.'
 
-      - name: Test and publish patched working tree
+      - name: Run tests and publish
         shell: pwsh
         run: |
-          $publishDir = Join-Path $env:RUNNER_TEMP 'MCPanel134ValidationPublish'
+          $publishDir = Join-Path $env:RUNNER_TEMP 'MCPanel134Publish'
           & .\Publish-WinX64.ps1 -OutputDirectory $publishDir
 
-      - name: Commit validated source to integration branch
+      - name: Commit validated fix to integration branch
         shell: pwsh
         run: |
-          git checkout '${{ github.event.before }}' -- '.github/workflows/release.yml'
-          if (Test-Path '.github\workflows\account-api-134-fix.yml') {
-            Remove-Item -LiteralPath '.github\workflows\account-api-134-fix.yml' -Force
-          }
-          if (Test-Path 'tools\apply-account-api-134-fix.ps1') {
-            Remove-Item -LiteralPath 'tools\apply-account-api-134-fix.ps1' -Force
-          }
+          Remove-Item -LiteralPath '.github\workflows\account-api-134-fix.yml' -Force
+          Remove-Item -LiteralPath 'tools\apply-account-api-134-fix.ps1' -Force
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
