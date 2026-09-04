@@ -1,0 +1,76 @@
+name: Validate Account API 1.3.4 fix
+
+on:
+  push:
+    branches:
+      - integration/1.3.4-account-api-lifecycle
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-commit:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install SharpSvn native runtime dependencies
+        shell: pwsh
+        run: |
+          choco install vcredist-all -y --no-progress
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Failed to install the VC++ runtime bundle required by SharpSvn tests.'
+          }
+
+      - name: Apply targeted Account API patch
+        shell: pwsh
+        run: |
+          & .\tools\apply-account-api-134-fix.ps1
+          $testPath = 'MCPanel.Tests\ReliabilityTests.AccountApiLifecycle.cs'
+          $test = [IO.File]::ReadAllText($testPath).Replace("`r`n", "`n")
+          if (-not $test.StartsWith('using System.IO;')) {
+            $test = "using System.IO;`n" + $test
+          }
+          [IO.File]::WriteAllText($testPath, $test, [Text.UTF8Encoding]::new($false))
+
+      - name: Guard original product download chain
+        shell: pwsh
+        run: |
+          $forbidden = @(
+            'McPanelStoreClient.cs',
+            'SvnProductTransferService.cs',
+            'DownloadService.cs'
+          )
+          $changed = @(git diff --name-only HEAD)
+          $touched = @($changed | Where-Object { $forbidden -contains $_ })
+          if ($touched.Count -gt 0) {
+            throw "Account API fix unexpectedly touched product download chain: $($touched -join ', ')"
+          }
+          Write-Host 'Original product download chain is unchanged.'
+
+      - name: Run tests and publish
+        shell: pwsh
+        run: |
+          $publishDir = Join-Path $env:RUNNER_TEMP 'MCPanel134Publish'
+          & .\Publish-WinX64.ps1 -OutputDirectory $publishDir
+
+      - name: Commit validated fix to integration branch
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath '.github\workflows\account-api-134-fix.yml' -Force
+          Remove-Item -LiteralPath 'tools\apply-account-api-134-fix.ps1' -Force
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix: stabilize Account API restart lifecycle [skip ci]'
+          git push origin HEAD:integration/1.3.4-account-api-lifecycle
