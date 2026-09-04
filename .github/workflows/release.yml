@@ -59,7 +59,7 @@ jobs:
             -PublishDirectory $env:MCPANEL_PUBLISH_DIR `
             -OutputDirectory $updatesDir `
             -GitHubRelease `
-            -ReleaseNotes '完善 Tomcat 单应用调试与独立运行：支持多应用互不影响的独立/Catalina 运行、运行状态识别、日志与缓存维护；不改变原有产品下载链路。'
+            -ReleaseNotes '提升 SQL Server 与 IIS 安装可靠性：按微软兼容矩阵限制可选 SQL Server 版本、优化 4KB/NVMe 与损坏实例恢复、修复 IIS ASP.NET/重启续装链路；保留原版 Store PendingFileRenameOperations 行为与产品下载链路。'
           "MCPANEL_UPDATES_DIR=$updatesDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Create GitHub Release
@@ -73,17 +73,20 @@ jobs:
           $hash = "$zip.sha256"
           $manifest = Join-Path $env:MCPANEL_UPDATES_DIR 'update-manifest.json'
           $notes = @"
-          本版本完善 Tomcat 单应用调试与独立运行体验，重点修复多个独立应用同时运行时互相干扰的问题；原有产品下载链路保持不变。
+          本版本重点提升 SQL Server 与 IIS 安装、恢复和系统兼容性判断的可靠性，不改变原有产品下载链路。
 
-          - 修复启动第二个独立 Tomcat 应用时可能误停止其他独立实例的问题，多应用可在各自端口并行运行。
-          - 保留“以 Catalina 方式启动”名称，并区分总 Tomcat 运行、独立运行、Catalina 运行、未运行和端口冲突等状态。
-          - 独立运行状态可显示 PID 与运行时间，便于定位当前调试实例。
-          - 产品管理增加停止、重启、查看日志、打开实例目录、清理 work/temp、清理缓存并按原模式重启等调试操作。
-          - 在总 Tomcat Server 与独立实例之间切换时增加运行实例识别和明确提示，避免误停其他应用。
-          - 单应用实例继续保持按需启动，不注册 Windows 服务，也不设置开机自动启动。
-          - 1.3.6 已有的共享 Tomcat Server 与 FRP Windows 服务行为保持不变。
-          - Nginx、MySQL、SQL Server、IIS 和原有产品下载链路保持不变。
-          - 发布前执行完整可靠性测试，130 项测试全部通过。
+          - SQL Server 版本选择按 Microsoft 官方 Windows / SQL Server 兼容矩阵判断；不受支持的版本继续显示但禁用并给出原因。
+          - 如果无法可靠识别当前 Windows 版本，则不猜测系统代际，所有 SQL Server 版本选项保持开放。
+          - 保留原版 ITMC Store 在 SQL Server 安装前直接删除 PendingFileRenameOperations 的兼容行为。
+          - SQL Server 2012 Express 改为仅请求数据库引擎，避免 SQLEXPR 安装包与 Tools 功能参数不匹配。
+          - 现代 SQL Server 安装不再强制关闭 Setup 更新行为。
+          - 4KB/NVMe 兼容处理改为先检测实际物理扇区，仅在大于 4KB 时写入 Microsoft 官方 ForcedPhysicalSectorSizeInBytes 兼容项并要求重启。
+          - SQL Server 损坏默认实例恢复改为实例级清理，避免默认删除其他实例和共享 SQL Server 组件。
+          - IIS 使用 Windows Optional Features 安装 ASP.NET，不再在现代 Windows 上调用 aspnet_regiis -i。
+          - IIS 与 URL Rewrite 的重启需求支持续装，并在完成前验证 RewriteModule、WAS 与 W3SVC。
+          - 旧版 .NET / IIS 兼容组件采用尽力安装策略，缺少旧 payload 时不阻断现代 IIS 主安装链路。
+          - 稳定设置页 WPF 渲染测试在繁忙 CI Runner 上的等待时间，避免偶发 20 秒超时阻断正式发布。
+          - 发布前执行完整可靠性测试，136 项测试全部通过。
           "@
           gh release create $tag $zip $hash $manifest `
             --target '${{ github.sha }}' `
