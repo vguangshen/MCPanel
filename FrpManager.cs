@@ -50,6 +50,10 @@ public sealed class FrpManager : IDisposable
     {
         get
         {
+            if (FrpWindowsServiceManager.IsRunningForRoot(_applicationRoot))
+            {
+                return true;
+            }
             if (_frpcProcess is { HasExited: false })
             {
                 return true;
@@ -94,7 +98,17 @@ public sealed class FrpManager : IDisposable
         {
             progress?.Invoke(new InstallProgress(5, "正在准备 FRP 安装目录..."));
             await EnsureFrpFilesAsync(progress, cancellationToken);
-            progress?.Invoke(new InstallProgress(100, "FRP 客户端已安装；本次安装不会自动启动。"));
+            NormalizeConfigFileEncoding(ConfigPath);
+            await VerifyConfigAsync(ConfigPath);
+            var serviceExecutable = Process.GetCurrentProcess().MainModule?.FileName;
+            if (string.IsNullOrWhiteSpace(serviceExecutable) || !File.Exists(serviceExecutable))
+            {
+                throw new InvalidOperationException("无法定位 MCPanel 主程序，不能注册 FRP Windows 服务。");
+            }
+            progress?.Invoke(new InstallProgress(94, "正在注册并启动 FRP Windows 服务..."));
+            FrpWindowsServiceManager.EnsureRegistered(serviceExecutable!, _applicationRoot);
+            FrpWindowsServiceManager.Start();
+            progress?.Invoke(new InstallProgress(100, "FRP 客户端已安装并注册为自动启动的 Windows 服务。"));
         }
         finally
         {
@@ -166,7 +180,22 @@ public sealed class FrpManager : IDisposable
         try
         {
             await EnsureManagementServerCoreAsync();
-            await StartCoreAsync();
+            RequireInstalled();
+            NormalizeConfigFileEncoding(ConfigPath);
+            await VerifyConfigAsync(ConfigPath);
+
+            if (!FrpWindowsServiceManager.IsRegisteredForRoot(_applicationRoot))
+            {
+                await StopCoreAsync();
+                var serviceExecutable = Process.GetCurrentProcess().MainModule?.FileName;
+                if (string.IsNullOrWhiteSpace(serviceExecutable) || !File.Exists(serviceExecutable))
+                {
+                    throw new InvalidOperationException("无法定位 MCPanel 主程序，不能注册 FRP Windows 服务。");
+                }
+                FrpWindowsServiceManager.EnsureRegistered(serviceExecutable!, _applicationRoot);
+            }
+
+            FrpWindowsServiceManager.Start();
         }
         finally
         {
@@ -236,6 +265,10 @@ public sealed class FrpManager : IDisposable
         await _operationLock.WaitAsync();
         try
         {
+            if (FrpWindowsServiceManager.IsRegisteredForRoot(_applicationRoot))
+            {
+                FrpWindowsServiceManager.Stop();
+            }
             await StopCoreAsync();
         }
         finally
@@ -304,6 +337,11 @@ public sealed class FrpManager : IDisposable
         try
         {
             StopManagementServer();
+            if (FrpWindowsServiceManager.IsRegisteredForRoot(_applicationRoot))
+            {
+                FrpWindowsServiceManager.Stop();
+                FrpWindowsServiceManager.Delete();
+            }
             await StopCoreAsync();
             await _frpFilesLock.WaitAsync(cancellationToken);
             try
@@ -1087,27 +1125,9 @@ public sealed class FrpManager : IDisposable
             }
         }
 
-        foreach (var process in Process.GetProcessesByName("frpc"))
-        {
-            try
-            {
-                var executable = process.MainModule?.FileName;
-                if (!string.IsNullOrWhiteSpace(executable) &&
-                    Path.GetFullPath(executable).Equals(Path.GetFullPath(FrpcPath), StringComparison.OrdinalIgnoreCase))
-                {
-                    ProcessLifecycle.TryKill(process);
-                    process.WaitForExit(5000);
-                }
-            }
-            catch
-            {
-                // A protected process may deny path inspection or termination.
-            }
-            finally
-            {
-                process.Dispose();
-            }
-        }
+        // The Windows service owns frpc.exe after 1.3.6. Disposing a page or
+        // closing MCPanel must not stop the server-level FRP service. Only a
+        // legacy child process owned by this manager instance is cleaned above.
     }
 
     private static string DefaultClientConfig() =>

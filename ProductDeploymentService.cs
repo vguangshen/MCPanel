@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.IO.Compression;
@@ -914,11 +914,19 @@ public sealed class ProductDeploymentService
 
         TomcatProductStartupManager.RefreshRegistration();
 
-        var instanceManager = new TomcatProductInstanceManager();
-        await instanceManager.StartAsync(contextName, catalinaMode: false, cancellationToken);
+        var sharedServiceRestarted = false;
+        if (TomcatWindowsServiceManager.IsRunningForRoot(tomcatRoot))
+        {
+            TomcatWindowsServiceManager.Stop();
+            TomcatWindowsServiceManager.Start();
+            sharedServiceRestarted = true;
+        }
 
+        var modeText = sharedServiceRestarted
+            ? "共享 Tomcat Server 已重启并加载新应用。"
+            : "未自动启动单应用实例；如需单独运行，请在产品管理中手动启动。";
         return new ProductDeploymentResult(
-            $"产品已安装到 {appRoot}，并分配 Tomcat 独立端口 {deployment.Port}。访问地址：{deployment.Url}",
+            $"产品已安装到 {appRoot}，并分配 Tomcat 端口 {deployment.Port}。访问地址：{deployment.Url}。{modeText}",
             appRoot);
     }
 

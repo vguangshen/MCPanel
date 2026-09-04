@@ -61,6 +61,22 @@ public partial class App : Application
                 return;
             }
 
+            if (TomcatWindowsServiceHost.IsServiceRequest(e.Args))
+            {
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                var exitCode = TomcatWindowsServiceHost.Run(e.Args);
+                Shutdown(exitCode);
+                return;
+            }
+
+            if (FrpWindowsServiceHost.IsServiceRequest(e.Args))
+            {
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                var exitCode = FrpWindowsServiceHost.Run(e.Args);
+                Shutdown(exitCode);
+                return;
+            }
+
             if (EnvironmentInstallWorker.IsWorkerRequest(e.Args))
             {
                 ShutdownMode = ShutdownMode.OnExplicitShutdown;

@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.IO.Compression;
@@ -149,15 +149,23 @@ public sealed class EnvironmentInstaller : IDisposable
             throw new FileNotFoundException("Tomcat 解压完成，但未找到启动脚本。", startup);
         }
 
-        if (File.Exists(startup))
+        var serviceExecutable = Process.GetCurrentProcess().MainModule?.FileName;
+        if (string.IsNullOrWhiteSpace(serviceExecutable) || !File.Exists(serviceExecutable))
         {
-            progress(InstallingProgress(88, "正在启动 Tomcat...", 75));
-            await RunProcessAsync(startup, string.Empty, Path.GetDirectoryName(startup)!, false, cancellationToken);
-            var ports = TomcatRuntimeProbe.ReadHttpPorts(tomcatRoot);
-            await TomcatRuntimeProbe.WaitForStartupAsync(tomcatRoot, ports, cancellationToken);
+            throw new InvalidOperationException("无法定位 MCPanel 主程序，不能注册 Tomcat Windows 服务。");
         }
 
-        progress(InstallingProgress(100, $"Tomcat 已安装到 {tomcatRoot}。"));
+        progress(InstallingProgress(84, "正在注册 Tomcat Server Windows 服务...", 58));
+        TomcatProductStartupManager.RemoveRegistration();
+        await TomcatProductInstanceManager.StopAllTomcatProcessesAsync(cancellationToken, throwOnFailure: false);
+        TomcatWindowsServiceManager.EnsureRegistered(serviceExecutable!, tomcatRoot);
+
+        progress(InstallingProgress(92, "正在启动 Tomcat Server Windows 服务...", 78));
+        TomcatWindowsServiceManager.Start();
+        var ports = TomcatRuntimeProbe.ReadHttpPorts(tomcatRoot).ToArray();
+        await TomcatRuntimeProbe.WaitForStartupAsync(tomcatRoot, ports, cancellationToken);
+
+        progress(InstallingProgress(100, $"Tomcat 已安装到 {tomcatRoot}，并注册为自动启动的 Windows 服务 {TomcatWindowsServiceManager.ServiceName}。"));
     }
 
     private async Task InstallNginxAsync(EnvironmentDownloadSettings downloads, Action<InstallProgress> progress, CancellationToken cancellationToken)

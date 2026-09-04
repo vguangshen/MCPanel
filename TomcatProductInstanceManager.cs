@@ -57,8 +57,13 @@ public sealed class TomcatProductInstanceManager
                 return $"{productId} 已在端口 {info.Port} 单独运行。";
             }
 
-            // The shared process owns the same product ports. Stop only that process before
-            // switching to single-application mode; other single-app processes remain running.
+            // The shared Windows service owns the same product ports. An explicit
+            // single-application start switches the server into manual product mode;
+            // the shared service will return automatically on the next Windows boot.
+            if (TomcatWindowsServiceManager.IsRunningForRoot(tomcatHome))
+            {
+                TomcatWindowsServiceManager.Stop();
+            }
             await StopCatalinaBaseAsync(tomcatHome, cancellationToken, GetTomcatHttpPorts(tomcatHome));
             await StopInstanceAsync(tomcatHome, instanceRoot, info.Port, cancellationToken, throwOnFailure: true);
             if (IsTcpPortListening(info.Port))
