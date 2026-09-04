@@ -32,7 +32,9 @@ jobs:
 
       - name: Verify protected product download chain unchanged
         shell: pwsh
-        run: git diff --exit-code origin/main -- McPanelStoreClient.cs SvnProductTransferService.cs DownloadService.cs
+        run: |
+          git fetch --depth=1 origin main:refs/remotes/origin/main
+          git diff --exit-code origin/main -- McPanelStoreClient.cs SvnProductTransferService.cs DownloadService.cs
 
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
