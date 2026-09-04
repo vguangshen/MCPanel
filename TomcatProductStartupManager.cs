@@ -4,6 +4,13 @@ using System.Text;
 
 namespace MCPanel;
 
+/// <summary>
+/// Compatibility cleanup for the legacy per-product logon startup entry.
+/// Individual Tomcat product instances are intentionally user-controlled in
+/// 1.3.6; only the shared Tomcat Server is registered as an automatic Windows
+/// service. Keeping this recognizer lets an already queued legacy Run command
+/// remove itself harmlessly after an upgrade.
+/// </summary>
 internal static class TomcatProductStartupManager
 {
     internal const string RestoreArgument = "--restore-tomcat-products";
@@ -17,38 +24,19 @@ internal static class TomcatProductStartupManager
     {
         try
         {
-            if (ProductDeploymentService.LoadTomcatDeploymentInfos().Count > 0)
-            {
-                EnsureRegistered();
-            }
-            else
-            {
-                RemoveRegistration();
-            }
+            RemoveRegistration();
         }
         catch (Exception ex)
         {
-            WriteLog("刷新 Tomcat 产品开机恢复项失败。", ex);
+            WriteLog("移除旧版 Tomcat 产品开机恢复项失败。", ex);
         }
     }
 
     public static void EnsureRegistered()
     {
-        var executable = Path.Combine(ComponentPaths.ApplicationRoot, "MCPanel.exe");
-        if (!File.Exists(executable))
-        {
-            WriteLog($"暂未创建开机恢复项，主程序不存在：{executable}", null);
-            return;
-        }
-
-        using var key = Registry.CurrentUser.CreateSubKey(RunKeyPath, writable: true)
-            ?? throw new InvalidOperationException("无法打开当前用户的 Windows 启动项。");
-        var command = BuildStartupCommand(executable);
-        if (!string.Equals(key.GetValue(RunValueName) as string, command, StringComparison.OrdinalIgnoreCase))
-        {
-            key.SetValue(RunValueName, command, RegistryValueKind.String);
-            WriteLog("已创建 Tomcat 产品开机自恢复项。", null);
-        }
+        // Kept for source compatibility with older call sites. 1.3.6 no longer
+        // registers individual product instances for logon startup.
+        RemoveRegistration();
     }
 
     public static void RemoveRegistration()
@@ -57,56 +45,19 @@ internal static class TomcatProductStartupManager
         if (key?.GetValue(RunValueName) is not null)
         {
             key.DeleteValue(RunValueName, throwOnMissingValue: false);
-            WriteLog("已移除 Tomcat 产品开机自恢复项。", null);
+            WriteLog("已移除旧版 Tomcat 产品开机自恢复项；单应用实例改为按需启动。", null);
         }
     }
 
     internal static string BuildStartupCommand(string executable) =>
         $"\"{Path.GetFullPath(executable)}\" {RestoreArgument}";
 
-    public static async Task<int> RestoreAsync(CancellationToken cancellationToken = default)
+    public static Task<int> RestoreAsync(CancellationToken cancellationToken = default)
     {
-        using var mutex = new Mutex(true, "Local\\MCPanel.TomcatProductRestore.v1", out var isPrimary);
-        if (!isPrimary)
-        {
-            return 0;
-        }
-
-        var deployments = ProductDeploymentService.LoadTomcatDeploymentInfos();
-        if (deployments.Count == 0)
-        {
-            RemoveRegistration();
-            return 0;
-        }
-
-        var manager = new TomcatProductInstanceManager();
-        var failures = 0;
-        WriteLog($"开始恢复 {deployments.Count} 个 Tomcat 产品。", null);
-        foreach (var deployment in deployments)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            try
-            {
-                if (manager.IsRunning(deployment.ProductId))
-                {
-                    WriteLog($"{deployment.ProductId} 已运行，跳过重复启动。", null);
-                    continue;
-                }
-
-                var message = await manager.StartAsync(deployment.ProductId, catalinaMode: false, cancellationToken);
-                WriteLog(message, null);
-            }
-            catch (Exception ex)
-            {
-                failures++;
-                WriteLog($"恢复 {deployment.ProductId} 失败。", ex);
-            }
-        }
-
-        WriteLog(failures == 0
-            ? "Tomcat 产品开机自恢复完成。"
-            : $"Tomcat 产品开机自恢复完成，其中 {failures} 个启动失败。", null);
-        return failures == 0 ? 0 : 1;
+        cancellationToken.ThrowIfCancellationRequested();
+        RemoveRegistration();
+        WriteLog("检测到旧版 Tomcat 产品恢复命令，已跳过自动启动并清理启动项。", null);
+        return Task.FromResult(0);
     }
 
     internal static void WriteLog(string message, Exception? exception)
@@ -122,7 +73,7 @@ internal static class TomcatProductStartupManager
         }
         catch
         {
-            // Startup recovery diagnostics must never break the Windows logon path.
+            // Startup migration diagnostics must never break Windows logon.
         }
     }
 }

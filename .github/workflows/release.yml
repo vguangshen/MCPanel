@@ -59,7 +59,7 @@ jobs:
             -PublishDirectory $env:MCPANEL_PUBLISH_DIR `
             -OutputDirectory $updatesDir `
             -GitHubRelease `
-            -ReleaseNotes '修复 Nginx Windows 服务只启动不监管 nginx.exe 的问题，增加进程健康监控、自动恢复和 Windows 服务故障恢复策略。'
+            -ReleaseNotes '将共享 Tomcat Server 与 FRP 客户端改为自动启动的 Windows 服务，并取消单应用 Tomcat 的登录后自动恢复。'
           "MCPANEL_UPDATES_DIR=$updatesDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Create GitHub Release
@@ -73,14 +73,14 @@ jobs:
           $hash = "$zip.sha256"
           $manifest = Join-Path $env:MCPANEL_UPDATES_DIR 'update-manifest.json'
           $notes = @"
-          本版本修复 Nginx 长时间运行后子进程退出但 Windows 服务仍显示正在运行的问题，不改变原有产品下载和部署链路。
+          本版本完善服务器重启后的无人值守恢复：共享 Tomcat Server 与 FRP 改为 Windows 服务，单应用 Tomcat 保持用户按需启动；不改变原有产品下载链路。
 
-          - Nginx Windows 服务增加 watchdog，持续检查 nginx.exe 与实际配置端口的健康状态。
-          - nginx.exe 意外退出时自动按 1 秒、3 秒、10 秒、30 秒、60 秒退避恢复。
-          - 短时间内反复异常达到上限时退出服务进程，交由 Windows Service Control Manager 继续恢复，避免无限快速重启。
-          - Windows nginx 服务配置 SCM recovery：wrapper 自身异常退出时自动重启。
-          - 停止服务时先停止 watchdog，再优雅退出 nginx.exe，避免停止过程中被 watchdog 重新拉起。
-          - 新增 logs\\mcpanel-service.log，记录服务启动、异常检测、自动恢复和停止过程。
+          - 环境页“Tomcat Server”注册为 Automatic Windows 服务，服务器重启后无需用户登录即可启动共享 Tomcat。
+          - Tomcat 服务带进程/端口健康监控和 SCM recovery；用户手动启动单应用实例时会停止共享服务，单应用实例本身不自动启动。
+          - 移除旧版 MCPanelTomcatProducts 当前用户 Run 恢复项，升级后会自动清理旧启动项。
+          - FRP 客户端注册为 Automatic Windows 服务，关闭 MCPanel UI 不再终止 frpc.exe，服务器重启后无需登录即可恢复。
+          - FRP 服务带子进程 watchdog 与 SCM recovery，配置仍由原有 FRP 管理页面维护。
+          - Nginx、MySQL、SQL Server、IIS 和原有产品下载链路保持不变。
           - 发布前执行完整可靠性测试。
           "@
           gh release create $tag $zip $hash $manifest `

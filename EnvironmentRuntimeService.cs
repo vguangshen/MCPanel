@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using Microsoft.Win32;
@@ -317,46 +317,26 @@ public sealed class EnvironmentRuntimeService
         {
             case EnvironmentKind.Tomcat:
                 var tomcatRoot = RequireTomcatRoot();
-                await TomcatProductInstanceManager.StopAllProductInstancesAsync(cancellationToken);
                 var tomcatPorts = TomcatRuntimeProbe.ReadHttpPorts(tomcatRoot).ToArray();
                 if (tomcatPorts.Length == 0)
                 {
                     throw new InvalidDataException("Tomcat server.xml 中没有可用的 HTTP 端口。请先修复产品绑定。");
                 }
 
-                if (TomcatProductInstanceManager.IsSharedTomcatRunning())
+                if (!TomcatWindowsServiceManager.IsRegisteredForRoot(tomcatRoot))
                 {
-                    if (TomcatRuntimeProbe.ArePortsListening(tomcatPorts))
+                    var serviceExecutable = Path.Combine(ComponentPaths.ApplicationRoot, "MCPanel.exe");
+                    if (!File.Exists(serviceExecutable))
                     {
-                        return $"Tomcat 已在全部应用模式运行。日志目录：{Path.Combine(tomcatRoot, "logs")}";
+                        throw new FileNotFoundException("无法定位 MCPanel.exe，不能注册 Tomcat Windows 服务。", serviceExecutable);
                     }
-
-                    // A Java process can remain after Tomcat failed during startup. Clear
-                    // that stale process before trying to start a healthy instance again.
-                    await TomcatProductInstanceManager.StopAllTomcatProcessesAsync(cancellationToken);
+                    TomcatWindowsServiceManager.EnsureRegistered(serviceExecutable, tomcatRoot);
                 }
 
-                EnvironmentInstaller.NormalizeTomcatJvmPropertiesFile(tomcatRoot);
-                StartDetached(Path.Combine(tomcatRoot, "bin", "startup.bat"), Path.Combine(tomcatRoot, "bin"));
-                try
-                {
-                    await TomcatRuntimeProbe.WaitForStartupAsync(tomcatRoot, tomcatPorts, cancellationToken);
-                }
-                catch (OperationCanceledException)
-                {
-                    await TomcatProductInstanceManager.StopAllTomcatProcessesAsync(
-                        CancellationToken.None,
-                        throwOnFailure: false);
-                    throw;
-                }
-                catch (Exception error)
-                {
-                    await TomcatProductInstanceManager.StopAllTomcatProcessesAsync(
-                        CancellationToken.None,
-                        throwOnFailure: false);
-                    throw new InvalidOperationException($"Tomcat 启动失败：{error.Message}", error);
-                }
-                return $"Tomcat 全部应用已启动，{tomcatPorts.Length} 个端口已确认监听。日志目录：{Path.Combine(tomcatRoot, "logs")}";
+                TomcatProductStartupManager.RemoveRegistration();
+                TomcatWindowsServiceManager.Start();
+                await TomcatRuntimeProbe.WaitForStartupAsync(tomcatRoot, tomcatPorts, cancellationToken);
+                return $"Tomcat Server Windows 服务已启动，{tomcatPorts.Length} 个配置端口已确认监听。日志目录：{Path.Combine(tomcatRoot, "logs")}";
             case EnvironmentKind.Nginx:
                 return await StartNginxAsync(cancellationToken);
             case EnvironmentKind.MySql:
@@ -379,9 +359,30 @@ public sealed class EnvironmentRuntimeService
         switch (kind)
         {
             case EnvironmentKind.Tomcat:
-                _ = RequireTomcatRoot();
-                await TomcatProductInstanceManager.StopAllTomcatProcessesAsync(cancellationToken);
-                return "Tomcat 及其全部单应用进程已停止。";
+                var tomcatRoot = RequireTomcatRoot();
+                if (TomcatWindowsServiceManager.IsRegisteredForRoot(tomcatRoot))
+                {
+                    TomcatWindowsServiceManager.Stop();
+                    return "Tomcat Server Windows 服务已停止；单应用 Tomcat 实例不受影响。";
+                }
+
+                if (TomcatProductInstanceManager.IsSharedTomcatRunning())
+                {
+                    var shutdown = Path.Combine(tomcatRoot, "bin", "shutdown.bat");
+                    if (File.Exists(shutdown))
+                    {
+                        await RunFileAsync(shutdown, string.Empty, Path.Combine(tomcatRoot, "bin"), false, cancellationToken);
+                    }
+                    for (var attempt = 0; attempt < 80 && TomcatProductInstanceManager.IsSharedTomcatRunning(); attempt++)
+                    {
+                        await Task.Delay(250, cancellationToken);
+                    }
+                    if (TomcatProductInstanceManager.IsSharedTomcatRunning())
+                    {
+                        throw new InvalidOperationException("Tomcat Server 共享进程未能停止；为避免影响单应用实例，已取消强制结束全部 Java 进程。");
+                    }
+                }
+                return "Tomcat Server 已停止；单应用 Tomcat 实例不受影响。";
             case EnvironmentKind.Nginx:
                 return await StopNginxAsync(cancellationToken);
             case EnvironmentKind.MySql:
@@ -444,10 +445,16 @@ public sealed class EnvironmentRuntimeService
         switch (kind)
         {
             case EnvironmentKind.Tomcat:
+                var tomcatRoot = RequireTomcatRoot();
                 await TryStopAsync(kind, cancellationToken);
-                DeleteDirectory(RequireTomcatRoot());
+                await TomcatProductInstanceManager.StopAllProductInstancesAsync(cancellationToken);
+                if (TomcatWindowsServiceManager.IsRegisteredForRoot(tomcatRoot))
+                {
+                    TomcatWindowsServiceManager.Delete();
+                }
+                DeleteDirectory(tomcatRoot);
                 TomcatProductStartupManager.RemoveRegistration();
-                return "Tomcat 已卸载。";
+                return "Tomcat Windows 服务、共享运行环境及实例运行进程已卸载；产品文件保持由产品管理单独处理。";
             case EnvironmentKind.Nginx:
                 var nginxRoot = Path.GetDirectoryName(RequireNginxExe())!;
                 NginxRuntimeManager.EnsureSafeDeleteRoot(nginxRoot);
@@ -1357,20 +1364,32 @@ public sealed class EnvironmentRuntimeService
             return NotInstalled();
         }
 
+        var ports = TomcatRuntimeProbe.ReadHttpPorts(tomcatRoot).ToArray();
+        var serviceRegistered = TomcatWindowsServiceManager.IsRegisteredForRoot(tomcatRoot);
+        var serviceRunning = serviceRegistered && TomcatWindowsServiceManager.IsRunningForRoot(tomcatRoot);
         var sharedProcessRunning = TomcatProductInstanceManager.IsSharedTomcatRunning();
-        var sharedRunning = sharedProcessRunning &&
-            TomcatRuntimeProbe.ArePortsListening(TomcatRuntimeProbe.ReadHttpPorts(tomcatRoot));
-        var managedRunning = TomcatProductInstanceManager.IsAnyManagedTomcatHealthy();
-        var anyRunning = sharedRunning || managedRunning;
-        var status = anyRunning ? RuntimeStatusKind.Running : RuntimeStatusKind.Stopped;
-        var detail = sharedRunning
-            ? "全部应用模式正在运行。"
-            : managedRunning
-                ? "一个或多个应用正在单独运行。"
+        var sharedHealthy = sharedProcessRunning && ports.Length > 0 && TomcatRuntimeProbe.ArePortsListening(ports);
+        var singleApplicationRunning = !sharedHealthy && TomcatProductInstanceManager.IsAnyManagedTomcatHealthy();
+
+        var status = sharedHealthy
+            ? RuntimeStatusKind.Running
+            : serviceRunning
+                ? RuntimeStatusKind.Starting
+                : RuntimeStatusKind.Stopped;
+        var serviceText = serviceRegistered
+            ? $"Windows 服务 {TomcatWindowsServiceManager.ServiceName} 已注册为自动启动。"
+            : "尚未注册 Windows 服务；下次点击启动或重新安装时会自动迁移。";
+        var healthText = sharedHealthy
+            ? "共享 Tomcat Server 正在运行。"
+            : serviceRunning
+                ? "Windows 服务正在运行，但配置端口尚未全部监听。"
                 : sharedProcessRunning
-                    ? "检测到 Tomcat Java 进程，但配置端口未全部监听，已判定为启动异常。"
-                : "当前没有健康的 Tomcat 监听。";
-        return Installed(status, $"Tomcat 已安装到 {tomcatRoot}。{detail}");
+                    ? "检测到旧版共享 Tomcat Java 进程，但服务未运行。"
+                    : "共享 Tomcat Server 当前未运行。";
+        var singleText = singleApplicationRunning
+            ? "另有一个或多个产品正在单应用模式运行；这些实例不会随 Windows 自动启动。"
+            : "单应用实例保持按需启动，不参与系统自动启动。";
+        return Installed(status, $"Tomcat 已安装到 {tomcatRoot}。{serviceText}{healthText}{singleText}");
     }
 
     private static EnvironmentRuntimeState GetSqlServerState(ComponentLocator locator)
