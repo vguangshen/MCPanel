@@ -59,7 +59,7 @@ jobs:
             -PublishDirectory $env:MCPANEL_PUBLISH_DIR `
             -OutputDirectory $updatesDir `
             -GitHubRelease `
-            -ReleaseNotes '修复 Account API 快速关闭再开启时可能误报 8088 端口被占用的问题，并完善内置监听器生命周期状态判断。'
+            -ReleaseNotes '修复 Nginx Windows 服务只启动不监管 nginx.exe 的问题，增加进程健康监控、自动恢复和 Windows 服务故障恢复策略。'
           "MCPANEL_UPDATES_DIR=$updatesDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Create GitHub Release
@@ -73,15 +73,15 @@ jobs:
           $hash = "$zip.sha256"
           $manifest = Join-Path $env:MCPANEL_UPDATES_DIR 'update-manifest.json'
           $notes = @"
-          本版本修复 Account API 启停生命周期问题，不改变原有产品下载和部署链路。
+          本版本修复 Nginx 长时间运行后子进程退出但 Windows 服务仍显示正在运行的问题，不改变原有产品下载和部署链路。
 
-          - 启动 Account API 时不再用预先 /health 探测猜测端口占用，改由 HttpListener 实际监听结果判断。
-          - Account API 启动、停止、启用和停用使用进程级统一生命周期锁，避免托盘启动与管理页面并发操作互相竞态。
-          - 停止操作会等待旧 HttpListener 完整关闭后再清除运行状态，关闭后可立即重新开启同一端口。
-          - 运行状态改为检查 HttpListener 与接收循环的真实状态，异常退出的旧 Host 可自动清理并重新启动。
-          - 非 Account API 的 HTTP 响应或无效 JSON 不再被识别为内置 Account API 在线。
-          - 新增 Account API Start → Stop → Start、真实端口冲突和监听状态回归测试。
-          - 发布前完整可靠性测试 118 项全部通过。
+          - Nginx Windows 服务增加 watchdog，持续检查 nginx.exe 与实际配置端口的健康状态。
+          - nginx.exe 意外退出时自动按 1 秒、3 秒、10 秒、30 秒、60 秒退避恢复。
+          - 短时间内反复异常达到上限时退出服务进程，交由 Windows Service Control Manager 继续恢复，避免无限快速重启。
+          - Windows nginx 服务配置 SCM recovery：wrapper 自身异常退出时自动重启。
+          - 停止服务时先停止 watchdog，再优雅退出 nginx.exe，避免停止过程中被 watchdog 重新拉起。
+          - 新增 logs\\mcpanel-service.log，记录服务启动、异常检测、自动恢复和停止过程。
+          - 发布前执行完整可靠性测试。
           "@
           gh release create $tag $zip $hash $manifest `
             --target '${{ github.sha }}' `
