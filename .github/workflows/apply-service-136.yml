@@ -1,0 +1,50 @@
+name: Apply service 1.3.6 migration
+
+on:
+  push:
+    branches:
+      - fix/1.3.6-service-autostart
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !startsWith(github.event.head_commit.message, 'Apply MCPanel 1.3.6 service migration') }}
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: fix/1.3.6-service-autostart
+
+      - name: Apply patch
+        shell: pwsh
+        run: .\tools\apply-service-136.ps1
+
+      - name: Guard original product download chain
+        shell: pwsh
+        run: |
+          git fetch origin main
+          $changed = @(git diff --name-only origin/main...HEAD)
+          $forbidden = @('McPanelStoreClient.cs', 'SvnProductTransferService.cs', 'DownloadService.cs')
+          $touched = @($changed | Where-Object { $forbidden -contains $_ })
+          if ($touched.Count -gt 0) {
+            throw "Service migration unexpectedly touched product download chain: $($touched -join ', ')"
+          }
+
+      - name: Commit patch
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add App.xaml.cs EnvironmentInstaller.cs EnvironmentRuntimeService.cs FrpManager.cs TomcatProductInstanceManager.cs ProductDeploymentService.cs MCPanel.csproj .github/workflows/release.yml
+          if (git diff --cached --quiet) {
+            Write-Host 'No patch changes to commit.'
+            exit 0
+          }
+          git commit -m "Apply MCPanel 1.3.6 service migration"
+          git push origin HEAD:fix/1.3.6-service-autostart
