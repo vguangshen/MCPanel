@@ -21,7 +21,7 @@ public static class SqlServerCredentialStore
 {
     // Matches the original Store format: "it" + 8 uppercase letters/digits + "8".
     private const string OriginalPasswordChars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    // Do not use a fixed fallback password here.  A new installation must use the
+    // Do not use a fixed fallback password here. A new installation must use the
     // same generated format as the original Store; an already persisted password
     // is still loaded unchanged so existing SQL Server logins are not rotated
     // without an explicit user action.
@@ -148,42 +148,52 @@ public static class SqlServerCredentialStore
 
     private static SqlServerDefaultCredentials LoadPersistedCredentials()
     {
+        var file = CredentialFile;
+        if (!File.Exists(file))
+        {
+            return Defaults;
+        }
+
         try
         {
-            var file = CredentialFile;
-            if (File.Exists(file))
+            var credentials = JsonSerializer.Deserialize<SqlServerDefaultCredentials>(File.ReadAllText(file));
+            if (credentials is null || string.IsNullOrWhiteSpace(credentials.Password))
             {
-                var credentials = JsonSerializer.Deserialize<SqlServerDefaultCredentials>(File.ReadAllText(file));
-                if (credentials is not null && !string.IsNullOrWhiteSpace(credentials.Password))
-                {
-                    var wasProtected = LocalSecretProtector.IsProtected(credentials.Password);
-                    var normalized = credentials with
-                    {
-                        Host = NormalizeLocalHost(credentials.Host),
-                        Password = LocalSecretProtector.Unprotect(credentials.Password)
-                    };
-                    if (!string.IsNullOrWhiteSpace(normalized.Password))
-                    {
-                        if (!wasProtected)
-                        {
-                            Save(normalized);
-                        }
-
-                        return normalized;
-                    }
-                }
+                throw new InvalidDataException("SQL Server 本地凭据文件内容无效。");
             }
+
+            var wasProtected = LocalSecretProtector.IsProtected(credentials.Password);
+            var normalized = credentials with
+            {
+                Host = NormalizeLocalHost(credentials.Host),
+                Password = LocalSecretProtector.Unprotect(credentials.Password)
+            };
+            if (string.IsNullOrWhiteSpace(normalized.Password))
+            {
+                throw new InvalidDataException("SQL Server 本地凭据文件中的密码为空。");
+            }
+
+            if (!wasProtected)
+            {
+                Save(normalized);
+            }
+
+            return normalized;
         }
         catch (LocalSecretUnavailableException)
         {
             throw;
         }
-        catch
+        catch (InvalidDataException)
         {
-            // Keep using built-in defaults when the local state file is missing or damaged.
+            throw;
         }
-
-        return Defaults;
+        catch (Exception error)
+        {
+            throw new InvalidDataException(
+                "SQL Server 本地凭据文件已损坏或无法读取。MCPanel 不会生成一套新的随机 sa 密码冒充现有凭据；请恢复凭据文件或重新配置连接信息。",
+                error);
+        }
     }
 
     private static IEnumerable<RegistryView> RegistryViews()
