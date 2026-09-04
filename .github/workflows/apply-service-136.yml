@@ -36,14 +36,15 @@ jobs:
             throw "Service migration unexpectedly touched product download chain: $($touched -join ', ')"
           }
 
-      - name: Commit patch
+      - name: Commit code patch
         shell: pwsh
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add App.xaml.cs EnvironmentInstaller.cs EnvironmentRuntimeService.cs FrpManager.cs TomcatProductInstanceManager.cs ProductDeploymentService.cs MCPanel.csproj .github/workflows/release.yml
+          git restore -- .github/workflows/release.yml
+          git add App.xaml.cs EnvironmentInstaller.cs EnvironmentRuntimeService.cs FrpManager.cs TomcatProductInstanceManager.cs ProductDeploymentService.cs MCPanel.csproj
           if (git diff --cached --quiet) {
-            Write-Host 'No patch changes to commit.'
+            Write-Host 'No code patch changes to commit.'
             exit 0
           }
           git commit -m "Apply MCPanel 1.3.6 service migration"
