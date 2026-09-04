@@ -15,43 +15,55 @@ public static class MySqlCredentialStore
 
     public static MySqlDefaultCredentials Load()
     {
+        var foundCredentialFile = false;
+        Exception? credentialReadError = null;
         foreach (var file in CandidateCredentialFiles())
         {
+            if (!File.Exists(file))
+            {
+                continue;
+            }
+
+            foundCredentialFile = true;
             try
             {
-                if (File.Exists(file))
+                var credentials = JsonSerializer.Deserialize<MySqlDefaultCredentials>(File.ReadAllText(file));
+                if (credentials is null || string.IsNullOrWhiteSpace(credentials.Password))
                 {
-                    var credentials = JsonSerializer.Deserialize<MySqlDefaultCredentials>(File.ReadAllText(file));
-                    if (credentials is not null && !string.IsNullOrWhiteSpace(credentials.Password))
-                    {
-                        var wasProtected = LocalSecretProtector.IsProtected(credentials.Password);
-                        var normalized = credentials with { Password = LocalSecretProtector.Unprotect(credentials.Password) };
-                        if (string.IsNullOrWhiteSpace(normalized.Password))
-                        {
-                            continue;
-                        }
-
-                        if (!PathsEqual(file, CredentialFile))
-                        {
-                            Save(normalized);
-                        }
-                        else if (!wasProtected)
-                        {
-                            Save(normalized);
-                        }
-
-                        return WithConfiguredPort(normalized);
-                    }
+                    credentialReadError = new InvalidDataException($"MySQL 本地凭据文件内容无效：{file}");
+                    continue;
                 }
+
+                var wasProtected = LocalSecretProtector.IsProtected(credentials.Password);
+                var normalized = credentials with { Password = LocalSecretProtector.Unprotect(credentials.Password) };
+                if (string.IsNullOrWhiteSpace(normalized.Password))
+                {
+                    credentialReadError = new InvalidDataException($"MySQL 本地凭据文件中的密码为空：{file}");
+                    continue;
+                }
+
+                if (!PathsEqual(file, CredentialFile) || !wasProtected)
+                {
+                    Save(normalized);
+                }
+
+                return WithConfiguredPort(normalized);
             }
             catch (LocalSecretUnavailableException)
             {
                 throw;
             }
-            catch
+            catch (Exception error)
             {
-                // Keep compatibility with older installations that used the fixed password.
+                credentialReadError = error;
             }
+        }
+
+        if (foundCredentialFile)
+        {
+            throw new InvalidDataException(
+                "MySQL 本地凭据文件已损坏或无法读取。为避免误改 root 密码，MCPanel 不会自动回退到默认密码；请恢复凭据文件或重新安装 MySQL。",
+                credentialReadError);
         }
 
         return WithConfiguredPort(new MySqlDefaultCredentials("127.0.0.1", DefaultPort, "root", OriginalDefaultPassword));
