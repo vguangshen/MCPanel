@@ -4,7 +4,9 @@ namespace MCPanel;
 
 /// <summary>
 /// SQL Server releases supported by the environment installer.
-/// Support flags follow Microsoft's SQL Server/Windows compatibility matrix.
+/// Support flags follow Microsoft's SQL Server/Windows compatibility matrix and
+/// the archived Microsoft requirements for older Windows versions still
+/// reachable by the legacy MCPanel compatibility path.
 /// Unsupported entries remain visible in the UI, but cannot be selected.
 /// </summary>
 public sealed record SqlServerReleaseDefinition(string Id, string DisplayName)
@@ -29,6 +31,16 @@ internal enum WindowsSqlCompatibilityFamily
     Windows81,
     WindowsServer2012,
     Windows8,
+    WindowsServer2008R2Sp1,
+    WindowsServer2008R2,
+    Windows7Sp1,
+    Windows7,
+    WindowsServer2008Sp2,
+    WindowsServer2008Sp1,
+    WindowsServer2008,
+    WindowsVistaSp2,
+    WindowsVistaSp1,
+    WindowsVista,
     Legacy
 }
 
@@ -78,18 +90,41 @@ internal static class SqlServerOsCompatibility
                 SqlServerReleaseCatalog.SqlServer2017Id,
                 SqlServerReleaseCatalog.SqlServer2012Id,
                 SqlServerReleaseCatalog.SqlServer2008Id),
-            _ => true
+            WindowsSqlCompatibilityFamily.WindowsServer2008R2Sp1 or
+            WindowsSqlCompatibilityFamily.Windows7Sp1 or
+            WindowsSqlCompatibilityFamily.WindowsServer2008Sp2 or
+            WindowsSqlCompatibilityFamily.WindowsVistaSp2 => IsOneOf(normalized,
+                SqlServerReleaseCatalog.SqlServer2012Id,
+                SqlServerReleaseCatalog.SqlServer2008Id),
+            WindowsSqlCompatibilityFamily.WindowsServer2008R2 or
+            WindowsSqlCompatibilityFamily.Windows7 or
+            WindowsSqlCompatibilityFamily.WindowsServer2008Sp1 or
+            WindowsSqlCompatibilityFamily.WindowsVistaSp1 or
+            WindowsSqlCompatibilityFamily.Legacy => IsOneOf(normalized,
+                SqlServerReleaseCatalog.SqlServer2008Id),
+            WindowsSqlCompatibilityFamily.WindowsServer2008 or
+            WindowsSqlCompatibilityFamily.WindowsVista => false,
+            WindowsSqlCompatibilityFamily.Unknown => true,
+            _ => false
         };
 
         if (supported)
         {
-            if (normalized == SqlServerReleaseCatalog.SqlServer2008Id &&
-                family is WindowsSqlCompatibilityFamily.WindowsServer2012R2 or
-                    WindowsSqlCompatibilityFamily.Windows81 or
-                    WindowsSqlCompatibilityFamily.WindowsServer2012 or
-                    WindowsSqlCompatibilityFamily.Windows8)
+            if (normalized == SqlServerReleaseCatalog.SqlServer2008Id)
             {
-                return new(true, "Microsoft 官方兼容矩阵要求 SQL Server 2008 SP4；保留该旧版兼容入口。");
+                return new(true, "Microsoft 官方旧版要求中仅保留 SQL Server 2008 SP4 兼容入口；请确认安装包已达到 SP4。 ");
+            }
+
+            if (normalized == SqlServerReleaseCatalog.SqlServer2012Id &&
+                family is WindowsSqlCompatibilityFamily.Windows10 or
+                    WindowsSqlCompatibilityFamily.WindowsServer2019 or
+                    WindowsSqlCompatibilityFamily.WindowsServer2016 or
+                    WindowsSqlCompatibilityFamily.Windows81 or
+                    WindowsSqlCompatibilityFamily.WindowsServer2012R2 or
+                    WindowsSqlCompatibilityFamily.Windows8 or
+                    WindowsSqlCompatibilityFamily.WindowsServer2012)
+            {
+                return new(true, "Microsoft 官方兼容矩阵要求 SQL Server 2012 SP4。 ");
             }
 
             return new(true, string.Empty);
@@ -99,7 +134,7 @@ internal static class SqlServerOsCompatibility
             string.Equals(option.Id, normalized, StringComparison.OrdinalIgnoreCase));
         var releaseName = release?.DisplayName ?? normalized;
         var osName = string.IsNullOrWhiteSpace(osDisplayName) ? FamilyDisplayName(family) : osDisplayName!;
-        return new(false, $"Microsoft 官方兼容矩阵不支持 {releaseName} 安装在 {osName}。请选择受支持的 SQL Server 版本。");
+        return new(false, $"Microsoft 官方兼容要求不支持 {releaseName} 安装在 {osName}。请选择受支持的 SQL Server 版本。");
     }
 
     private static bool IsOneOf(string value, params string[] supported) =>
@@ -139,6 +174,11 @@ internal static class SqlServerOsCompatibility
             if (build >= 14393) return WindowsSqlCompatibilityFamily.WindowsServer2016;
             if (build >= 9600) return WindowsSqlCompatibilityFamily.WindowsServer2012R2;
             if (build >= 9200) return WindowsSqlCompatibilityFamily.WindowsServer2012;
+            if (build >= 7601) return WindowsSqlCompatibilityFamily.WindowsServer2008R2Sp1;
+            if (build >= 7600) return WindowsSqlCompatibilityFamily.WindowsServer2008R2;
+            if (build >= 6002) return WindowsSqlCompatibilityFamily.WindowsServer2008Sp2;
+            if (build >= 6001) return WindowsSqlCompatibilityFamily.WindowsServer2008Sp1;
+            if (build >= 6000) return WindowsSqlCompatibilityFamily.WindowsServer2008;
             return WindowsSqlCompatibilityFamily.Legacy;
         }
 
@@ -146,6 +186,11 @@ internal static class SqlServerOsCompatibility
         if (build >= 10240) return WindowsSqlCompatibilityFamily.Windows10;
         if (build >= 9600) return WindowsSqlCompatibilityFamily.Windows81;
         if (build >= 9200) return WindowsSqlCompatibilityFamily.Windows8;
+        if (build >= 7601) return WindowsSqlCompatibilityFamily.Windows7Sp1;
+        if (build >= 7600) return WindowsSqlCompatibilityFamily.Windows7;
+        if (build >= 6002) return WindowsSqlCompatibilityFamily.WindowsVistaSp2;
+        if (build >= 6001) return WindowsSqlCompatibilityFamily.WindowsVistaSp1;
+        if (build >= 6000) return WindowsSqlCompatibilityFamily.WindowsVista;
         return WindowsSqlCompatibilityFamily.Legacy;
     }
 
@@ -161,6 +206,17 @@ internal static class SqlServerOsCompatibility
         WindowsSqlCompatibilityFamily.Windows81 => "Windows 8.1",
         WindowsSqlCompatibilityFamily.WindowsServer2012 => "Windows Server 2012",
         WindowsSqlCompatibilityFamily.Windows8 => "Windows 8",
+        WindowsSqlCompatibilityFamily.WindowsServer2008R2Sp1 => "Windows Server 2008 R2 SP1",
+        WindowsSqlCompatibilityFamily.WindowsServer2008R2 => "Windows Server 2008 R2",
+        WindowsSqlCompatibilityFamily.Windows7Sp1 => "Windows 7 SP1",
+        WindowsSqlCompatibilityFamily.Windows7 => "Windows 7",
+        WindowsSqlCompatibilityFamily.WindowsServer2008Sp2 => "Windows Server 2008 SP2",
+        WindowsSqlCompatibilityFamily.WindowsServer2008Sp1 => "Windows Server 2008 SP1",
+        WindowsSqlCompatibilityFamily.WindowsServer2008 => "Windows Server 2008",
+        WindowsSqlCompatibilityFamily.WindowsVistaSp2 => "Windows Vista SP2",
+        WindowsSqlCompatibilityFamily.WindowsVistaSp1 => "Windows Vista SP1",
+        WindowsSqlCompatibilityFamily.WindowsVista => "Windows Vista",
+        WindowsSqlCompatibilityFamily.Legacy => "旧版 Windows",
         _ => "当前 Windows"
     };
 }
