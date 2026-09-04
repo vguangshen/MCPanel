@@ -30,6 +30,7 @@ namespace MarchCenter.AccountApi
         private readonly string _configuredBindAddress;
         private string _effectiveBindAddress;
         private Task _loop;
+        private int _disposed;
 
         public AccountApiHost(AccountApiOptions options)
         {
@@ -44,6 +45,22 @@ namespace MarchCenter.AccountApi
         }
 
         public string EffectiveBindAddress { get { return _effectiveBindAddress; } }
+
+        public bool IsRunning
+        {
+            get
+            {
+                if (Volatile.Read(ref _disposed) != 0) return false;
+                try
+                {
+                    return _listener != null && _listener.IsListening && _loop != null && !_loop.IsCompleted;
+                }
+                catch (ObjectDisposedException)
+                {
+                    return false;
+                }
+            }
+        }
 
         public void Start()
         {
@@ -335,7 +352,12 @@ namespace MarchCenter.AccountApi
 
         public void Dispose()
         {
-            _stop.Cancel(); try { _listener.Stop(); } catch { } try { _listener.Close(); } catch { } try { if (_loop != null) _loop.Wait(2000); } catch { } _stop.Dispose();
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            _stop.Cancel();
+            try { _listener.Stop(); } catch { }
+            try { _listener.Close(); } catch { }
+            try { if (_loop != null) _loop.Wait(2000); } catch { }
+            _stop.Dispose();
         }
     }
 }

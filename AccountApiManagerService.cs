@@ -21,7 +21,7 @@ namespace MCPanel;
 public sealed class AccountApiManagerService : IDisposable
 {
     private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(8) };
-    private readonly SemaphoreSlim _operationGate = new(1, 1);
+    private static readonly SemaphoreSlim LifecycleGate = new(1, 1);
     private readonly CancellationTokenSource _disposeCancellation = new();
     private readonly string _settingsPath;
     private string _configuredRuntimeDirectory;
@@ -169,9 +169,14 @@ public sealed class AccountApiManagerService : IDisposable
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        await _operationGate.WaitAsync(cancellationToken);
+        await LifecycleGate.WaitAsync(cancellationToken);
         try
         {
+            // Multiple AccountApiManagerService instances can exist (tray startup
+            // and the management page). Re-read the persisted switch while holding
+            // the process-wide lifecycle gate so a stale manager cannot restart a
+            // listener after another manager has just disabled it.
+            _enabled = LoadSettings().Enabled;
             if (!IsEnabled)
             {
                 throw new InvalidOperationException("账号 API 当前未启用，请先打开“启用账号 API”开关。");
@@ -195,49 +200,49 @@ public sealed class AccountApiManagerService : IDisposable
                 return;
             }
 
-            var current = await ProbeAsync(configuration, cancellationToken);
-            if (current.Reachable)
-            {
-                throw new InvalidOperationException(
-                    "Account API 端口已经被其他程序占用。请停止旧的 Account API 进程后，再启动 MCPanel 内置服务。 ");
-            }
-
             try
             {
+                // Do not probe /health before binding. A just-stopped MCPanel
+                // listener or an unrelated HTTP service can still answer briefly
+                // and must not be misreported as a third-party port conflict.
+                // HttpListener.Start is the authoritative bind check.
                 EmbeddedAccountApiRuntime.Start(configuration.ConfigPath);
             }
             catch (HttpListenerException error)
             {
                 throw new InvalidOperationException(
-                    "内置 Account API 无法监听 " + configuration.Endpoint + "。请检查端口是否被占用，以及当前用户是否有 HTTP 监听权限。",
+                    "内置 Account API 无法监听 " + configuration.Endpoint +
+                    "。端口或 HTTP.sys 监听地址可能正在被其他程序使用，或者当前用户没有 HTTP 监听权限。",
                     error);
             }
 
-            if (!await WaitForReachableAsync(configuration, TimeSpan.FromSeconds(12), cancellationToken))
+            if (!EmbeddedAccountApiRuntime.IsRunning)
             {
                 throw new InvalidOperationException(
-                    "内置 Account API 未在 12 秒内开始监听。请检查端口、HMAC 配置以及日志。" +
+                    "内置 Account API 启动后未进入监听状态。请查看 Account API 日志后重试。" +
                     Environment.NewLine + ReadLatestAccountApiError(configuration));
             }
         }
         finally
         {
-            _operationGate.Release();
+            LifecycleGate.Release();
         }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        await _operationGate.WaitAsync(cancellationToken);
+        await LifecycleGate.WaitAsync(cancellationToken);
         try
         {
+            // EmbeddedAccountApiRuntime.Stop does not return until HttpListener
+            // has been stopped/closed and the accept loop has been given a chance
+            // to exit. No arbitrary delay is required before a later restart.
             EmbeddedAccountApiRuntime.Stop();
-            await Task.Delay(100, cancellationToken);
         }
         finally
         {
-            _operationGate.Release();
+            LifecycleGate.Release();
         }
     }
 
@@ -250,7 +255,7 @@ public sealed class AccountApiManagerService : IDisposable
     public async Task SetEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        await _operationGate.WaitAsync(cancellationToken);
+        await LifecycleGate.WaitAsync(cancellationToken);
         try
         {
             var previous = _enabled;
@@ -260,8 +265,10 @@ public sealed class AccountApiManagerService : IDisposable
                 SaveSettings();
                 if (!enabled)
                 {
+                    // Hold the same process-wide lifecycle gate used by StartAsync.
+                    // When this method returns, the old listener is fully stopped,
+                    // so an immediate enable/start cannot race its own shutdown.
                     EmbeddedAccountApiRuntime.Stop();
-                    await Task.Delay(100, cancellationToken);
                 }
             }
             catch
@@ -272,7 +279,7 @@ public sealed class AccountApiManagerService : IDisposable
         }
         finally
         {
-            _operationGate.Release();
+            LifecycleGate.Release();
         }
     }
 
@@ -333,7 +340,6 @@ public sealed class AccountApiManagerService : IDisposable
         _disposeCancellation.Cancel();
         _http.Dispose();
         _disposeCancellation.Dispose();
-        _operationGate.Dispose();
     }
 
     /// <summary>
@@ -480,9 +486,16 @@ public sealed class AccountApiManagerService : IDisposable
             using var document = JsonDocument.Parse(body);
             var root = document.RootElement;
             var status = ReadString(root, "status");
+            var service = ReadString(root, "service");
             var version = ReadString(root, "version");
             var deviceId = ReadString(root, "deviceId");
             var effectiveBindAddress = ReadString(root, "bindAddress");
+            if (!string.Equals(service, "MarchCenter Account API", StringComparison.OrdinalIgnoreCase))
+            {
+                return AccountApiHealthProbe.Unreachable(
+                    "监听地址返回了其他 HTTP 服务的响应，并非 MCPanel Account API。");
+            }
+
             var ok = root.TryGetProperty("ok", out var okElement) &&
                      okElement.ValueKind == JsonValueKind.True;
             if (string.IsNullOrWhiteSpace(status))
@@ -534,14 +547,8 @@ public sealed class AccountApiManagerService : IDisposable
         }
         catch (JsonException)
         {
-            return new AccountApiHealthProbe
-            {
-                Reachable = true,
-                Healthy = statusCode is >= 200 and < 300,
-                HttpStatusCode = statusCode,
-                Status = "响应格式异常",
-                Error = "内置 Account API 返回的健康检查不是有效 JSON。"
-            };
+            return AccountApiHealthProbe.Unreachable(
+                "监听地址返回的内容不是 MCPanel Account API 健康检查响应。");
         }
     }
 
