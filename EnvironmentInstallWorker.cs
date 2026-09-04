@@ -60,7 +60,12 @@ internal static class EnvironmentInstallWorker
             }
             else if (kind == EnvironmentKind.SqlServer)
             {
-                item.SelectedSqlServerReleaseId = selectedReleaseId!;
+                var selectedSqlRelease = SqlServerReleaseCatalog.Resolve(selectedReleaseId);
+                if (!selectedSqlRelease.IsSupported)
+                {
+                    throw new InvalidOperationException(selectedSqlRelease.SupportNote);
+                }
+                item.SelectedSqlServerReleaseId = selectedSqlRelease.Id;
             }
 
             try
