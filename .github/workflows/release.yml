@@ -17,8 +17,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
@@ -33,121 +31,62 @@ jobs:
             throw "Failed to install the VC++ runtime bundle required by the vendored SharpSvn build."
           }
 
-      - name: Apply Account API 1.3.4 lifecycle fix
+      - name: Read application version
+        id: version
         shell: pwsh
         run: |
-          $scriptPath = 'tools\apply-account-api-134-fix.ps1'
-          $script = [IO.File]::ReadAllText($scriptPath).Replace("`r`n", "`n")
-
-          $oldExact = @'
-          function Replace-Exact([string]$Text, [string]$Old, [string]$New, [string]$Label) {
-              if (-not $Text.Contains($Old)) {
-                  throw "Patch anchor not found: $Label"
-              }
-              return $Text.Replace($Old, $New)
+          [xml]$project = Get-Content -LiteralPath 'MCPanel.csproj' -Raw
+          $version = [string]$project.Project.PropertyGroup.Version
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw 'MCPanel.csproj does not define Version.'
           }
-          '@.Trim().Replace("`r`n", "`n")
-          $newExact = @'
-          function Replace-Exact([string]$Text, [string]$Old, [string]$New, [string]$Label) {
-              $Old = $Old.Replace("`r`n", "`n")
-              $New = $New.Replace("`r`n", "`n")
-              if (-not $Text.Contains($Old)) {
-                  throw "Patch anchor not found: $Label"
-              }
-              return $Text.Replace($Old, $New)
-          }
-          '@.Trim().Replace("`r`n", "`n")
-          if (-not $script.Contains($oldExact)) { throw 'Replace-Exact helper anchor not found.' }
-          $script = $script.Replace($oldExact, $newExact)
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "Release version: $version"
 
-          $oldRegex = @'
-          function Replace-RegexOnce([string]$Text, [string]$Pattern, [string]$Replacement, [string]$Label) {
-              $matches = [regex]::Matches($Text, $Pattern)
-              if ($matches.Count -ne 1) {
-                  throw "Expected exactly one match for $Label, found $($matches.Count)."
-              }
-              return [regex]::Replace($Text, $Pattern, $Replacement, 1)
-          }
-          '@.Trim().Replace("`r`n", "`n")
-          $newRegex = @'
-          function Replace-RegexOnce([string]$Text, [string]$Pattern, [string]$Replacement, [string]$Label) {
-              $Replacement = $Replacement.Replace("`r`n", "`n")
-              $matches = [regex]::Matches($Text, $Pattern)
-              if ($matches.Count -ne 1) {
-                  throw "Expected exactly one match for $Label, found $($matches.Count)."
-              }
-              return [regex]::Replace($Text, $Pattern, $Replacement, 1)
-          }
-          '@.Trim().Replace("`r`n", "`n")
-          if (-not $script.Contains($oldRegex)) { throw 'Replace-RegexOnce helper anchor not found.' }
-          $script = $script.Replace($oldRegex, $newRegex)
-
-          # PowerShell variable names are case-insensitive and $Host is a
-          # read-only automatic variable. Rename the patch script's local
-          # AccountApiHost source buffer before executing it.
-          $script = $script.Replace('$host = Read-Normalized $hostPath', '$hostText = Read-Normalized $hostPath')
-          $script = $script.Replace('$host = Replace-Exact $host', '$hostText = Replace-Exact $hostText')
-          $script = $script.Replace('Write-Utf8 $hostPath $host', 'Write-Utf8 $hostPath $hostText')
-
-          [IO.File]::WriteAllText($scriptPath, $script, [Text.UTF8Encoding]::new($false))
-
-          & .\tools\apply-account-api-134-fix.ps1
-          $testPath = 'MCPanel.Tests\ReliabilityTests.AccountApiLifecycle.cs'
-          $test = [IO.File]::ReadAllText($testPath).Replace("`r`n", "`n")
-          if (-not $test.StartsWith('using System.IO;')) {
-            $test = "using System.IO;`n" + $test
-          }
-
-          # TcpListener only gained IDisposable in newer target frameworks.
-          # MCPanel.Tests targets net462, so stop the temporary listeners
-          # explicitly rather than relying on using-var.
-          $test = $test.Replace(
-            '        using var blocker = new TcpListener(IPAddress.Loopback, 0);',
-            '        var blocker = new TcpListener(IPAddress.Loopback, 0);')
-          $test = $test.Replace(
-            '        using var listener = new TcpListener(IPAddress.Loopback, 0);',
-            '        var listener = new TcpListener(IPAddress.Loopback, 0);')
-          $test = $test.Replace(
-            "        finally`n        {`n            host.Dispose();`n        }`n    }`n`n    private static int ReserveFreeTcpPort()",
-            "        finally`n        {`n            host.Dispose();`n            blocker.Stop();`n        }`n    }`n`n    private static int ReserveFreeTcpPort()")
-          $test = $test.Replace(
-            "        listener.Start();`n        return ((IPEndPoint)listener.LocalEndpoint).Port;",
-            "        listener.Start();`n        var port = ((IPEndPoint)listener.LocalEndpoint).Port;`n        listener.Stop();`n        return port;")
-          [IO.File]::WriteAllText($testPath, $test, [Text.UTF8Encoding]::new($false))
-
-      - name: Guard original product download chain
+      - name: Test and publish
         shell: pwsh
         run: |
-          $forbidden = @(
-            'McPanelStoreClient.cs',
-            'SvnProductTransferService.cs',
-            'DownloadService.cs'
-          )
-          $changed = @(git diff --name-only HEAD)
-          $touched = @($changed | Where-Object { $forbidden -contains $_ })
-          if ($touched.Count -gt 0) {
-            throw "Account API fix unexpectedly touched product download chain: $($touched -join ', ')"
-          }
-          Write-Host 'Original product download chain is unchanged.'
-
-      - name: Test and publish patched working tree
-        shell: pwsh
-        run: |
-          $publishDir = Join-Path $env:RUNNER_TEMP 'MCPanel134ValidationPublish'
+          $publishDir = Join-Path $env:RUNNER_TEMP 'MCPanelPublish'
           & .\Publish-WinX64.ps1 -OutputDirectory $publishDir
+          "MCPANEL_PUBLISH_DIR=$publishDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-      - name: Commit validated source to integration branch
+      - name: Build update assets
         shell: pwsh
         run: |
-          git checkout 'bec11776678c9cce3bfb039dc1cfe0c91e8c6999' -- '.github/workflows/release.yml'
-          if (Test-Path '.github\workflows\account-api-134-fix.yml') {
-            Remove-Item -LiteralPath '.github\workflows\account-api-134-fix.yml' -Force
-          }
-          if (Test-Path 'tools\apply-account-api-134-fix.ps1') {
-            Remove-Item -LiteralPath 'tools\apply-account-api-134-fix.ps1' -Force
-          }
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          git commit -m 'fix: stabilize Account API restart lifecycle [skip ci]'
-          git push origin HEAD:integration/1.3.4-account-api-lifecycle
+          $updatesDir = Join-Path $env:RUNNER_TEMP 'MCPanelUpdates'
+          & .\Build-UpdatePackage.ps1 `
+            -Version '${{ steps.version.outputs.version }}' `
+            -PublishDirectory $env:MCPANEL_PUBLISH_DIR `
+            -OutputDirectory $updatesDir `
+            -GitHubRelease `
+            -ReleaseNotes '整合 PR #5 稳定性修复，并完成面板设置、运行内存清理、固定更新进度条与产品下载完成图标优化。'
+          "MCPANEL_UPDATES_DIR=$updatesDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          $tag = "v$version"
+          $zip = Join-Path $env:MCPANEL_UPDATES_DIR "MCPanel-$version.zip"
+          $hash = "$zip.sha256"
+          $manifest = Join-Path $env:MCPANEL_UPDATES_DIR 'update-manifest.json'
+          $notes = @"
+          本版本以稳定性和用户体验优化为主，不改变原有产品下载和部署链路。
+
+          - 避免已有 SQL Server 启动异常时普通安装自动进入彻底清理流程。
+          - 保留 SQL 安装前已有的 Windows PendingFileRenameOperations，并与安装后新增项合并恢复。
+          - UAC 使用其他管理员账号时，安装后补充原桌面用户的 SQL Server 管理权限。
+          - 已配置第三方 SQL Server 证书时保持原配置，不因打开 SSMS 而替换证书或重启服务。
+          - Account API 启用失败自动回滚开关状态，避免下次启动反复重试。
+          - Account API 数据库配置改为完整快照替换，避免热更新期间出现瞬时空配置。
+          - 面板设置将产品缓存清理改为面板运行内存整理，不删除产品数据或图标缓存。
+          - 软件更新区域保留固定横向进度条，更新过程中不再撑开窗口边界。
+          - 产品管理使用指定绿色 SVG 完成图标，开机自启动卡片布局同步优化。
+          - 发布前强制运行可靠性测试，测试失败不生成发布包。
+          "@
+          gh release create $tag $zip $hash $manifest `
+            --target '${{ github.sha }}' `
+            --title "MCPanel $version" `
+            --notes $notes

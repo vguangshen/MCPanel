@@ -19,7 +19,7 @@ internal static class EmbeddedAccountApiRuntime
         {
             lock (Gate)
             {
-                return _host is not null;
+                return _host is not null && _host.IsRunning;
             }
         }
     }
@@ -35,7 +35,21 @@ internal static class EmbeddedAccountApiRuntime
         {
             if (_host is not null)
             {
-                return;
+                if (_host.IsRunning)
+                {
+                    return;
+                }
+
+                // A faulted accept loop must not leave a stale host blocking
+                // recovery. Dispose it while still holding the global gate.
+                try
+                {
+                    _host.Dispose();
+                }
+                finally
+                {
+                    _host = null;
+                }
             }
 
             var options = IniConfiguration.LoadOptions(configPath);
@@ -69,13 +83,24 @@ internal static class EmbeddedAccountApiRuntime
 
     public static void Stop()
     {
-        AccountApiHost? host;
         lock (Gate)
         {
-            host = _host;
-            _host = null;
-        }
+            if (_host is null)
+            {
+                return;
+            }
 
-        host?.Dispose();
+            // Keep the global gate until HttpListener.Stop/Close and the accept
+            // loop shutdown are complete. Start() therefore cannot observe a
+            // false "not running" state while the old listener still owns 8088.
+            try
+            {
+                _host.Dispose();
+            }
+            finally
+            {
+                _host = null;
+            }
+        }
     }
 }
