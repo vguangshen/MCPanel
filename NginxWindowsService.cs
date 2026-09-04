@@ -12,8 +12,8 @@ namespace MCPanel;
 /// Registers and controls the Nginx Windows service used by MCPanel.
 ///
 /// The current Nginx package contains nginx.exe but not the original
-/// nginx-server.exe wrapper.  MCPanel.exe therefore hosts an equivalent
-/// ServiceBase entry point and starts nginx.exe from the installed runtime
+/// nginx-server.exe wrapper. MCPanel.exe therefore hosts an equivalent
+/// ServiceBase entry point and supervises nginx.exe from the installed runtime
 /// directory when launched by the Service Control Manager.
 /// </summary>
 internal static class NginxWindowsServiceManager
@@ -58,7 +58,7 @@ internal static class NginxWindowsServiceManager
     }
 
     /// <summary>
-    /// Checks the service state and its registered component root.  Reading
+    /// Checks the service state and its registered component root. Reading
     /// Process.MainModule.FileName is not reliable from a non-elevated WPF
     /// process when nginx is hosted by the elevated service account.
     /// </summary>
@@ -195,7 +195,31 @@ internal static class NginxWindowsServiceManager
         RunScOrThrow(
             BuildScArguments("description", ServiceName, ServiceDescription),
             "写入 Nginx Windows 服务说明");
+        ConfigureRecoveryPolicy();
     }
+
+    /// <summary>
+    /// Lets SCM recover the wrapper itself. The in-process watchdog handles
+    /// nginx.exe failures while this service process is still alive; SCM
+    /// recovery is the second layer for wrapper crashes or explicit failures.
+    /// </summary>
+    internal static void ConfigureRecoveryPolicy()
+    {
+        RunScOrThrow(BuildRecoveryPolicyArguments(), "配置 Nginx Windows 服务自动恢复");
+        RunScOrThrow(BuildFailureFlagArguments(), "启用 Nginx Windows 服务失败恢复");
+    }
+
+    internal static string BuildRecoveryPolicyArguments() =>
+        BuildScArguments(
+            "failure",
+            ServiceName,
+            "reset=",
+            "86400",
+            "actions=",
+            "restart/5000/restart/15000/restart/30000");
+
+    internal static string BuildFailureFlagArguments() =>
+        BuildScArguments("failureflag", ServiceName, "1");
 
     public static void Start()
     {
@@ -423,7 +447,21 @@ internal static class NginxWindowsServiceHost
 
 internal sealed class NginxWindowsService : ServiceBase
 {
+    internal const int MaxWatchdogRecoveriesPerWindow = 5;
+    internal static readonly TimeSpan WatchdogRecoveryWindow = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan[] RecoveryDelays =
+    [
+        TimeSpan.FromSeconds(1),
+        TimeSpan.FromSeconds(3),
+        TimeSpan.FromSeconds(10),
+        TimeSpan.FromSeconds(30),
+        TimeSpan.FromSeconds(60)
+    ];
+
     private readonly string _nginxRoot;
+    private readonly object _logGate = new();
+    private CancellationTokenSource? _watchdogCancellation;
+    private Task? _watchdogTask;
     private int _stopStarted;
 
     public NginxWindowsService(string nginxRoot)
@@ -435,36 +473,55 @@ internal sealed class NginxWindowsService : ServiceBase
         AutoLog = true;
     }
 
+    internal static TimeSpan GetRecoveryDelay(int previousAttempts)
+    {
+        if (previousAttempts < 0)
+        {
+            previousAttempts = 0;
+        }
+
+        return RecoveryDelays[Math.Min(previousAttempts, RecoveryDelays.Length - 1)];
+    }
+
+    internal static bool ShouldEscalateWatchdog(int attemptsInWindow) =>
+        attemptsInWindow >= MaxWatchdogRecoveriesPerWindow;
+
+    internal static string GetServiceLogPath(string nginxRoot) =>
+        Path.Combine(nginxRoot, "logs", "mcpanel-service.log");
+
     protected override void OnStart(string[] args)
     {
-        var nginxExe = Path.Combine(_nginxRoot, "nginx.exe");
-        if (!File.Exists(nginxExe))
-        {
-            throw new FileNotFoundException("未找到 Nginx 运行文件。", nginxExe);
-        }
+        Interlocked.Exchange(ref _stopStarted, 0);
+        _watchdogCancellation?.Dispose();
+        _watchdogCancellation = new CancellationTokenSource();
 
-        NginxRuntimeManager.KillProcessesUnderRoot(_nginxRoot);
-        using var process = ProcessRunner.Start(nginxExe, string.Empty, _nginxRoot);
-
-        for (var attempt = 0; attempt < 40; attempt++)
+        try
         {
-            if (NginxRuntimeManager.IsRunningUnderRoot(_nginxRoot))
+            try
             {
-                return;
+                // Existing installations also receive the recovery policy on
+                // their next service start. The service account has permission
+                // to update its own SCM recovery settings.
+                NginxWindowsServiceManager.ConfigureRecoveryPolicy();
+            }
+            catch (Exception ex)
+            {
+                WriteServiceLog($"SCM recovery policy update failed and was ignored: {ex.Message}");
             }
 
-            if (process.HasExited)
-            {
-                break;
-            }
+            StartNginxAndVerify(CancellationToken.None, "service start");
+            WriteServiceLog("Nginx service started and watchdog is active.");
 
-            Thread.Sleep(250);
+            var token = _watchdogCancellation.Token;
+            _watchdogTask = Task.Run(() => WatchdogLoop(token), token);
         }
-
-        var log = NginxRuntimeManager.ReadRecentErrorLog(_nginxRoot);
-        throw new InvalidOperationException(string.IsNullOrWhiteSpace(log)
-            ? "Nginx 服务启动后未检测到 nginx.exe。"
-            : $"Nginx 服务启动失败：{log}");
+        catch
+        {
+            _watchdogCancellation.Cancel();
+            _watchdogCancellation.Dispose();
+            _watchdogCancellation = null;
+            throw;
+        }
     }
 
     protected override void OnStop()
@@ -478,6 +535,138 @@ internal sealed class NginxWindowsService : ServiceBase
         base.OnShutdown();
     }
 
+    private void WatchdogLoop(CancellationToken cancellationToken)
+    {
+        var recoveryHistory = new Queue<DateTime>();
+        var unhealthySamples = 0;
+
+        while (!cancellationToken.WaitHandle.WaitOne(TimeSpan.FromSeconds(2)))
+        {
+            var processRunning = NginxRuntimeManager.IsRunningUnderRoot(_nginxRoot);
+            var portsHealthy = processRunning &&
+                NginxRuntimeManager.AreConfiguredPortsListening(
+                    _nginxRoot,
+                    out _,
+                    out _);
+
+            if (processRunning && portsHealthy)
+            {
+                unhealthySamples = 0;
+                continue;
+            }
+
+            // A completely missing nginx process should recover immediately.
+            // If only a configured port is temporarily missing, wait for three
+            // samples so a normal reload cannot be mistaken for a crash.
+            unhealthySamples++;
+            if (processRunning && unhealthySamples < 3)
+            {
+                continue;
+            }
+            unhealthySamples = 0;
+
+            var now = DateTime.UtcNow;
+            while (recoveryHistory.Count > 0 &&
+                   now - recoveryHistory.Peek() > WatchdogRecoveryWindow)
+            {
+                recoveryHistory.Dequeue();
+            }
+
+            if (ShouldEscalateWatchdog(recoveryHistory.Count))
+            {
+                FailServiceProcess(
+                    $"Nginx 在 {WatchdogRecoveryWindow.TotalMinutes:0} 分钟内连续异常超过 {MaxWatchdogRecoveriesPerWindow} 次，停止服务并交给 Windows 服务恢复机制处理。");
+                return;
+            }
+
+            var delay = GetRecoveryDelay(recoveryHistory.Count);
+            recoveryHistory.Enqueue(now);
+            var healthReason = processRunning
+                ? "nginx.exe 仍存在但配置端口未全部监听"
+                : "nginx.exe 已退出";
+            WriteServiceLog(
+                $"Watchdog detected unhealthy Nginx ({healthReason}). Recovery attempt {recoveryHistory.Count}, waiting {delay.TotalSeconds:0}s.");
+
+            if (cancellationToken.WaitHandle.WaitOne(delay))
+            {
+                return;
+            }
+
+            try
+            {
+                StartNginxAndVerify(cancellationToken, "watchdog recovery");
+                WriteServiceLog("Watchdog recovery succeeded.");
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                WriteServiceLog($"Watchdog recovery failed: {ex.Message}");
+                if (ShouldEscalateWatchdog(recoveryHistory.Count))
+                {
+                    FailServiceProcess(
+                        $"Nginx 自动恢复达到上限，最后错误：{ex.Message}");
+                    return;
+                }
+            }
+        }
+    }
+
+    private void StartNginxAndVerify(CancellationToken cancellationToken, string reason)
+    {
+        var nginxExe = Path.Combine(_nginxRoot, "nginx.exe");
+        if (!File.Exists(nginxExe))
+        {
+            throw new FileNotFoundException("未找到 Nginx 运行文件。", nginxExe);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        NginxRuntimeManager.KillProcessesUnderRoot(_nginxRoot);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        WriteServiceLog($"Starting nginx.exe ({reason}).");
+        using var process = ProcessRunner.Start(nginxExe, string.Empty, _nginxRoot);
+
+        for (var attempt = 0; attempt < 40; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (IsNginxHealthy())
+            {
+                return;
+            }
+
+            if (process.HasExited)
+            {
+                break;
+            }
+
+            if (cancellationToken.WaitHandle.WaitOne(250))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+        }
+
+        var log = NginxRuntimeManager.ReadRecentErrorLog(_nginxRoot);
+        throw new InvalidOperationException(string.IsNullOrWhiteSpace(log)
+            ? "Nginx 启动后未形成健康监听。"
+            : $"Nginx 启动失败：{log}");
+    }
+
+    private bool IsNginxHealthy()
+    {
+        if (!NginxRuntimeManager.IsRunningUnderRoot(_nginxRoot))
+        {
+            return false;
+        }
+
+        return NginxRuntimeManager.AreConfiguredPortsListening(
+            _nginxRoot,
+            out var configuredPorts,
+            out _) && configuredPorts.Count > 0;
+    }
+
     private void StopNginx()
     {
         if (Interlocked.Exchange(ref _stopStarted, 1) != 0)
@@ -485,39 +674,102 @@ internal sealed class NginxWindowsService : ServiceBase
             return;
         }
 
-        var nginxExe = Path.Combine(_nginxRoot, "nginx.exe");
+        var watchdogCancellation = _watchdogCancellation;
+        var watchdogTask = _watchdogTask;
         try
         {
-            if (File.Exists(nginxExe))
+            watchdogCancellation?.Cancel();
+            if (watchdogTask is not null)
             {
-                ProcessRunner.RunSynchronously(
-                    nginxExe,
-                    "-s quit",
-                    _nginxRoot,
-                    captureOutput: true,
-                    timeout: TimeSpan.FromSeconds(10));
+                try
+                {
+                    watchdogTask.Wait(TimeSpan.FromSeconds(5));
+                }
+                catch (AggregateException ex) when (ex.InnerExceptions.All(error => error is TaskCanceledException or OperationCanceledException))
+                {
+                    // Expected during service shutdown.
+                }
+            }
+
+            var nginxExe = Path.Combine(_nginxRoot, "nginx.exe");
+            try
+            {
+                if (File.Exists(nginxExe))
+                {
+                    ProcessRunner.RunSynchronously(
+                        nginxExe,
+                        "-s quit",
+                        _nginxRoot,
+                        captureOutput: true,
+                        timeout: TimeSpan.FromSeconds(10));
+                }
+            }
+            catch
+            {
+                // The process-root cleanup below is the final stop fallback.
+            }
+
+            for (var attempt = 0; attempt < 40; attempt++)
+            {
+                if (!NginxRuntimeManager.IsRunningUnderRoot(_nginxRoot))
+                {
+                    WriteServiceLog("Nginx service stopped cleanly.");
+                    return;
+                }
+
+                Thread.Sleep(250);
+            }
+
+            NginxRuntimeManager.KillProcessesUnderRoot(_nginxRoot);
+            if (NginxRuntimeManager.IsRunningUnderRoot(_nginxRoot))
+            {
+                throw new InvalidOperationException(
+                    "Nginx 进程未能完全停止，Windows 服务停止操作失败。");
+            }
+
+            WriteServiceLog("Nginx service stopped after process cleanup fallback.");
+        }
+        finally
+        {
+            _watchdogTask = null;
+            _watchdogCancellation = null;
+            watchdogCancellation?.Dispose();
+        }
+    }
+
+    private void FailServiceProcess(string message)
+    {
+        WriteServiceLog(message);
+        try
+        {
+            NginxRuntimeManager.KillProcessesUnderRoot(_nginxRoot);
+        }
+        catch
+        {
+            // SCM will restart the wrapper and perform another root-scoped cleanup.
+        }
+
+        ExitCode = 1;
+        Environment.Exit(1);
+    }
+
+    private void WriteServiceLog(string message)
+    {
+        try
+        {
+            lock (_logGate)
+            {
+                var logPath = GetServiceLogPath(_nginxRoot);
+                Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+                File.AppendAllText(
+                    logPath,
+                    $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff zzz} {message}{Environment.NewLine}",
+                    new System.Text.UTF8Encoding(false));
             }
         }
         catch
         {
-            // The process-root cleanup below is the final stop fallback.
-        }
-
-        for (var attempt = 0; attempt < 40; attempt++)
-        {
-            if (!NginxRuntimeManager.IsRunningUnderRoot(_nginxRoot))
-            {
-                return;
-            }
-
-            Thread.Sleep(250);
-        }
-
-        NginxRuntimeManager.KillProcessesUnderRoot(_nginxRoot);
-        if (NginxRuntimeManager.IsRunningUnderRoot(_nginxRoot))
-        {
-            throw new InvalidOperationException(
-                "Nginx 进程未能完全停止，Windows 服务停止操作失败。");
+            // Diagnostics must never take down the service.
         }
     }
 }
