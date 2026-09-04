@@ -60,19 +60,22 @@ internal sealed class ProductWebsiteService
         var hasManagedRule = current.Rules.Any(rule =>
             string.Equals(NginxRuntimeManager.NormalizeRule(rule).ManagedWebsiteId, managedId, StringComparison.OrdinalIgnoreCase));
 
-        DeleteManagedCertificatesFromKnownRoots(productId);
-
         // A deleted/corrupted product-state file can make Load return Default
-        // while the Nginx rule and certificate directory still exist.  Check the
+        // while the Nginx rule and certificate directory still exist. Check the
         // persisted rule itself so uninstall remains idempotent and complete.
+        // Certificate files are deliberately deleted only after the rule update
+        // succeeds; otherwise a failed config save could leave Nginx referencing
+        // certificate paths that MCPanel had already removed.
         if (!hasManagedRule)
         {
+            DeleteManagedCertificatesFromKnownRoots(productId);
             return;
         }
 
         if (service.IsNginxInstalled())
         {
             await service.SaveAsync(productId, ProductWebsiteSettings.Default, cancellationToken);
+            DeleteManagedCertificatesFromKnownRoots(productId);
             return;
         }
 
@@ -82,6 +85,7 @@ internal sealed class ProductWebsiteService
             .ToList();
         EnsureAtLeastOneRule(rules, current);
         NginxRuntimeManager.SaveOptions(CreateOptions(current, rules));
+        DeleteManagedCertificatesFromKnownRoots(productId);
     }
 
     public async Task<string> SaveAsync(
