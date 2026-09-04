@@ -23,24 +23,8 @@ jobs:
       - name: Apply patch
         shell: pwsh
         run: |
-          $patchPath = '.github/scripts/patch_sql_iis_138.py'
-          $patchText = Get-Content -LiteralPath $patchPath -Raw
-          $patchText = $patchText.Replace('NT AUTHORITY\NETWORK SERVICE', 'NT AUTHORITY\\NETWORK SERVICE')
-          $patchText = $patchText.Replace('updated, count = re.subn(pattern, replacement, text, count=1, flags=re.S)', 'updated, count = re.subn(pattern, lambda _match: replacement, text, count=1, flags=re.S)')
-          [IO.File]::WriteAllText((Resolve-Path $patchPath), $patchText, (New-Object Text.UTF8Encoding($false)))
-          python $patchPath
-
-          $installerPath = 'EnvironmentInstaller.cs'
-          $installerText = Get-Content -LiteralPath $installerPath -Raw
-          $rewriteLine = @'
-        sb.AppendLine("  $rewriteProcess = Start-Process msiexec.exe -ArgumentList ('/i \"' + $rewriteMsi + '\" /qn /norestart') -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop");
-'@.Trim()
-          $installerText = [regex]::Replace(
-            $installerText,
-            '(?m)^\s*sb\.AppendLine\("  \$rewriteProcess = Start-Process msiexec\.exe.*$',
-            $rewriteLine,
-            1)
-          [IO.File]::WriteAllText((Resolve-Path $installerPath), $installerText, (New-Object Text.UTF8Encoding($false)))
+          python .github/scripts/normalize_patch_138.py
+          python .github/scripts/patch_sql_iis_138.py
 
       - name: Verify protected product download chain unchanged
         shell: pwsh
