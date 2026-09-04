@@ -21,6 +21,26 @@ public partial class ReliabilityTests
     }
 
     [TestMethod]
+    public void SqlServer138_LegacyWindows_RespectsMicrosoftServicePackRequirements()
+    {
+        Assert.AreEqual(WindowsSqlCompatibilityFamily.Windows7, SqlServerOsCompatibility.Classify(false, 7600));
+        Assert.AreEqual(WindowsSqlCompatibilityFamily.Windows7Sp1, SqlServerOsCompatibility.Classify(false, 7601));
+        Assert.AreEqual(WindowsSqlCompatibilityFamily.WindowsServer2008R2, SqlServerOsCompatibility.Classify(true, 7600));
+        Assert.AreEqual(WindowsSqlCompatibilityFamily.WindowsServer2008R2Sp1, SqlServerOsCompatibility.Classify(true, 7601));
+        Assert.AreEqual(WindowsSqlCompatibilityFamily.WindowsVistaSp2, SqlServerOsCompatibility.Classify(false, 6002));
+        Assert.AreEqual(WindowsSqlCompatibilityFamily.WindowsServer2008Sp2, SqlServerOsCompatibility.Classify(true, 6002));
+
+        Assert.IsFalse(SqlServerOsCompatibility.GetSupport(SqlServerReleaseCatalog.SqlServer2012Id, WindowsSqlCompatibilityFamily.Windows7).IsSupported);
+        Assert.IsTrue(SqlServerOsCompatibility.GetSupport(SqlServerReleaseCatalog.SqlServer2012Id, WindowsSqlCompatibilityFamily.Windows7Sp1).IsSupported);
+        Assert.IsTrue(SqlServerOsCompatibility.GetSupport(SqlServerReleaseCatalog.SqlServer2008Id, WindowsSqlCompatibilityFamily.Windows7).IsSupported);
+        Assert.IsFalse(SqlServerOsCompatibility.GetSupport(SqlServerReleaseCatalog.SqlServer2017Id, WindowsSqlCompatibilityFamily.Windows7Sp1).IsSupported);
+        Assert.IsFalse(SqlServerOsCompatibility.GetSupport(SqlServerReleaseCatalog.SqlServer2012Id, WindowsSqlCompatibilityFamily.WindowsServer2008Sp1).IsSupported);
+        Assert.IsTrue(SqlServerOsCompatibility.GetSupport(SqlServerReleaseCatalog.SqlServer2012Id, WindowsSqlCompatibilityFamily.WindowsServer2008Sp2).IsSupported);
+        Assert.IsFalse(SqlServerOsCompatibility.GetSupport(SqlServerReleaseCatalog.SqlServer2012Id, WindowsSqlCompatibilityFamily.WindowsVistaSp1).IsSupported);
+        Assert.IsTrue(SqlServerOsCompatibility.GetSupport(SqlServerReleaseCatalog.SqlServer2012Id, WindowsSqlCompatibilityFamily.WindowsVistaSp2).IsSupported);
+    }
+
+    [TestMethod]
     public void Iis138_UsesWindowsFeaturesWithoutAspnetRegiis_AndValidatesRewriteAndServices()
     {
         var script = EnvironmentInstaller.BuildIisScript(@"C:\Temp\URLRewrite.msi");
