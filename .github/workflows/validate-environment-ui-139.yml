@@ -34,60 +34,42 @@ jobs:
         shell: pwsh
         run: |
           $templatesPath = 'Resources/MainWindowTemplates.xaml'
-          $templates = [System.IO.File]::ReadAllText($templatesPath)
-          $comboOld = @'
-                            <ComboBox Style="{DynamicResource EnvironmentVersionComboBox}"
-                                      ItemsSource="{Binding SqlServerReleaseOptions}"
-'@
-          $comboNew = @'
-                            <ComboBox Style="{DynamicResource EnvironmentVersionComboBox}"
-                                      ItemContainerStyle="{DynamicResource SqlServerEnvironmentVersionComboBoxItem}"
-                                      ItemsSource="{Binding SqlServerReleaseOptions}"
-'@
-          if (([regex]::Matches($templates, [regex]::Escape($comboOld))).Count -ne 1) {
-            throw 'Could not uniquely locate the SQL Server version ComboBox.'
-          }
-          $templates = $templates.Replace($comboOld, $comboNew)
+          $templates = [System.IO.File]::ReadAllText($templatesPath).Replace("`r`n", "`n")
 
-          $nestedStyle = @'
-                                <ComboBox.ItemContainerStyle>
-                                    <Style TargetType="ComboBoxItem" BasedOn="{DynamicResource EnvironmentVersionComboBoxItem}">
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsSupported}" Value="False">
-                                                <Setter Property="IsEnabled" Value="False" />
-                                                <Setter Property="ToolTip" Value="{Binding SupportNote}" />
-                                                <Setter Property="Opacity" Value="0.55" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </ComboBox.ItemContainerStyle>
-'@
-          if (([regex]::Matches($templates, [regex]::Escape($nestedStyle))).Count -ne 1) {
-            throw 'Could not uniquely locate the invalid inline SQL Server item style.'
-          }
-          $templates = $templates.Replace($nestedStyle, '')
+          $comboPattern = '(?m)^(\s*)<ComboBox Style="\{DynamicResource EnvironmentVersionComboBox\}"\n\s*ItemsSource="\{Binding SqlServerReleaseOptions\}"'
+          $comboMatches = [regex]::Matches($templates, $comboPattern)
+          if ($comboMatches.Count -ne 1) { throw "Could not uniquely locate SQL Server ComboBox: $($comboMatches.Count) matches." }
+          $indent = $comboMatches[0].Groups[1].Value
+          $comboReplacement = $indent + '<ComboBox Style="{DynamicResource EnvironmentVersionComboBox}"' + "`n" +
+              $indent + '          ItemContainerStyle="{DynamicResource SqlServerEnvironmentVersionComboBoxItem}"' + "`n" +
+              $indent + '          ItemsSource="{Binding SqlServerReleaseOptions}"'
+          $templates = [regex]::Replace($templates, $comboPattern, [System.Text.RegularExpressions.MatchEvaluator]{ param($m) $comboReplacement }, 1)
+
+          $nestedPattern = '(?ms)^\s*<ComboBox\.ItemContainerStyle>\s*<Style TargetType="ComboBoxItem" BasedOn="\{DynamicResource EnvironmentVersionComboBoxItem\}">.*?</ComboBox\.ItemContainerStyle>\n?'
+          $nestedMatches = [regex]::Matches($templates, $nestedPattern)
+          if ($nestedMatches.Count -ne 1) { throw "Could not uniquely locate invalid inline SQL Server item style: $($nestedMatches.Count) matches." }
+          $templates = [regex]::Replace($templates, $nestedPattern, '', 1)
           [System.IO.File]::WriteAllText($templatesPath, $templates, [System.Text.UTF8Encoding]::new($false))
 
           $themePath = 'Resources/PanelTheme.xaml'
-          $theme = [System.IO.File]::ReadAllText($themePath)
+          $theme = [System.IO.File]::ReadAllText($themePath).Replace("`r`n", "`n")
           $anchor = '    <Style x:Key="ProductUpdateButton" TargetType="Button" BasedOn="{StaticResource EnvironmentWarningButton}">'
-          if (([regex]::Matches($theme, [regex]::Escape($anchor))).Count -ne 1) {
-            throw 'Could not uniquely locate the PanelTheme insertion point.'
-          }
-          $derivedStyle = @'
-    <Style x:Key="SqlServerEnvironmentVersionComboBoxItem"
-           TargetType="ComboBoxItem"
-           BasedOn="{StaticResource EnvironmentVersionComboBoxItem}">
-        <Style.Triggers>
-            <DataTrigger Binding="{Binding IsSupported}" Value="False">
-                <Setter Property="IsEnabled" Value="False" />
-                <Setter Property="ToolTip" Value="{Binding SupportNote}" />
-                <Setter Property="Opacity" Value="0.55" />
-            </DataTrigger>
-        </Style.Triggers>
-    </Style>
-
-'@
+          if (([regex]::Matches($theme, [regex]::Escape($anchor))).Count -ne 1) { throw 'Could not uniquely locate PanelTheme insertion point.' }
+          $derivedLines = @(
+              '    <Style x:Key="SqlServerEnvironmentVersionComboBoxItem"',
+              '           TargetType="ComboBoxItem"',
+              '           BasedOn="{StaticResource EnvironmentVersionComboBoxItem}">',
+              '        <Style.Triggers>',
+              '            <DataTrigger Binding="{Binding IsSupported}" Value="False">',
+              '                <Setter Property="IsEnabled" Value="False" />',
+              '                <Setter Property="ToolTip" Value="{Binding SupportNote}" />',
+              '                <Setter Property="Opacity" Value="0.55" />',
+              '            </DataTrigger>',
+              '        </Style.Triggers>',
+              '    </Style>',
+              ''
+          )
+          $derivedStyle = ($derivedLines -join "`n") + "`n"
           $theme = $theme.Replace($anchor, $derivedStyle + $anchor)
           [System.IO.File]::WriteAllText($themePath, $theme, [System.Text.UTF8Encoding]::new($false))
 
