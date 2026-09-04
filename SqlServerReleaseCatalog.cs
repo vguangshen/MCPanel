@@ -8,6 +8,8 @@ namespace MCPanel;
 /// the archived Microsoft requirements for older Windows versions still
 /// reachable by the legacy MCPanel compatibility path.
 /// Unsupported entries remain visible in the UI, but cannot be selected.
+/// If Windows cannot be positively identified, all entries remain enabled
+/// instead of guessing an operating-system family.
 /// </summary>
 public sealed record SqlServerReleaseDefinition(string Id, string DisplayName)
 {
@@ -110,6 +112,11 @@ internal static class SqlServerOsCompatibility
 
         if (supported)
         {
+            if (family == WindowsSqlCompatibilityFamily.Unknown)
+            {
+                return new(true, "无法识别当前 Windows 版本，未应用 SQL Server 版本限制。 ");
+            }
+
             if (normalized == SqlServerReleaseCatalog.SqlServer2008Id)
             {
                 return new(true, "Microsoft 官方旧版要求中仅保留 SQL Server 2008 SP4 兼容入口；请确认安装包已达到 SP4。 ");
@@ -147,20 +154,20 @@ internal static class SqlServerOsCompatibility
             using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion");
             var productName = Convert.ToString(key?.GetValue("ProductName"))?.Trim() ?? string.Empty;
             var buildText = Convert.ToString(key?.GetValue("CurrentBuildNumber"))?.Trim();
-            var build = int.TryParse(buildText, out var parsedBuild)
-                ? parsedBuild
-                : Environment.OSVersion.Version.Build;
+            if (string.IsNullOrWhiteSpace(productName) ||
+                !int.TryParse(buildText, out var build) ||
+                build <= 0)
+            {
+                return (WindowsSqlCompatibilityFamily.Unknown, "无法识别的 Windows");
+            }
+
             var isServer = productName.Contains("Server", StringComparison.OrdinalIgnoreCase);
             var family = Classify(isServer, build);
-            var displayName = string.IsNullOrWhiteSpace(productName)
-                ? FamilyDisplayName(family)
-                : productName;
-            return (family, displayName);
+            return (family, productName);
         }
         catch
         {
-            var version = Environment.OSVersion.Version;
-            return (WindowsSqlCompatibilityFamily.Unknown, $"Windows {version}");
+            return (WindowsSqlCompatibilityFamily.Unknown, "无法识别的 Windows");
         }
     }
 
@@ -247,24 +254,8 @@ public static class SqlServerReleaseCatalog
         SqlServer2008
     ];
 
-    public static SqlServerReleaseDefinition Recommended
-    {
-        get
-        {
-            var supported = Options.FirstOrDefault(option => option.IsSupported);
-            if (supported is not null)
-            {
-                return supported;
-            }
-
-            var version = Environment.OSVersion.Version;
-            if (version.Major >= 10 && version.Build >= 22000) return SqlServer2025;
-            if (version.Major >= 10) return SqlServer2022;
-            if (version.Major == 6 && version.Minor >= 3) return SqlServer2017;
-            if (version.Major == 6 && version.Minor == 2) return SqlServer2012;
-            return SqlServer2008;
-        }
-    }
+    public static SqlServerReleaseDefinition Recommended =>
+        Options.FirstOrDefault(option => option.IsSupported) ?? SqlServer2025;
 
     public static bool Contains(string? id) =>
         !string.IsNullOrWhiteSpace(id) &&
