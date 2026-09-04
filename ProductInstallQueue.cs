@@ -893,6 +893,9 @@ public sealed class ProductInstallQueueItemViewModel : ObservableObject
     internal ProductInstallWorkerRequest Request { get; }
     public string ProductId => Request.ProductId;
     public string ProductName => ResolveProductName(Request);
+    public string IconPath => string.IsNullOrWhiteSpace(Request.IconPath)
+        ? "/Assets/defaultimg.png"
+        : ProductIconCache.ResolveCachedIconPath(Request.ProductId, Request.IconPath);
     public bool IsUpdate => Request.IsUpdate;
     public ProductInstallQueueStatus State
     {
@@ -945,7 +948,6 @@ public sealed class ProductInstallQueueItemViewModel : ObservableObject
             }
 
             OnPropertyChanged(nameof(StateText));
-            OnPropertyChanged(nameof(QueueNumberText));
         }
     }
 
@@ -997,7 +999,6 @@ public sealed class ProductInstallQueueItemViewModel : ObservableObject
     public string PauseActionToolTip => IsPaused ? "继续下载此软件" : "暂停下载此软件";
     public string RemoveActionGlyph => "\uE74D";
     public string RemoveToolTip => IsTerminal ? "删除此记录" : "取消并删除此任务";
-    public string QueueNumberText => QueuePosition > 0 ? $"第{QueuePosition}" : $"#{Sequence}";
     public string StateText => IsRemovalRequested
         ? "正在删除"
         : IsPaused

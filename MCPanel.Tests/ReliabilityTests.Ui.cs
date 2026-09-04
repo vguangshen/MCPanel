@@ -106,7 +106,7 @@ public sealed partial class ReliabilityTests
                                 $"UI{index:000}",
                                 $"弹窗绑定测试软件 {index}",
                                 "在线",
-                                string.Empty,
+                                "/Assets/Logo/DS0102.png",
                                 ProductSource.Local,
                                 null,
                                 "Tomcat7",
@@ -167,6 +167,13 @@ public sealed partial class ReliabilityTests
                 {
                     var container = itemsControl.ItemContainerGenerator.ContainerFromIndex(index);
                     Assert.IsNotNull(container, $"第 {index + 1} 条队列任务没有生成可视行。");
+
+                    var productIconFrame = FindVisualChildren<Border>(container!)
+                        .SingleOrDefault(candidate => candidate.Width == 34d && candidate.Height == 34d);
+                    Assert.IsNotNull(productIconFrame, $"第 {index + 1} 条队列任务必须显示产品图标容器。");
+                    var productIcon = FindVisualChildren<Image>(productIconFrame!)
+                        .SingleOrDefault();
+                    Assert.IsNotNull(productIcon, $"第 {index + 1} 条队列任务必须渲染产品图标。");
 
                     var visibleButtons = FindVisualChildren<Button>(container!)
                         .Where(candidate => candidate.Visibility == Visibility.Visible)
