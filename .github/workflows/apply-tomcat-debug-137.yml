@@ -68,6 +68,15 @@ jobs:
         shell: pwsh
         run: .\tools\apply-tomcat-debug-137.ps1
 
+      - name: Fix test framework compatibility
+        shell: pwsh
+        run: |
+          $test = '.\MCPanel.Tests\ReliabilityTests.TomcatDebug137.cs'
+          $text = [IO.File]::ReadAllText($test)
+          if (-not $text.StartsWith('using System;')) {
+            [IO.File]::WriteAllText($test, "using System;`n" + $text, [Text.UTF8Encoding]::new($false))
+          }
+
       - name: Guard original product download chain
         shell: pwsh
         run: |
