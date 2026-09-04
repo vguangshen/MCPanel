@@ -26,6 +26,21 @@ jobs:
           python .github/scripts/normalize_patch_138.py
           python .github/scripts/patch_sql_iis_138.py
 
+      - name: Align IIS regression test with restart-aware MSI handling
+        shell: pwsh
+        run: |
+          $path = 'MCPanel.Tests/ReliabilityTests.Configuration.cs'
+          $text = Get-Content -LiteralPath $path -Raw
+          $old = '        StringAssert.Contains(script, "$rewriteProcess.ExitCode -notin @(0, 3010)");'
+          $new = @'
+        StringAssert.Contains(script, "$rewriteProcess.ExitCode -eq 3010");
+        StringAssert.Contains(script, "Mark-RestartRequired");
+        StringAssert.Contains(script, "$rewriteProcess.ExitCode -ne 0");
+'@
+          if (-not $text.Contains($old)) { throw 'Legacy IIS MSI exit-code assertion was not found.' }
+          $text = $text.Replace($old, $new.TrimEnd("`r", "`n"))
+          [IO.File]::WriteAllText((Resolve-Path $path), $text, (New-Object Text.UTF8Encoding($false)))
+
       - name: Verify protected product download chain unchanged
         shell: pwsh
         run: |
@@ -58,7 +73,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add SqlServerReleaseCatalog.cs EnvironmentInstaller.cs EnvironmentInstallWorker.cs ViewModels/EnvironmentViewModels.cs Resources/MainWindowTemplates.xaml MCPanel.Tests/ReliabilityTests.SqlIis138.cs MCPanel.csproj
+          git add SqlServerReleaseCatalog.cs EnvironmentInstaller.cs EnvironmentInstallWorker.cs ViewModels/EnvironmentViewModels.cs Resources/MainWindowTemplates.xaml MCPanel.Tests/ReliabilityTests.Configuration.cs MCPanel.Tests/ReliabilityTests.SqlIis138.cs MCPanel.csproj
           if (git diff --cached --quiet) { throw 'Patch produced no changes.' }
           git commit -m 'fix: harden SQL Server and IIS installation'
           git push origin HEAD:fix/1.3.8-sql-iis-reliability
