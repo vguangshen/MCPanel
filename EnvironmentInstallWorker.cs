@@ -1,8 +1,10 @@
 using System.ComponentModel;
+using System.Data.SqlClient;
 using System.Diagnostics;
 using System.IO;
 using System.Security.Principal;
 using System.Text.Json;
+using Microsoft.Win32;
 
 namespace MCPanel;
 
@@ -20,7 +22,7 @@ internal static class EnvironmentInstallWorker
 
     public static async Task<int> RunAsync(string[] args)
     {
-        if (!TryGetRequest(args, out var kind, out var progressPath, out var selectedReleaseId))
+        if (!TryGetRequest(args, out var kind, out var progressPath, out var selectedReleaseId, out var interactiveWindowsUser))
         {
             return 2;
         }
@@ -40,6 +42,12 @@ internal static class EnvironmentInstallWorker
                 force: true,
                 stage: InstallProgressStage.Preparing,
                 stagePercent: 0);
+
+            if (kind == EnvironmentKind.SqlServer)
+            {
+                await PrepareSqlServerInstallAsync(reporter).ConfigureAwait(true);
+            }
+
             using var installer = new EnvironmentInstaller();
             var item = new EnvironmentItem(kind, kind.ToString(), string.Empty, string.Empty);
             if (kind == EnvironmentKind.MySql)
@@ -52,6 +60,33 @@ internal static class EnvironmentInstallWorker
             }
 
             await installer.InstallAsync(item, reporter.Report, CancellationToken.None).ConfigureAwait(true);
+
+            if (kind == EnvironmentKind.SqlServer && !string.IsNullOrWhiteSpace(interactiveWindowsUser))
+            {
+                reporter.Write(
+                    "running",
+                    98,
+                    "正在确认当前桌面用户的 SQL Server 管理权限...",
+                    force: true,
+                    stage: InstallProgressStage.Installing,
+                    stagePercent: 98);
+                try
+                {
+                    EnsureSqlServerWindowsLogin(interactiveWindowsUser!);
+                }
+                catch (Exception accessError)
+                {
+                    // SQL Server itself is already installed and usable through sa.
+                    // Do not turn a convenience-login repair into a false installation
+                    // failure; retain a diagnostic so the user can still troubleshoot it.
+                    EnvironmentOperationDiagnostics.RecordFailure(
+                        "SqlServer",
+                        "补充当前桌面用户 SQL Server 管理权限",
+                        accessError,
+                        Path.Combine(ComponentPaths.WorkRoot, "sqlserver-interactive-login.log"));
+                }
+            }
+
             reporter.Write(
                 "completed",
                 100,
@@ -88,6 +123,182 @@ internal static class EnvironmentInstallWorker
         }
     }
 
+    private static async Task PrepareSqlServerInstallAsync(ProgressReporter reporter)
+    {
+        var runtimeService = new EnvironmentRuntimeService();
+        var state = runtimeService.GetState(EnvironmentKind.SqlServer);
+        if (state.IsInstalled)
+        {
+            if (!state.IsRunning)
+            {
+                reporter.Write(
+                    "running",
+                    2,
+                    "检测到已有 SQL Server，正在先尝试正常启动现有实例...",
+                    force: true,
+                    stage: InstallProgressStage.Preparing,
+                    stagePercent: 2);
+                try
+                {
+                    await runtimeService.StartAsync(EnvironmentKind.SqlServer).ConfigureAwait(true);
+                }
+                catch (Exception startError)
+                {
+                    throw new InvalidOperationException(
+                        "检测到已有 MSSQLSERVER 实例，但当前实例无法正常启动。为避免普通“安装”操作覆盖或清理现有数据库，MCPanel 已停止本次安装。请先在“环境”页尝试启动/重启 SQL Server；如果确认该实例可以删除，再使用“卸载”完成清理后重新安装。",
+                        startError);
+                }
+
+                if (!runtimeService.IsRunning(EnvironmentKind.SqlServer))
+                {
+                    throw new InvalidOperationException(
+                        "检测到已有 MSSQLSERVER 实例，但启动后仍未进入运行状态。MCPanel 已停止本次安装，不会自动清理现有 SQL Server。请先修复或明确卸载旧实例后再安装。");
+                }
+            }
+
+            // A healthy existing instance is intentionally allowed through. The
+            // installer will only repair MCPanel's expected local connection settings
+            // and then exit instead of performing a fresh installation.
+            return;
+        }
+
+        if (HasStaleSqlServerDefaultInstanceRegistration())
+        {
+            throw new InvalidOperationException(
+                "检测到 MSSQLSERVER 默认实例的注册信息仍然存在，但 Windows 服务已经不存在。普通安装不会自动删除这些系统残留。请先使用“卸载 SQL Server”完成清理，或确认旧实例已处理后再重新安装。");
+        }
+
+        if (HasPendingFileRenameOperations())
+        {
+            throw new InstallRestartRequiredException(
+                "Windows 当前存在待重启的文件操作。为避免 SQL Server 安装过程中清除其他软件的待处理任务，请先重启 Windows，然后再次点击安装。");
+        }
+    }
+
+    private static bool HasPendingFileRenameOperations()
+    {
+        try
+        {
+            using var key = Registry.LocalMachine.OpenSubKey(
+                @"SYSTEM\CurrentControlSet\Control\Session Manager",
+                writable: false);
+            var value = key?.GetValue("PendingFileRenameOperations");
+            return value switch
+            {
+                string text => !string.IsNullOrWhiteSpace(text),
+                string[] values => values.Any(item => !string.IsNullOrWhiteSpace(item)),
+                _ => value is not null
+            };
+        }
+        catch
+        {
+            // If Windows denies the probe, leave the legacy installer behavior
+            // untouched rather than blocking installation on an inconclusive check.
+            return false;
+        }
+    }
+
+    private static bool HasStaleSqlServerDefaultInstanceRegistration()
+    {
+        if (WindowsServiceExists("MSSQLSERVER"))
+        {
+            return false;
+        }
+
+        foreach (var view in RegistryViews())
+        {
+            try
+            {
+                using var baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+                using var instances = baseKey.OpenSubKey(@"SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL");
+                var instanceId = Convert.ToString(instances?.GetValue("MSSQLSERVER"));
+                if (!string.IsNullOrWhiteSpace(instanceId))
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        return false;
+    }
+
+    private static IEnumerable<RegistryView> RegistryViews()
+    {
+        if (Environment.Is64BitOperatingSystem)
+        {
+            yield return RegistryView.Registry64;
+        }
+        yield return RegistryView.Registry32;
+    }
+
+    private static bool WindowsServiceExists(string serviceName)
+    {
+        try
+        {
+            return ProcessRunner.RunSynchronously(
+                "sc.exe",
+                $"query {Compat.QuoteCommandLineArgument(serviceName)}",
+                ComponentPaths.ApplicationRoot,
+                captureOutput: true,
+                timeout: TimeSpan.FromSeconds(3)).ExitCode == 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void EnsureSqlServerWindowsLogin(string windowsUser)
+    {
+        var user = (windowsUser ?? string.Empty).Trim();
+        if (user.Length == 0 || user.Length > 256 || user.Any(char.IsControl) ||
+            user.StartsWith("NT AUTHORITY\\", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var credentials = SqlServerCredentialStore.Load();
+        var builder = new SqlConnectionStringBuilder
+        {
+            DataSource = SqlServerCredentialStore.GetServerTarget(credentials),
+            InitialCatalog = "master",
+            UserID = credentials.UserName,
+            Password = credentials.Password,
+            IntegratedSecurity = false,
+            Encrypt = false,
+            TrustServerCertificate = true,
+            ConnectTimeout = 15
+        };
+
+        var literal = user.Replace("'", "''", StringComparison.Ordinal);
+        var identifier = user.Replace("]", "]]", StringComparison.Ordinal);
+        var query = $@"
+IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'{literal}')
+BEGIN
+    CREATE LOGIN [{identifier}] FROM WINDOWS;
+END;
+IF NOT EXISTS (
+    SELECT 1
+    FROM sys.server_role_members AS rm
+    INNER JOIN sys.server_principals AS rolePrincipal ON rolePrincipal.principal_id = rm.role_principal_id
+    INNER JOIN sys.server_principals AS memberPrincipal ON memberPrincipal.principal_id = rm.member_principal_id
+    WHERE rolePrincipal.name = N'sysadmin' AND memberPrincipal.name = N'{literal}'
+)
+BEGIN
+    ALTER SERVER ROLE [sysadmin] ADD MEMBER [{identifier}];
+END;";
+
+        using var connection = new SqlConnection(builder.ConnectionString);
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = query;
+        command.CommandTimeout = 30;
+        command.ExecuteNonQuery();
+    }
+
     public static Process Start(EnvironmentKind kind, string progressPath, string? selectedReleaseId = null)
     {
         var executable = Process.GetCurrentProcess().MainModule?.FileName;
@@ -107,6 +318,12 @@ internal static class EnvironmentInstallWorker
                 ? MySqlReleaseCatalog.Contains(selectedReleaseId) ? selectedReleaseId! : MySqlReleaseCatalog.Default.Id
                 : SqlServerReleaseCatalog.Contains(selectedReleaseId) ? selectedReleaseId! : SqlServerReleaseCatalog.Recommended.Id;
             arguments += " " + Compat.QuoteCommandLineArgument(releaseId);
+
+            if (kind == EnvironmentKind.SqlServer)
+            {
+                var interactiveUser = WindowsIdentity.GetCurrent().Name ?? string.Empty;
+                arguments += " " + Compat.QuoteCommandLineArgument(interactiveUser);
+            }
         }
 
         try
@@ -186,11 +403,13 @@ internal static class EnvironmentInstallWorker
         string[] args,
         out EnvironmentKind kind,
         out string progressPath,
-        out string? selectedReleaseId)
+        out string? selectedReleaseId,
+        out string? interactiveWindowsUser)
     {
         kind = default;
         progressPath = string.Empty;
         selectedReleaseId = null;
+        interactiveWindowsUser = null;
         var index = Array.FindIndex(args, argument =>
             string.Equals(argument, WorkerArgument, StringComparison.OrdinalIgnoreCase));
         if (index < 0 || index + 2 >= args.Length ||
@@ -216,6 +435,14 @@ internal static class EnvironmentInstallWorker
             }
 
             selectedReleaseId = args[index + 3];
+            if (kind == EnvironmentKind.SqlServer && index + 4 < args.Length)
+            {
+                var suppliedUser = (args[index + 4] ?? string.Empty).Trim();
+                if (suppliedUser.Length <= 256 && !suppliedUser.Any(char.IsControl))
+                {
+                    interactiveWindowsUser = suppliedUser;
+                }
+            }
         }
 
         try
