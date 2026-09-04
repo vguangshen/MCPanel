@@ -27,12 +27,12 @@ internal static class ProductInstallPathResolver
 
         if (string.IsNullOrWhiteSpace(configured))
         {
-            configured = Path.Combine(AppContext.BaseDirectory, "web");
+            configured = ComponentPaths.WebRoot;
         }
 
         if (!Path.IsPathRooted(configured))
         {
-            configured = Path.Combine(AppContext.BaseDirectory, configured);
+            configured = Path.Combine(ComponentPaths.ApplicationRoot, configured);
         }
 
         return Path.GetFullPath(configured!.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));

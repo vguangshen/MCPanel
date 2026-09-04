@@ -38,7 +38,7 @@ public static class NginxProductProxyService
         await SyncLock.WaitAsync(cancellationToken);
         try
         {
-            if (!ComponentPaths.NginxSearchRoots.Any(root => NginxRuntimeManager.FindNginxExe(root) is not null))
+            if (new ComponentLocator().FindNginxExecutable() is null)
             {
                 return;
             }
@@ -233,7 +233,7 @@ public static class NginxProductProxyService
     {
         try
         {
-            var workDirectory = Path.Combine(AppContext.BaseDirectory, "StoreData", "Work");
+            var workDirectory = ComponentPaths.WorkRoot;
             var detail = exception is null ? string.Empty : $"{Environment.NewLine}{exception}";
             RollingLogWriter.Append(
                 Path.Combine(workDirectory, "nginx-product-sync.log"),

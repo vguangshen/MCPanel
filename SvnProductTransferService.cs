@@ -376,7 +376,7 @@ internal sealed class SvnProductTransferService
             var display = string.IsNullOrWhiteSpace(path)
                 ? "产品文件"
                 : Path.GetFileName(path!.TrimEnd('/', '\\'));
-            var statusText = $"正在{operation}：{display}（已扫描 {transfer.ScannedFiles:N0} 项，{FormatBytes(transfer.ScannedBytes)}）";
+            var statusText = $"正在{operation}：{display}（已扫描 {transfer.ScannedFiles:N0} 项，{ProductTransferFormatting.FormatBytes(transfer.ScannedBytes)}）";
             status?.Invoke(statusText);
             ReportProgress(statusText);
         };
@@ -401,8 +401,6 @@ internal sealed class SvnProductTransferService
             return false;
         }
     }
-
-    private static string FormatBytes(long bytes) => ProductTransferFormatting.FormatBytes(bytes);
 
     private sealed class TransferTelemetry
     {

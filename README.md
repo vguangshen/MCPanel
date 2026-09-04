@@ -18,6 +18,15 @@ Modern WPF panel for configuring and installing .NET and Java software.
 - SOAP integration for `http://regservice.itmc.cn/Service.asmx`.
 - Download credentials for the legacy update/WebDAV/SVN store are kept in `McPanelStoreClient`.
 
+## Code layout
+
+The main window code-behind is kept focused on window lifecycle and UI event
+routing. Its settings, product, and environment handlers live in
+`MainWindow.*.cs` partials; reusable bindings are grouped under `ViewModels`,
+`Controls`, `Converters`, and `Services`. The reliability tests follow the
+same split under `MCPanel.Tests`, so adding a new feature does not require
+extending one monolithic source file.
+
 ## Environment download URLs
 
 The published application reads environment package URLs from `MCPanel.exe.config` beside the executable. Edit the matching `Environment.*` values before the next installation; no rebuild is needed.
@@ -25,11 +34,11 @@ The published application reads environment package URLs from `MCPanel.exe.confi
 - `Environment.Iis.UrlRewriteUrl` — IIS URL Rewrite MSI. IIS itself is enabled through Windows features.
 - `Environment.Nginx.PackageUrl` — Nginx package.
 - `Environment.MySql.PackageUrl` — MySQL package.
-- `Environment.SqlServer.Sql2025ExpressUrl`, `Sql2022ExpressUrl`, `Sql2017ExpressUrl`, `Sql2008ExpressX64Url`, and `Sql2008ExpressX86Url` — Windows-version-specific SQL Server installers.
+- `Environment.SqlServer.Sql2025ExpressUrl`, `Sql2025EnterpriseDeveloperUrl`, `Sql2022ExpressUrl`, `Sql2017ExpressUrl`, `Sql2012ExpressX64Url`, `Sql2012ExpressX86Url`, `Sql2008ExpressX64Url`, and `Sql2008ExpressX86Url` — SQL Server installers for the supported editions and architectures.
 - `Environment.Tomcat.PackageUrl` — Tomcat package.
 - `Environment.Frp.PackageUrl` — FRP Windows amd64 archive.
 
-Values must be full `http://` or `https://` URLs. If a value is missing or invalid, MCPanel falls back to the built-in default. Customized values are preserved when the application updates.
+Values must be full `http://` or `https://` URLs. MCPanel validates every catalog entry at startup and reports the exact missing or invalid keys. The installer refuses to start with an incomplete executable configuration instead of silently choosing a different package. Customized values are preserved when the application updates; the complete built-in catalog remains available for tests and explicit compatibility loading.
 
 AI analysis uses the same `MCPanel.exe.config`: edit `Ai.Provider`, `Ai.Endpoint`, `Ai.Model`, and `Ai.ApiKey`. The API key is stored as plain text in this file because it is an administrator-managed deployment setting; keep the file access restricted.
 
@@ -46,11 +55,9 @@ dotnet run --project .\MCPanel.csproj
 ```
 
 The default release is written to `D:\MCPanel`; pass `-OutputDirectory` to
-choose another location. The script replaces program files while preserving
-`StoreData`, the separate `AccountApi` component directory, `Runtime`,
-`Downloads`, `Tools`, `web`, `Cache`, `Frp`, `Nginx`, `MySQL`, `MSSQL`, `Tomcat`,
-`SSMS`, `Navicat Premium Lite`, and legacy Account API state files when they
-already exist in the release directory. Older `StoreData\Runtime`,
+choose another location. The canonical list of top-level entries preserved by
+publishing, packaging, and in-app replacement is maintained in
+`deployment-layout.json`. Older `StoreData\Runtime`,
 `StoreData\Downloads`, `StoreData\Tools`, and `StoreData\ProductIcons`
 directories are migrated on startup.
 

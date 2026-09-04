@@ -257,5 +257,5 @@ public static class SqlServerCredentialStore
         return "it" + new string(buffer) + "8";
     }
 
-    private static string CredentialFile => Path.Combine(AppContext.BaseDirectory, "StoreData", "RuntimeState", "sqlserver-default.json");
+    private static string CredentialFile => Path.Combine(ComponentPaths.RuntimeStateRoot, "sqlserver-default.json");
 }

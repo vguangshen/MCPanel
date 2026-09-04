@@ -24,7 +24,7 @@ internal static class ProcessLifecycle
             }
         }
 
-        var completed = await Task.WhenAny(waitTask, Task.Delay(timeout.Value));
+        var completed = await Task.WhenAny(waitTask, Task.Delay(timeout.Value, cancellationToken));
         if (completed != waitTask)
         {
             TryKill(process);

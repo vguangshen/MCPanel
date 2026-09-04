@@ -90,20 +90,11 @@ internal sealed class NavicatPremiumLiteInstaller
             72,
             $"正在安装 Navicat Premium Lite 到 {ComponentPaths.NavicatLiteRoot}..."));
 
-        using var process = Process.Start(new ProcessStartInfo
-        {
-            FileName = installerPath,
-            Arguments = BuildInstallerArguments(ComponentPaths.NavicatLiteRoot, installLogPath),
-            WorkingDirectory = installerDirectory,
-            UseShellExecute = true,
-            Verb = "runas",
-            WindowStyle = ProcessWindowStyle.Hidden
-        });
-
-        if (process is null)
-        {
-            throw new InvalidOperationException("无法启动 Navicat Premium Lite 安装器。");
-        }
+        using var process = ProcessRunner.Start(
+            installerPath,
+            BuildInstallerArguments(ComponentPaths.NavicatLiteRoot, installLogPath),
+            installerDirectory,
+            elevated: true);
 
         await ProcessLifecycle.WaitForExitAsync(process, cancellationToken);
         if (process.ExitCode is not 0 and not 3010)
@@ -363,7 +354,7 @@ internal sealed class NavicatPremiumLiteInstaller
                             : PanelSettingsService.FormatStorageSize(receivedBytes);
                         progress?.Invoke(new InstallProgress(
                             Compat.Clamp(percent, 0, 70),
-                            $"正在下载 Navicat Premium Lite：{downloadedText}，速度 {FormatTransferRate(speed)}"));
+                            $"正在下载 Navicat Premium Lite：{downloadedText}，速度 {ProductTransferFormatting.FormatRate(speed)}"));
                         lastProgressAt = now;
                     }
                 }
@@ -387,21 +378,6 @@ internal sealed class NavicatPremiumLiteInstaller
         }
 
         throw new InvalidDataException("Navicat Premium Lite 断点文件与服务器状态不一致，请重试。");
-    }
-
-    private static string FormatTransferRate(double bytesPerSecond)
-    {
-        if (bytesPerSecond >= 1024 * 1024)
-        {
-            return $"{bytesPerSecond / 1024 / 1024:0.0} MB/s";
-        }
-
-        if (bytesPerSecond >= 1024)
-        {
-            return $"{bytesPerSecond / 1024:0} KB/s";
-        }
-
-        return $"{bytesPerSecond:0} B/s";
     }
 
     private static bool IsExpectedProductFileName(string value) =>

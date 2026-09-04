@@ -16,6 +16,12 @@ internal static class ComponentPaths
 {
     public static string ApplicationRoot => Path.GetFullPath(AppContext.BaseDirectory);
     public static string StoreDataRoot => Path.Combine(ApplicationRoot, "StoreData");
+    public static string RuntimeStateRoot => Path.Combine(StoreDataRoot, "RuntimeState");
+    public static string WorkRoot => Path.Combine(StoreDataRoot, "Work");
+    public static string UpdatesRoot => Path.Combine(StoreDataRoot, "Updates");
+    public static string ProductStateRoot => Path.Combine(RuntimeStateRoot, "Products");
+    public static string ProductOrderStateRoot => Path.Combine(StoreDataRoot, "ProductState");
+    public static string LogsRoot => Path.Combine(StoreDataRoot, "Logs");
     public static string RuntimeRoot => Path.Combine(ApplicationRoot, "Runtime");
     public static string LegacyRuntimeRoot => Path.Combine(StoreDataRoot, "Runtime");
     public static string DownloadsRoot => Path.Combine(ApplicationRoot, "Downloads");
@@ -24,7 +30,12 @@ internal static class ComponentPaths
     public static string LegacyToolsRoot => Path.Combine(StoreDataRoot, "Tools");
     public static string ProductIconsRoot => Path.Combine(ApplicationRoot, "Cache", "ProductIcons");
     public static string LegacyProductIconsRoot => Path.Combine(StoreDataRoot, "ProductIcons");
+    public static string CacheRoot => Path.Combine(ApplicationRoot, "Cache");
     public static string AccountApiRoot => Path.Combine(ApplicationRoot, "AccountApi");
+    public static string WebRoot => Path.Combine(ApplicationRoot, "web");
+    public static string ProductDownloadRoot => Path.Combine(WebRoot, ".downloads");
+    public static string LegacyProductDownloadRoot => Path.Combine(StoreDataRoot, "Products");
+    public static string LegacyInstalledProductRoot => Path.Combine(StoreDataRoot, "InstalledProducts");
 
     public static string ApplicationNginxRoot => Path.Combine(ApplicationRoot, "Nginx");
     public static string ApplicationMySqlRoot => Path.Combine(ApplicationRoot, "MySQL");
@@ -41,6 +52,15 @@ internal static class ComponentPaths
 
     public static string SsmsCacheRoot =>
         Path.Combine(ToolsRoot, "SSMSCache");
+
+    public static string GetStoreDataRoot(string applicationRoot) =>
+        Path.Combine(Path.GetFullPath(applicationRoot), "StoreData");
+
+    public static string GetUpdatesRoot(string applicationRoot) =>
+        Path.Combine(GetStoreDataRoot(applicationRoot), "Updates");
+
+    public static string GetRuntimeStateRoot(string applicationRoot) =>
+        Path.Combine(GetStoreDataRoot(applicationRoot), "RuntimeState");
 
     public static IReadOnlyList<string> NginxSearchRoots =>
         new[] { NginxRoot, ApplicationNginxRoot, RuntimeRoot, LegacyRuntimeRoot }
@@ -73,49 +93,31 @@ internal static class ComponentPaths
 
     public static string SelectNginxInstallRoot()
     {
-        if (NginxRuntimeManager.FindNginxExe(NginxRoot) is not null)
-        {
-            return NginxRoot;
-        }
-
-        if (NginxRuntimeManager.FindNginxExe(ApplicationNginxRoot) is not null)
-        {
-            return NginxRoot;
-        }
-
-        if (NginxRuntimeManager.FindNginxExe(RuntimeRoot) is not null)
-        {
-            // Runtime is shared with Tomcat and other compatibility data. Do not
-            // reuse it as a new Nginx installation root.
-            return NginxRoot;
-        }
-
-        if (NginxRuntimeManager.FindNginxExe(LegacyRuntimeRoot) is not null)
-        {
-            return NginxRoot;
-        }
-
+        // Nginx always installs into its dedicated root. Legacy roots are
+        // searched by ComponentLocator for detection, but must not become the
+        // destination of a new installation.
         return NginxRoot;
     }
 
     public static string SelectMySqlInstallRoot()
     {
-        if (FindMySqlExecutable(MySqlRoot) is not null)
+        var locator = new ComponentLocator();
+        if (locator.FindMySqlExecutable(MySqlRoot) is not null)
         {
             return MySqlRoot;
         }
 
-        if (FindMySqlExecutable(ApplicationMySqlRoot) is not null)
+        if (locator.FindMySqlExecutable(ApplicationMySqlRoot) is not null)
         {
             return MySqlRoot;
         }
 
-        if (FindMySqlExecutable(RuntimeMySqlRoot) is not null)
+        if (locator.FindMySqlExecutable(RuntimeMySqlRoot) is not null)
         {
             return RuntimeMySqlRoot;
         }
 
-        if (FindMySqlExecutable(LegacyMySqlRoot) is not null)
+        if (locator.FindMySqlExecutable(LegacyMySqlRoot) is not null)
         {
             return LegacyMySqlRoot;
         }
@@ -142,47 +144,5 @@ internal static class ComponentPaths
         }
 
         return SqlServerRoot;
-    }
-
-    private static string? FindMySqlExecutable(string root)
-    {
-        var direct = Path.Combine(root, "bin", "mysql.exe");
-        if (File.Exists(direct))
-        {
-            return direct;
-        }
-
-        var knownNested = Path.Combine(root, "mysql", "bin", "mysql.exe");
-        if (File.Exists(knownNested))
-        {
-            return knownNested;
-        }
-
-        if (!Directory.Exists(root))
-        {
-            return null;
-        }
-
-        try
-        {
-            foreach (var directory in Directory.EnumerateDirectories(root, "*", SearchOption.TopDirectoryOnly))
-            {
-                var candidate = Path.Combine(directory, "bin", "mysql.exe");
-                if (File.Exists(candidate))
-                {
-                    return candidate;
-                }
-            }
-        }
-        catch (UnauthorizedAccessException)
-        {
-            // A protected legacy sibling must not hide a valid new install.
-        }
-        catch (IOException)
-        {
-            // Treat transient filesystem failures as "not found".
-        }
-
-        return null;
     }
 }

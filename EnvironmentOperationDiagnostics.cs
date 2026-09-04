@@ -25,7 +25,7 @@ internal static class EnvironmentOperationDiagnostics
     private const int MaximumDisplayedLogCharacters = 6000;
     private const int MaximumDisplayedLogLines = 24;
     public static string OperationsLogPath =>
-        Path.Combine(AppContext.BaseDirectory, "StoreData", "Work", "environment-operations.log");
+        Path.Combine(ComponentPaths.WorkRoot, "environment-operations.log");
 
     public static EnvironmentOperationException CreateScriptFailure(
         string operationName,

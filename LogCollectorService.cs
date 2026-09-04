@@ -83,8 +83,8 @@ public sealed class LogCollectorService
 
     private static IEnumerable<string> FindCandidates(AiLogTarget target)
     {
-        var storeData = Path.Combine(AppContext.BaseDirectory, "StoreData");
-        var work = Path.Combine(storeData, "Work");
+        var storeData = ComponentPaths.StoreDataRoot;
+        var work = ComponentPaths.WorkRoot;
         var runtimeTomcat = Path.Combine(ComponentPaths.RuntimeRoot, "apache-tomcat-8.5.57");
         var runtimeNginx = Path.Combine(ComponentPaths.RuntimeRoot, NginxRuntimeManager.VersionDirectoryName);
         var runtimeMySql = ComponentPaths.RuntimeMySqlRoot;

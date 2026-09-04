@@ -67,9 +67,7 @@ public sealed class EnvironmentInstaller : IDisposable
         string MediaType = "Core");
 
     internal static string SqlServerInstallRestartMarkerPath => Path.Combine(
-        AppContext.BaseDirectory,
-        "StoreData",
-        "RuntimeState",
+        ComponentPaths.RuntimeStateRoot,
         "sqlserver-install-restart.pending");
 
     internal static bool HasSqlServerInstallContinuation => File.Exists(SqlServerInstallRestartMarkerPath);
@@ -128,15 +126,16 @@ public sealed class EnvironmentInstaller : IDisposable
 
     private async Task InstallTomcatAsync(EnvironmentDownloadSettings downloads, Action<InstallProgress> progress, CancellationToken cancellationToken)
     {
-        var root = SelectTomcatInstallRoot();
+        var locator = new ComponentLocator();
+        var root = SelectTomcatInstallRoot(locator);
         Directory.CreateDirectory(root);
-        var tomcatRoot = FindTomcatDirectory(root);
+        var tomcatRoot = locator.FindTomcatRoot(root);
         if (tomcatRoot is null || !File.Exists(Path.Combine(tomcatRoot, "bin", "startup.bat")))
         {
             var archive = await DownloadAbsoluteFileAsync(downloads.TomcatPackageUrl, GetPackageDirectory(), "apache-tomcat-8.5.57.zip", progress, 0, 65, cancellationToken);
             progress(InstallingProgress(70, "正在解压 Tomcat 定制包...", 8));
             await ExtractZipAsync(archive, root, cancellationToken);
-            tomcatRoot = FindTomcatDirectory(root) ?? Path.Combine(root, "apache-tomcat-8.5.57");
+            tomcatRoot = new ComponentLocator().FindTomcatRoot(root) ?? Path.Combine(root, "apache-tomcat-8.5.57");
         }
         else
         {
@@ -166,7 +165,8 @@ public sealed class EnvironmentInstaller : IDisposable
         var root = ComponentPaths.SelectNginxInstallRoot();
         Directory.CreateDirectory(root);
 
-        var nginxExe = NginxRuntimeManager.FindNginxExe(root);
+        var locator = new ComponentLocator();
+        var nginxExe = locator.FindNginxExecutable(root);
         if (nginxExe is null)
         {
             var archive = await DownloadAbsoluteFileAsync(downloads.NginxPackageUrl, GetPackageDirectory(), "nginx-1.14.2.zip", progress, 0, 65, cancellationToken);
@@ -330,7 +330,7 @@ public sealed class EnvironmentInstaller : IDisposable
         }
 
         var stagedMySqlRoot = Directory.GetParent(Path.GetDirectoryName(stagedMySqlExe)!)!.FullName;
-        var existingMySqlExe = FindMySqlExecutable(root, stagingContainer);
+        var existingMySqlExe = new ComponentLocator().FindMySqlExecutable(root, stagingContainer);
         var targetMySqlRoot = existingMySqlExe is null
             ? IsSamePath(root, ComponentPaths.MySqlRoot) ? root : Path.Combine(root, "mysql")
             : Directory.GetParent(Path.GetDirectoryName(existingMySqlExe)!)!.FullName;
@@ -657,95 +657,43 @@ public sealed class EnvironmentInstaller : IDisposable
             throw new InvalidOperationException($"服务器返回了 HTML，未找到环境包：{url}");
         }
 
-        var total = response.Content.Headers.ContentLength;
-        var partialTarget = $"{target}.download";
-        TryDeleteFile(partialTarget);
-        var downloadStartedAt = DateTime.UtcNow;
-        long readTotal = 0;
-        try
-        {
-            var lastProgressAt = DateTime.MinValue;
-            using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using (var destination = new FileStream(partialTarget, FileMode.Create, FileAccess.Write, FileShare.None, 1024 * 128, useAsync: true))
+        var result = await DownloadService.SaveResponseAsync(
+            response,
+            target,
+            snapshot =>
             {
-                var buffer = new byte[1024 * 128];
-                while (true)
-                {
-                    var read = await source.ReadAsync(buffer, cancellationToken);
-                    if (read == 0)
-                    {
-                        break;
-                    }
-
-                    await destination.WriteAsync(buffer, 0, read, cancellationToken);
-                    readTotal += read;
-                    var now = DateTime.UtcNow;
-                    if (now - lastProgressAt >= TimeSpan.FromMilliseconds(250) || (total is > 0 && readTotal == total.Value))
-                    {
-                        var elapsedSeconds = Math.Max((now - downloadStartedAt).TotalSeconds, 0.001);
-                        var speed = readTotal / elapsedSeconds;
-                        var percent = total is > 0
-                            ? from + (to - from) * readTotal / total.Value
-                            : from;
-                        var stagePercent = total is > 0
-                            ? Compat.Clamp(readTotal * 100d / total.Value, 0, 100)
-                            : (double?)null;
-                        var downloadedText = total is > 0
-                            ? $"{readTotal / 1024 / 1024:N0} MB / {total.Value / 1024 / 1024:N0} MB"
-                            : $"{readTotal / 1024 / 1024:N0} MB";
-                        progress(new InstallProgress(
-                            Compat.Clamp(percent, from, to),
-                            $"正在下载 {fileName}：{downloadedText}",
-                            InstallProgressStage.Downloading,
-                            stagePercent,
-                            FormatTransferRate(speed)));
-                        lastProgressAt = now;
-                    }
-                }
-
-                await destination.FlushAsync(cancellationToken);
-                if (readTotal <= 0)
-                {
-                    throw new InvalidDataException($"下载文件为空：{fileName}");
-                }
-
-                if (total is > 0 && readTotal != total.Value)
-                {
-                    throw new InvalidDataException($"下载不完整：{fileName} 应为 {total.Value} 字节，实际 {readTotal} 字节。");
-                }
-            }
-
-            ValidateEnvironmentPackage(partialTarget, throwOnFailure: true, expectedFileName: fileName);
-            FileCompat.Move(partialTarget, target, overwrite: true);
-        }
-        catch
-        {
-            TryDeleteFile(partialTarget);
-            throw;
-        }
+                var percent = snapshot.TotalBytes is > 0
+                    ? from + (to - from) * snapshot.BytesReceived / snapshot.TotalBytes.Value
+                    : from;
+                var stagePercent = snapshot.TotalBytes is > 0
+                    ? Compat.Clamp(snapshot.BytesReceived * 100d / snapshot.TotalBytes.Value, 0, 100)
+                    : (double?)null;
+                var downloadedText = snapshot.TotalBytes is > 0
+                    ? $"{ProductTransferFormatting.FormatBytes(snapshot.BytesReceived)} / {ProductTransferFormatting.FormatBytes(snapshot.TotalBytes.Value)}"
+                    : ProductTransferFormatting.FormatBytes(snapshot.BytesReceived);
+                progress(new InstallProgress(
+                    Compat.Clamp(percent, from, to),
+                    $"正在下载 {fileName}：{downloadedText}",
+                    InstallProgressStage.Downloading,
+                    stagePercent,
+                    ProductTransferFormatting.FormatRate(snapshot.BytesPerSecond)));
+            },
+            cancellationToken: cancellationToken,
+            validatePartial: path => ValidateEnvironmentPackage(
+                path,
+                throwOnFailure: true,
+                expectedFileName: fileName),
+            emptyFileMessage: $"下载文件为空：{fileName}",
+            incompleteFileMessage: (expected, actual) =>
+                $"下载不完整：{fileName} 应为 {expected} 字节，实际 {actual} 字节。");
 
         progress(new InstallProgress(
             to,
             $"{fileName} 下载完成",
             InstallProgressStage.Downloading,
             100,
-            FormatTransferRate(readTotal / Math.Max((DateTime.UtcNow - downloadStartedAt).TotalSeconds, 0.001))));
+            ProductTransferFormatting.FormatRate(result.AverageBytesPerSecond)));
         return target;
-    }
-
-    private static string FormatTransferRate(double bytesPerSecond)
-    {
-        if (bytesPerSecond >= 1024 * 1024)
-        {
-            return $"{bytesPerSecond / 1024 / 1024:0.0} MB/s";
-        }
-
-        if (bytesPerSecond >= 1024)
-        {
-            return $"{bytesPerSecond / 1024:0} KB/s";
-        }
-
-        return $"{Math.Max(bytesPerSecond, 0):0} B/s";
     }
 
     private static bool ValidateEnvironmentPackage(string path, bool throwOnFailure, string? expectedFileName = null)
@@ -2102,22 +2050,13 @@ public sealed class EnvironmentInstaller : IDisposable
         CancellationToken cancellationToken,
         bool requireExistingAdministrator = false)
     {
-        var isAdministrator = IsAdministrator();
+        var isAdministrator = ProcessRunner.IsAdministrator();
         if (requireExistingAdministrator && !isAdministrator)
         {
             throw new InvalidOperationException("该组件必须在已授权的管理员安装会话中运行，请重新点击安装并允许一次 UAC 授权。");
         }
 
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "powershell.exe",
-            Arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{scriptPath}\"",
-            UseShellExecute = true,
-            Verb = isAdministrator ? string.Empty : "runas",
-            WindowStyle = ProcessWindowStyle.Hidden
-        };
-
-        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("无法启动管理员安装进程。");
+        using var process = ProcessRunner.StartPowerShellFile(scriptPath, elevated: true);
         try
         {
             while (!process.HasExited)
@@ -2308,17 +2247,7 @@ public sealed class EnvironmentInstaller : IDisposable
 
     private static async Task RunProcessAsync(string fileName, string arguments, string workingDirectory, bool elevated, CancellationToken cancellationToken)
     {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = fileName,
-            Arguments = arguments,
-            WorkingDirectory = workingDirectory,
-            UseShellExecute = true,
-            Verb = elevated && !IsAdministrator() ? "runas" : string.Empty,
-            WindowStyle = ProcessWindowStyle.Hidden
-        };
-
-        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException($"无法启动：{fileName}");
+        using var process = ProcessRunner.Start(fileName, arguments, workingDirectory, elevated);
         await ProcessLifecycle.WaitForExitAsync(process, cancellationToken);
         if (process.ExitCode != 0)
         {
@@ -2328,31 +2257,19 @@ public sealed class EnvironmentInstaller : IDisposable
 
     private static async Task RunProcessWithOutputAsync(string fileName, string arguments, string workingDirectory, CancellationToken cancellationToken)
     {
-        var startInfo = new ProcessStartInfo
+        var result = await ProcessRunner.RunAsync(
+            fileName,
+            arguments,
+            workingDirectory,
+            elevated: false,
+            cancellationToken: cancellationToken,
+            captureOutput: true);
+        if (result.ExitCode != 0)
         {
-            FileName = fileName,
-            Arguments = arguments,
-            WorkingDirectory = workingDirectory,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardError = true,
-            RedirectStandardOutput = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8
-        };
-
-        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException($"无法启动：{fileName}");
-        var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
-        await ProcessLifecycle.WaitForExitAsync(process, cancellationToken);
-        var output = await outputTask;
-        var error = await errorTask;
-        if (process.ExitCode != 0)
-        {
-            var detail = string.Join(Environment.NewLine, new[] { output, error }.Where(text => !string.IsNullOrWhiteSpace(text))).Trim();
+            var detail = result.CombinedOutput;
             if (string.IsNullOrWhiteSpace(detail))
             {
-                detail = $"{Path.GetFileName(fileName)} 退出码：{process.ExitCode}";
+                detail = $"{Path.GetFileName(fileName)} 退出码：{result.ExitCode}";
             }
 
             throw new InvalidOperationException(detail);
@@ -2375,7 +2292,7 @@ public sealed class EnvironmentInstaller : IDisposable
 
     private static string GetStoreDataRoot()
     {
-        var root = Path.Combine(AppContext.BaseDirectory, "StoreData");
+        var root = ComponentPaths.StoreDataRoot;
         Directory.CreateDirectory(root);
         return root;
     }
@@ -2402,27 +2319,16 @@ public sealed class EnvironmentInstaller : IDisposable
             : Directory.GetDirectories(root, name, SearchOption.AllDirectories).FirstOrDefault();
     }
 
-    private static bool IsAdministrator()
-    {
-        using var identity = WindowsIdentity.GetCurrent();
-        return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
-    }
-
     private static bool WindowsServiceExists(string serviceName)
     {
         try
         {
-            using var process = Process.Start(new ProcessStartInfo
-            {
-                FileName = "sc.exe",
-                Arguments = $"query {serviceName}",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            });
-            process?.WaitForExit(3000);
-            return process is not null && process.ExitCode == 0;
+            return ProcessRunner.RunSynchronously(
+                "sc.exe",
+                $"query {Compat.QuoteCommandLineArgument(serviceName)}",
+                ComponentPaths.ApplicationRoot,
+                captureOutput: true,
+                timeout: TimeSpan.FromSeconds(3)).ExitCode == 0;
         }
         catch
         {
@@ -2430,83 +2336,17 @@ public sealed class EnvironmentInstaller : IDisposable
         }
     }
 
-    private static string? FindMySqlExecutable(string runtimeRoot, string excludedRoot)
+    private static string SelectTomcatInstallRoot(ComponentLocator locator)
     {
-        try
+        foreach (var root in ComponentPaths.TomcatSearchRoots)
         {
-            var excluded = Path.GetFullPath(excludedRoot).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-            var candidates = new List<string>
+            if (locator.FindTomcatRoot(root) is not null)
             {
-                Path.Combine(runtimeRoot, "bin", "mysql.exe"),
-                Path.Combine(runtimeRoot, "mysql", "bin", "mysql.exe")
-            };
-
-            if (Directory.Exists(runtimeRoot))
-            {
-                candidates.AddRange(Directory.EnumerateDirectories(runtimeRoot, "*", SearchOption.TopDirectoryOnly)
-                    .Select(directory => Path.Combine(directory, "bin", "mysql.exe")));
+                return root;
             }
-
-            return candidates.FirstOrDefault(path =>
-                File.Exists(path) &&
-                !Path.GetFullPath(path).StartsWith(excluded, StringComparison.OrdinalIgnoreCase));
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static string SelectTomcatInstallRoot()
-    {
-        if (FindTomcatDirectory(ComponentPaths.TomcatRoot) is not null)
-        {
-            return ComponentPaths.TomcatRoot;
-        }
-
-        if (FindTomcatDirectory(ComponentPaths.RuntimeRoot) is not null)
-        {
-            return ComponentPaths.RuntimeRoot;
-        }
-
-        if (FindTomcatDirectory(ComponentPaths.LegacyRuntimeRoot) is not null)
-        {
-            return ComponentPaths.LegacyRuntimeRoot;
         }
 
         return ComponentPaths.TomcatRoot;
-    }
-
-    private static string? FindTomcatDirectory(string root)
-    {
-        if (!Directory.Exists(root))
-        {
-            return null;
-        }
-
-        var known = Path.Combine(root, "apache-tomcat-8.5.57");
-        if (File.Exists(Path.Combine(known, "bin", "startup.bat")) &&
-            File.Exists(Path.Combine(known, "conf", "server.xml")))
-        {
-            return known;
-        }
-
-        try
-        {
-            return Directory.EnumerateDirectories(root, "apache-tomcat-*", SearchOption.TopDirectoryOnly)
-                .Concat(Directory.EnumerateDirectories(root, "*", SearchOption.TopDirectoryOnly))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .FirstOrDefault(path => File.Exists(Path.Combine(path, "bin", "startup.bat")) &&
-                                        File.Exists(Path.Combine(path, "conf", "server.xml")));
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return null;
-        }
-        catch (IOException)
-        {
-            return null;
-        }
     }
 
     private static bool IsNginxOperational(string nginxRoot) =>

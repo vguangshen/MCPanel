@@ -17,9 +17,7 @@ internal sealed class ProductInstallOrderStore
     public ProductInstallOrderStore(string? storeFile = null)
     {
         _storeFile = storeFile ?? Path.Combine(
-            AppContext.BaseDirectory,
-            "StoreData",
-            "ProductState",
+            ComponentPaths.ProductOrderStateRoot,
             "install-order.json");
     }
 

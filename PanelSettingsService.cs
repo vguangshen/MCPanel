@@ -35,12 +35,7 @@ public sealed class PanelSettingsService
 
     public string StoreDataRoot
     {
-        get
-        {
-            var root = Path.Combine(AppContext.BaseDirectory, "StoreData");
-            Directory.CreateDirectory(root);
-            return root;
-        }
+        get => ComponentPaths.StoreDataRoot;
     }
 
     public bool IsStartupEnabled()
@@ -179,13 +174,13 @@ public sealed class PanelSettingsService
 
     public void OpenRuntimeDirectory() => OpenDirectory(ComponentPaths.ApplicationRoot);
 
-    public void OpenProductDirectory() => OpenDirectory(Path.Combine(AppContext.BaseDirectory, "web"));
+    public void OpenProductDirectory() => OpenDirectory(ComponentPaths.WebRoot);
 
-    public void OpenLogDirectory() => OpenDirectory(Path.Combine(StoreDataRoot, "Work"));
+    public void OpenLogDirectory() => OpenDirectory(ComponentPaths.WorkRoot);
 
     public void ClearProductCache()
     {
-        DeleteDirectory(Path.Combine(AppContext.BaseDirectory, "Cache"));
+        DeleteDirectory(ComponentPaths.CacheRoot);
         DeleteDirectory(ComponentPaths.LegacyProductIconsRoot);
     }
 
@@ -193,7 +188,7 @@ public sealed class PanelSettingsService
     {
         var cacheDirectories = new[]
         {
-            Path.Combine(AppContext.BaseDirectory, "Cache"),
+            ComponentPaths.CacheRoot,
             ComponentPaths.LegacyProductIconsRoot
         };
         return Task.Run(() => new CleanupStorageUsage(
@@ -292,7 +287,7 @@ public sealed class PanelSettingsService
         CancellationToken cancellationToken = default) =>
         _navicatInstaller.InstallAsync(
             ComponentPaths.ToolsRoot,
-            Path.Combine(StoreDataRoot, "Work"),
+            ComponentPaths.WorkRoot,
             progress,
             cancellationToken);
 
@@ -302,7 +297,7 @@ public sealed class PanelSettingsService
                            throw new FileNotFoundException("未检测到可卸载的 Navicat。请先刷新或配置正确路径。");
         return DatabaseToolUninstaller.UninstallAsync(
             installation,
-            Path.Combine(StoreDataRoot, "Work"),
+            ComponentPaths.WorkRoot,
             cancellationToken);
     }
 
@@ -310,7 +305,7 @@ public sealed class PanelSettingsService
 
     public async Task EnsureSqlServerLocalCertificateAsync(CancellationToken cancellationToken = default)
     {
-        var workDirectory = Path.Combine(StoreDataRoot, "Work");
+        var workDirectory = ComponentPaths.WorkRoot;
         Directory.CreateDirectory(workDirectory);
         var script = Path.Combine(workDirectory, "configure-sql-local-certificate.ps1");
         var log = Path.Combine(workDirectory, "configure-sql-local-certificate.log");
@@ -357,18 +352,7 @@ public sealed class PanelSettingsService
             """;
         await FileCompat.WriteAllTextAsync(script, scriptText, new UTF8Encoding(true), cancellationToken);
 
-        using var process = Process.Start(new ProcessStartInfo
-        {
-            FileName = "powershell.exe",
-            Arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{script}\"",
-            UseShellExecute = true,
-            Verb = "runas",
-            WindowStyle = ProcessWindowStyle.Hidden
-        });
-        if (process is null)
-        {
-            throw new InvalidOperationException("无法启动 SQL Server 证书配置程序。");
-        }
+        using var process = ProcessRunner.StartPowerShellFile(script, elevated: true);
 
         await ProcessLifecycle.WaitForExitAsync(process, cancellationToken);
         if (process.ExitCode != 0)
@@ -446,104 +430,40 @@ public sealed class PanelSettingsService
                 release.DownloadUrl,
                 HttpCompletionOption.ResponseHeadersRead,
                 cancellationToken);
-            response.EnsureSuccessStatusCode();
-
-            var total = response.Content.Headers.ContentLength;
-            var partial = installer + ".download";
-            if (File.Exists(partial))
-            {
-                File.Delete(partial);
-            }
-
-            long received = 0;
-            var startedAt = DateTime.UtcNow;
-            try
-            {
-                using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-                using (var file = new FileStream(
-                           partial,
-                           FileMode.Create,
-                           FileAccess.Write,
-                           FileShare.None,
-                           1024 * 128,
-                           useAsync: true))
+            var result = await DownloadService.SaveResponseAsync(
+                response,
+                installer,
+                snapshot =>
                 {
-                    var buffer = new byte[1024 * 128];
-                    var lastProgressAt = DateTime.MinValue;
-                    while (true)
-                    {
-                        var read = await stream.ReadAsync(buffer, cancellationToken);
-                        if (read == 0)
-                        {
-                            break;
-                        }
-
-                        await file.WriteAsync(buffer, 0, read, cancellationToken);
-                        received += read;
-                        var now = DateTime.UtcNow;
-                        if (now - lastProgressAt >= TimeSpan.FromMilliseconds(250) ||
-                            (total is > 0 && received == total.Value))
-                        {
-                            var elapsedSeconds = Math.Max((now - startedAt).TotalSeconds, 0.001);
-                            var speed = received / elapsedSeconds;
-                            var percent = total is > 0 ? received * 70d / total.Value : 0d;
-                            var downloadedText = total is > 0
-                                ? $"{FormatStorageSize(received)} / {FormatStorageSize(total.Value)}"
-                                : FormatStorageSize(received);
-                            progress?.Invoke(new InstallProgress(
-                                Compat.Clamp(percent, 0, 70),
-                                $"正在下载 {release.DisplayName}：{downloadedText}，速度 {FormatTransferRate(speed)}"));
-                            lastProgressAt = now;
-                        }
-                    }
-
-                    await file.FlushAsync(cancellationToken);
-                }
-
-                if (received <= 0)
-                {
-                    throw new InvalidDataException("SQL Server Management Studio 下载文件为空。");
-                }
-
-                if (total is > 0 && received != total.Value)
-                {
-                    throw new InvalidDataException($"SQL Server Management Studio 下载不完整：应为 {total.Value} 字节，实际 {received} 字节。");
-                }
-
-                FileCompat.Move(partial, installer, overwrite: true);
-            }
-            catch
-            {
-                if (File.Exists(partial))
-                {
-                    File.Delete(partial);
-                }
-
-                throw;
-            }
+                    var percent = snapshot.TotalBytes is > 0
+                        ? snapshot.BytesReceived * 70d / snapshot.TotalBytes.Value
+                        : 0d;
+                    var downloadedText = snapshot.TotalBytes is > 0
+                        ? $"{FormatStorageSize(snapshot.BytesReceived)} / {FormatStorageSize(snapshot.TotalBytes.Value)}"
+                        : FormatStorageSize(snapshot.BytesReceived);
+                    progress?.Invoke(new InstallProgress(
+                        Compat.Clamp(percent, 0, 70),
+                        $"正在下载 {release.DisplayName}：{downloadedText}，速度 {ProductTransferFormatting.FormatRate(snapshot.BytesPerSecond)}"));
+                },
+                cancellationToken: cancellationToken,
+                emptyFileMessage: "SQL Server Management Studio 下载文件为空。",
+                incompleteFileMessage: (expected, actual) =>
+                    $"SQL Server Management Studio 下载不完整：应为 {expected} 字节，实际 {actual} 字节。");
 
             progress?.Invoke(new InstallProgress(
                 70,
-                $"{release.DisplayName} 下载完成，平均速度 {FormatTransferRate(received / Math.Max((DateTime.UtcNow - startedAt).TotalSeconds, 0.001))}，正在启动安装..."));
+                $"{release.DisplayName} 下载完成，平均速度 {ProductTransferFormatting.FormatRate(result.AverageBytesPerSecond)}，正在启动安装..."));
         }
         else
         {
             progress?.Invoke(new InstallProgress(70, $"已找到 {release.DisplayName} 缓存安装包，正在启动安装..."));
         }
 
-        using var process = Process.Start(new ProcessStartInfo
-        {
-            FileName = installer,
-            Arguments = BuildSsmsInstallArguments(release),
-            UseShellExecute = true,
-            Verb = "runas",
-            WindowStyle = ProcessWindowStyle.Hidden
-        });
-
-        if (process is null)
-        {
-            throw new InvalidOperationException("无法启动 SQL Server Management Studio 安装器。");
-        }
+        using var process = ProcessRunner.Start(
+            installer,
+            BuildSsmsInstallArguments(release),
+            Path.GetDirectoryName(installer),
+            elevated: true);
 
         progress?.Invoke(new InstallProgress(70, "正在静默安装 SQL Server Management Studio，请稍候..."));
         await ProcessLifecycle.WaitForExitAsync(process, cancellationToken);
@@ -561,23 +481,8 @@ public sealed class PanelSettingsService
                            throw new FileNotFoundException("未检测到可卸载的 SQL Server Management Studio。请先刷新或配置正确路径。");
         return DatabaseToolUninstaller.UninstallAsync(
             installation,
-            Path.Combine(StoreDataRoot, "Work"),
+            ComponentPaths.WorkRoot,
             cancellationToken);
-    }
-
-    private static string FormatTransferRate(double bytesPerSecond)
-    {
-        if (bytesPerSecond >= 1024 * 1024)
-        {
-            return $"{bytesPerSecond / 1024 / 1024:0.0} MB/s";
-        }
-
-        if (bytesPerSecond >= 1024)
-        {
-            return $"{bytesPerSecond / 1024:0} KB/s";
-        }
-
-        return $"{bytesPerSecond:0} B/s";
     }
 
     private PanelSettings LoadSettings()
@@ -609,45 +514,18 @@ public sealed class PanelSettingsService
         var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
         try
         {
-            WriteSettingsAtomic(_settingsPath, json);
+            AtomicFile.WriteAllText(_settingsPath, json);
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
-            WriteSettingsAtomic(_fallbackSettingsPath, json);
-        }
-    }
-
-    private static void WriteSettingsAtomic(string path, string json)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        try
-        {
-            File.WriteAllText(temporary, json, new UTF8Encoding(false));
-            for (var attempt = 0; ; attempt++)
-            {
-                try
-                {
-                    if (File.Exists(path)) File.Replace(temporary, path, null);
-                    else File.Move(temporary, path);
-                    break;
-                }
-                catch (IOException) when (attempt < 4)
-                {
-                    Thread.Sleep(40 * (attempt + 1));
-                }
-            }
-        }
-        finally
-        {
-            if (File.Exists(temporary)) File.Delete(temporary);
+            AtomicFile.WriteAllText(_fallbackSettingsPath, json);
         }
     }
 
     private static string GetExecutablePath()
     {
         using var process = Process.GetCurrentProcess();
-        return process.MainModule?.FileName ?? Path.Combine(AppContext.BaseDirectory, "MCPanel.exe");
+        return process.MainModule?.FileName ?? Path.Combine(ComponentPaths.ApplicationRoot, "MCPanel.exe");
     }
 
     private static string EscapePowerShellLiteral(string value) => value.Replace("'", "''");
@@ -665,7 +543,7 @@ public sealed class PanelSettingsService
     private static void DeleteDirectory(string path)
     {
         var fullPath = Path.GetFullPath(path);
-        var baseDirectory = Path.GetFullPath(AppContext.BaseDirectory);
+        var baseDirectory = ComponentPaths.ApplicationRoot;
         if (!fullPath.StartsWith(baseDirectory, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException("清理目录不在软件目录下，已取消。");
@@ -699,7 +577,7 @@ public sealed class PanelSettingsService
         {
             FileName = fileName,
             Arguments = arguments,
-            WorkingDirectory = Path.GetDirectoryName(fileName) ?? AppContext.BaseDirectory,
+            WorkingDirectory = Path.GetDirectoryName(fileName) ?? ComponentPaths.ApplicationRoot,
             UseShellExecute = true
         });
     }

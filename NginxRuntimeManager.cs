@@ -68,7 +68,7 @@ public static class NginxRuntimeManager
         @"(?im)(?:^|[;{}])\s*include\s+(?<path>[^;#]+);",
         RegexOptions.Compiled);
 
-    private static string StateDirectory => Path.Combine(AppContext.BaseDirectory, "StoreData", "RuntimeState");
+    private static string StateDirectory => ComponentPaths.RuntimeStateRoot;
     private static string StateFile => Path.Combine(StateDirectory, "nginx-runtime.json");
 
     public static string? FindNginxExe(string runtimeRoot)

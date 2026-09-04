@@ -87,13 +87,11 @@ manifest before extraction. Local updates can use the same ZIP. Keep the adjacen
 
 ## Replacement rules
 
-The updater replaces only application program files. These top-level directories
-are preserved across every update: `StoreData`, the separate `AccountApi` component
-directory, `Runtime`, `Downloads`, `Tools`, `web`, `Cache`, `Frp`, `Nginx`, `MySQL`, `MSSQL`, `Tomcat`, `SSMS`,
-`Navicat Premium Lite`, and the embedded Account API state under `AccountApi`.
-Legacy state files `config.ini`, `config.ini.previous`,
-`device.identity`, `database.config`, `database.config.previous`, and `logs` are also
-preserved when present so an existing installation can migrate without losing data.
+The updater replaces only application program files. The canonical list of
+top-level entries preserved by publishing, packaging, and in-app replacement is
+maintained in `deployment-layout.json`; keep that file beside the executable in
+every release. It includes the embedded Account API state and legacy state files
+so an existing installation can migrate without losing data.
 Before replacement, the current program files are copied to
 `StoreData\Updates\Rollback\Current`. A failed replacement is rolled back
 automatically, and the result is shown after the application restarts. The

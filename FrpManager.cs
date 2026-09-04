@@ -30,7 +30,7 @@ public sealed class FrpManager : IDisposable
     private bool _disposed;
 
     public FrpManager()
-        : this(AppContext.BaseDirectory)
+        : this(ComponentPaths.ApplicationRoot)
     {
     }
 
@@ -680,109 +680,40 @@ public sealed class FrpManager : IDisposable
         DeleteIfExists(partialPath);
 
         using var response = await FrpDownloadClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        var total = response.Content.Headers.ContentLength;
-        var received = 0L;
-        var startedAt = DateTime.UtcNow;
-        var lastProgressAt = DateTime.MinValue;
-        try
-        {
-            using var input = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var output = new FileStream(partialPath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true);
-            var buffer = new byte[81920];
-            while (true)
+        await DownloadService.SaveResponseAsync(
+            response,
+            archivePath,
+            snapshot =>
             {
-                var read = await input.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
-                if (read == 0)
+                var stagePercent = snapshot.TotalBytes is > 0
+                    ? Compat.Clamp(snapshot.BytesReceived * 100d / snapshot.TotalBytes.Value, 0, 100)
+                    : (double?)null;
+                var overallPercent = snapshot.TotalBytes is > 0
+                    ? 15 + 60 * snapshot.BytesReceived / snapshot.TotalBytes.Value
+                    : 15;
+                var downloadedText = snapshot.TotalBytes is > 0
+                    ? $"{ProductTransferFormatting.FormatBytes(snapshot.BytesReceived)} / {ProductTransferFormatting.FormatBytes(snapshot.TotalBytes.Value)}"
+                    : ProductTransferFormatting.FormatBytes(snapshot.BytesReceived);
+                progress?.Invoke(new InstallProgress(
+                    Compat.Clamp(overallPercent, 15, 75),
+                    $"正在下载 FRP：{downloadedText}",
+                    InstallProgressStage.Downloading,
+                    stagePercent,
+                    ProductTransferFormatting.FormatRate(snapshot.BytesPerSecond)));
+            },
+            cancellationToken: cancellationToken,
+            temporarySuffix: ".part",
+            bufferSize: 81920,
+            validatePartial: path =>
+            {
+                if (!IsUsableFrpArchive(path))
                 {
-                    break;
+                    throw new InvalidDataException("下载的 FRP 压缩包无法读取。");
                 }
-
-                await output.WriteAsync(buffer, 0, read, cancellationToken);
-                received += read;
-                var now = DateTime.UtcNow;
-                if (now - lastProgressAt >= TimeSpan.FromMilliseconds(250) ||
-                    (total is > 0 && received == total.Value))
-                {
-                    var elapsedSeconds = Math.Max((now - startedAt).TotalSeconds, 0.001);
-                    var speed = received / elapsedSeconds;
-                    var stagePercent = total is > 0
-                        ? Compat.Clamp(received * 100d / total.Value, 0, 100)
-                        : (double?)null;
-                    var overallPercent = total is > 0
-                        ? 15 + 60 * received / total.Value
-                        : 15;
-                    var downloadedText = total is > 0
-                        ? $"{FormatTransferSize(received)} / {FormatTransferSize(total.Value)}"
-                        : FormatTransferSize(received);
-                    progress?.Invoke(new InstallProgress(
-                        Compat.Clamp(overallPercent, 15, 75),
-                        $"正在下载 FRP：{downloadedText}",
-                        InstallProgressStage.Downloading,
-                        stagePercent,
-                        FormatTransferRate(speed)));
-                    lastProgressAt = now;
-                }
-            }
-
-            await output.FlushAsync(cancellationToken);
-        }
-        catch
-        {
-            DeleteIfExists(partialPath);
-            throw;
-        }
-
-        if (received <= 0)
-        {
-            DeleteIfExists(partialPath);
-            throw new InvalidDataException("下载的 FRP 压缩包为空。");
-        }
-
-        if (total is > 0 && received != total.Value)
-        {
-            DeleteIfExists(partialPath);
-            throw new InvalidDataException($"下载的 FRP 压缩包不完整：应为 {total.Value} 字节，实际 {received} 字节。");
-        }
-
-        if (!IsUsableFrpArchive(partialPath))
-        {
-            DeleteIfExists(partialPath);
-            throw new InvalidDataException("下载的 FRP 压缩包无法读取。");
-        }
-
-        DeleteIfExists(archivePath);
-        File.Move(partialPath, archivePath);
-    }
-
-    private static string FormatTransferSize(long bytes)
-    {
-        if (bytes >= 1024 * 1024)
-        {
-            return $"{bytes / 1024d / 1024d:0.0} MB";
-        }
-
-        if (bytes >= 1024)
-        {
-            return $"{bytes / 1024d:0} KB";
-        }
-
-        return $"{bytes} B";
-    }
-
-    private static string FormatTransferRate(double bytesPerSecond)
-    {
-        if (bytesPerSecond >= 1024 * 1024)
-        {
-            return $"{bytesPerSecond / 1024 / 1024:0.0} MB/s";
-        }
-
-        if (bytesPerSecond >= 1024)
-        {
-            return $"{bytesPerSecond / 1024:0} KB/s";
-        }
-
-        return $"{Math.Max(bytesPerSecond, 0):0} B/s";
+            },
+            emptyFileMessage: "下载的 FRP 压缩包为空。",
+            incompleteFileMessage: (expected, actual) =>
+                $"下载的 FRP 压缩包不完整：应为 {expected} 字节，实际 {actual} 字节。");
     }
 
     private static bool IsUsableFrpArchive(string path)

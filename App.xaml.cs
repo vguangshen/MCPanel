@@ -97,6 +97,15 @@ public partial class App : Application
                 return;
             }
 
+            var environmentValidation = EnvironmentDownloadSettings.ValidateConfiguration();
+            if (!environmentValidation.IsValid)
+            {
+                var validationMessage = environmentValidation.ToDisplayMessage();
+                WriteLifecycleError(
+                    "环境下载配置校验失败",
+                    new System.Configuration.ConfigurationErrorsException(validationMessage));
+            }
+
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
             var startInTray = ApplicationLaunchMode.IsTrayStartupRequest(e.Args);
             _uiMutex = new Mutex(true, UiMutexName, out var isPrimaryUi);
@@ -132,6 +141,16 @@ public partial class App : Application
 
             if (!startInTray || _trayIcon is null)
             {
+                if (!environmentValidation.IsValid)
+                {
+                    MessageBox.Show(
+                        environmentValidation.ToDisplayMessage() +
+                        "\n\n请修正 MCPanel.exe.config 后重新启动；环境安装不会使用静默回退地址。",
+                        "环境下载配置",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
+
                 ShowMainWindow();
             }
             else
@@ -409,7 +428,7 @@ public partial class App : Application
     {
         try
         {
-            var workDirectory = Path.Combine(AppContext.BaseDirectory, "StoreData", "Work");
+            var workDirectory = ComponentPaths.WorkRoot;
             Directory.CreateDirectory(workDirectory);
             RollingLogWriter.Append(
                 Path.Combine(workDirectory, "application-lifecycle-error.log"),

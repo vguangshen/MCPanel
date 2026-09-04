@@ -98,13 +98,13 @@ public static class MySqlCredentialStore
                $"密码：{credentials.Password}";
     }
 
-    private static string CredentialFile => Path.Combine(AppContext.BaseDirectory, "StoreData", "RuntimeState", "mysql-default.json");
+    private static string CredentialFile => Path.Combine(ComponentPaths.RuntimeStateRoot, "mysql-default.json");
 
     private static IEnumerable<string> CandidateCredentialFiles()
     {
         yield return CredentialFile;
 
-        var baseDirectory = Path.GetFullPath(AppContext.BaseDirectory).TrimEnd(Path.DirectorySeparatorChar);
+        var baseDirectory = ComponentPaths.ApplicationRoot.TrimEnd(Path.DirectorySeparatorChar);
         var parent = Directory.GetParent(baseDirectory)?.FullName;
         if (!string.IsNullOrWhiteSpace(parent))
         {

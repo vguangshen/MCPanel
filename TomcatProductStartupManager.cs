@@ -34,7 +34,7 @@ internal static class TomcatProductStartupManager
 
     public static void EnsureRegistered()
     {
-        var executable = Path.Combine(AppContext.BaseDirectory, "MCPanel.exe");
+        var executable = Path.Combine(ComponentPaths.ApplicationRoot, "MCPanel.exe");
         if (!File.Exists(executable))
         {
             WriteLog($"暂未创建开机恢复项，主程序不存在：{executable}", null);
@@ -113,7 +113,7 @@ internal static class TomcatProductStartupManager
     {
         try
         {
-            var directory = Path.Combine(AppContext.BaseDirectory, "StoreData", "Work");
+            var directory = ComponentPaths.WorkRoot;
             var detail = exception is null ? string.Empty : $"{Environment.NewLine}{exception}";
             RollingLogWriter.Append(
                 Path.Combine(directory, "tomcat-autostart.log"),

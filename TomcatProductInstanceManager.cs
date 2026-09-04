@@ -1118,7 +1118,7 @@ public sealed class TomcatProductInstanceManager
     {
         try
         {
-            var logs = Path.Combine(StoreDataRoot, "Logs");
+            var logs = ComponentPaths.LogsRoot;
             RollingLogWriter.Append(
                 Path.Combine(logs, "tomcat-operations.log"),
                 $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} [{SafeName(productId)}] {message}{Environment.NewLine}",
@@ -1232,41 +1232,7 @@ public sealed class TomcatProductInstanceManager
 
     private static string? FindTomcatRoot()
     {
-        foreach (var runtime in ComponentPaths.TomcatSearchRoots)
-        {
-            if (!Directory.Exists(runtime))
-            {
-                continue;
-            }
-
-            try
-            {
-                var known = Path.Combine(runtime, "apache-tomcat-8.5.57");
-                if (File.Exists(Path.Combine(known, "bin", "catalina.bat")))
-                {
-                    return known;
-                }
-
-                var result = Directory.EnumerateDirectories(runtime, "apache-tomcat-*", SearchOption.TopDirectoryOnly)
-                    .Concat(Directory.EnumerateDirectories(runtime, "*", SearchOption.TopDirectoryOnly))
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .FirstOrDefault(directory => File.Exists(Path.Combine(directory, "bin", "catalina.bat")));
-                if (result is not null)
-                {
-                    return result;
-                }
-            }
-            catch (UnauthorizedAccessException)
-            {
-                // Continue with the next compatibility root.
-            }
-            catch (IOException)
-            {
-                // Continue with the next compatibility root.
-            }
-        }
-
-        return null;
+        return new ComponentLocator().FindTomcatRoot(TomcatComponentRequirements.CatalinaScript);
     }
 
     private static IEnumerable<string> EnumerateManagedInstanceRoots()
@@ -1356,13 +1322,4 @@ public sealed class TomcatProductInstanceManager
     private static string InstancesRoot =>
         Path.Combine(ComponentPaths.RuntimeRoot, "TomcatProductRuns");
 
-    private static string StoreDataRoot
-    {
-        get
-        {
-            var root = Path.Combine(AppContext.BaseDirectory, "StoreData");
-            Directory.CreateDirectory(root);
-            return root;
-        }
-    }
 }

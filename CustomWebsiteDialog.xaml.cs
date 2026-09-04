@@ -17,7 +17,7 @@ public partial class CustomWebsiteDialog : Window
         _original = definition ?? new CustomWebsiteDefinition
         {
             Name = string.Empty,
-            PhysicalPath = Path.Combine(AppContext.BaseDirectory, "web", "sites", "website")
+            PhysicalPath = Path.Combine(ComponentPaths.WebRoot, "sites", "website")
         };
         TitleText.Text = definition is null ? "新建 IIS 网站" : $"编辑 IIS 网站：{definition.Name}";
         NameBox.Text = _original.Name;
@@ -51,7 +51,7 @@ public partial class CustomWebsiteDialog : Window
         {
             Description = "选择网站根目录",
             ShowNewFolderButton = true,
-            SelectedPath = Directory.Exists(PhysicalPathBox.Text) ? PhysicalPathBox.Text : AppContext.BaseDirectory
+            SelectedPath = Directory.Exists(PhysicalPathBox.Text) ? PhysicalPathBox.Text : ComponentPaths.ApplicationRoot
         };
         if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK) PhysicalPathBox.Text = dialog.SelectedPath;
     }

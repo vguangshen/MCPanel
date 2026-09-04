@@ -302,20 +302,12 @@ internal static class NginxWindowsServiceManager
 
     private static ScResult RunSc(string arguments)
     {
-        using var process = Process.Start(new ProcessStartInfo
-        {
-            FileName = "sc.exe",
-            Arguments = arguments,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true
-        }) ?? throw new InvalidOperationException("无法启动 Windows 服务控制程序 sc.exe。");
-
-        var output = process.StandardOutput.ReadToEnd();
-        var error = process.StandardError.ReadToEnd();
-        process.WaitForExit();
-        return new ScResult(process.ExitCode, output, error);
+        var result = ProcessRunner.RunSynchronously(
+            "sc.exe",
+            arguments,
+            ComponentPaths.ApplicationRoot,
+            captureOutput: true);
+        return new ScResult(result.ExitCode, result.StandardOutput, result.StandardError);
     }
 
     private static void RunScOrThrow(string arguments, string action)
@@ -452,19 +444,7 @@ internal sealed class NginxWindowsService : ServiceBase
         }
 
         NginxRuntimeManager.KillProcessesUnderRoot(_nginxRoot);
-        using var process = Process.Start(new ProcessStartInfo
-        {
-            FileName = nginxExe,
-            WorkingDirectory = _nginxRoot,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WindowStyle = ProcessWindowStyle.Hidden
-        });
-
-        if (process is null)
-        {
-            throw new InvalidOperationException("无法启动 Nginx 进程。");
-        }
+        using var process = ProcessRunner.Start(nginxExe, string.Empty, _nginxRoot);
 
         for (var attempt = 0; attempt < 40; attempt++)
         {
@@ -510,16 +490,12 @@ internal sealed class NginxWindowsService : ServiceBase
         {
             if (File.Exists(nginxExe))
             {
-                using var process = Process.Start(new ProcessStartInfo
-                {
-                    FileName = nginxExe,
-                    Arguments = "-s quit",
-                    WorkingDirectory = _nginxRoot,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    WindowStyle = ProcessWindowStyle.Hidden
-                });
-                process?.WaitForExit(10000);
+                ProcessRunner.RunSynchronously(
+                    nginxExe,
+                    "-s quit",
+                    _nginxRoot,
+                    captureOutput: true,
+                    timeout: TimeSpan.FromSeconds(10));
             }
         }
         catch

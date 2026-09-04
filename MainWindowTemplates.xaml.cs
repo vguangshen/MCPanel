@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Windows;
 using System.Windows.Input;
 
@@ -10,8 +11,29 @@ public partial class MainWindowTemplates : ResourceDictionary
         InitializeComponent();
     }
 
-    private static MainWindow? GetOwner(object sender) =>
-        sender is DependencyObject element ? Window.GetWindow(element) as MainWindow : null;
+    private static MainWindow? GetOwner(object sender)
+    {
+        if (sender is not DependencyObject element)
+        {
+            return null;
+        }
+
+        // Normal DataTemplate content is attached to the main window, but a
+        // Popup is hosted in a separate PopupRoot window. Window.GetWindow()
+        // therefore returns null for queue-row buttons in the download popup.
+        // Fall back to the visible MCPanel window so popup actions still reach
+        // the queue service.
+        if (Window.GetWindow(element) is MainWindow owner)
+        {
+            return owner;
+        }
+
+        return Application.Current?.Windows
+            .OfType<MainWindow>()
+            .Where(window => window.IsVisible || window.DownloadQueuePopup.IsOpen)
+            .OrderByDescending(window => window.IsActive)
+            .FirstOrDefault();
+    }
 
     private void ProductInstall_Click(object sender, RoutedEventArgs e) =>
         GetOwner(sender)?.ProductInstall_Click(sender, e);

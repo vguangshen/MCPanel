@@ -149,7 +149,7 @@ public sealed class McPanelStoreClient : IDisposable
                 pauseController);
         }
 
-        var downloads = Path.Combine(AppContext.BaseDirectory, "web", ".downloads");
+        var downloads = ComponentPaths.ProductDownloadRoot;
         Directory.CreateDirectory(downloads);
         var productDownloadDirectory = Path.Combine(downloads, SanitizeFileName(product.ProductId));
 
@@ -182,87 +182,42 @@ public sealed class McPanelStoreClient : IDisposable
         Directory.CreateDirectory(stagingDirectory);
         var stagingTarget = Path.Combine(stagingDirectory, SanitizeFileName(fileName!));
         var target = Path.Combine(productDownloadDirectory, SanitizeFileName(fileName!));
-        var partialTarget = $"{stagingTarget}.download";
+        DownloadResult? downloadResult = null;
         try
         {
             await WaitForDownloadPermissionAsync(pauseController, cancellationToken);
             using var response = await SendDownloadRequestAsync(uri, cancellationToken);
-            var total = response.Content.Headers.ContentLength;
-
-            if (File.Exists(partialTarget))
-            {
-                File.Delete(partialTarget);
-            }
-
-            {
-                using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
-                using var destination = new FileStream(
-                    partialTarget,
-                    FileMode.Create,
-                    FileAccess.Write,
-                    FileShare.None,
-                    1024 * 128,
-                    useAsync: true);
-                var buffer = new byte[1024 * 128];
-                long readTotal = 0;
-                var downloadStartedAt = DateTime.UtcNow;
-                var lastProgressAt = DateTime.MinValue;
-
-                while (true)
+            downloadResult = await DownloadService.SaveResponseAsync(
+                response,
+                stagingTarget,
+                snapshot =>
                 {
-                    await WaitForDownloadPermissionAsync(pauseController, cancellationToken);
-                    var read = await source.ReadAsync(buffer, cancellationToken);
-                    if (read == 0)
-                    {
-                        break;
-                    }
-
-                    await WaitForDownloadPermissionAsync(pauseController, cancellationToken);
-                    await destination.WriteAsync(buffer, 0, read, cancellationToken);
-                    readTotal += read;
-                    var now = DateTime.UtcNow;
-                    if (now - lastProgressAt >= TimeSpan.FromMilliseconds(150) ||
-                        (total is > 0 && readTotal == total.Value))
-                    {
-                        var elapsedSeconds = Math.Max((now - downloadStartedAt).TotalSeconds, 0.001);
-                        var speed = readTotal / elapsedSeconds;
-                        var downloadedText = total is > 0
-                            ? $"{ProductTransferFormatting.FormatBytes(readTotal)} / {ProductTransferFormatting.FormatBytes(total.Value)}"
-                            : ProductTransferFormatting.FormatBytes(readTotal);
-                        var message = $"正在下载 {fileName}：{downloadedText}";
-                        progress?.Invoke(new ProductDownloadProgress(
-                            total is > 0 ? Compat.Clamp(readTotal * 100d / total.Value, 0, 99) : 0,
-                            message,
-                            readTotal,
-                            total,
-                            ProductTransferFormatting.FormatRate(speed)));
-                        status?.Invoke(message);
-                        lastProgressAt = now;
-                    }
-                }
-
-                await destination.FlushAsync(cancellationToken);
-
-                if (readTotal <= 0)
-                {
-                    throw new InvalidDataException("下载服务器返回了空产品包。");
-                }
-
-                if (total is > 0 && readTotal != total.Value)
-                {
-                    throw new InvalidDataException($"产品包下载不完整：应为 {total.Value} 字节，实际 {readTotal} 字节。");
-                }
-            }
-
-            FileCompat.Move(partialTarget, stagingTarget, overwrite: true);
-            ValidateDownloadedPackage(stagingTarget);
+                    var message = snapshot.TotalBytes is > 0
+                        ? $"正在下载 {fileName}：{ProductTransferFormatting.FormatBytes(snapshot.BytesReceived)} / {ProductTransferFormatting.FormatBytes(snapshot.TotalBytes.Value)}"
+                        : $"正在下载 {fileName}：{ProductTransferFormatting.FormatBytes(snapshot.BytesReceived)}";
+                    progress?.Invoke(new ProductDownloadProgress(
+                        snapshot.TotalBytes is > 0
+                            ? Compat.Clamp(snapshot.BytesReceived * 100d / snapshot.TotalBytes.Value, 0, 99)
+                            : 0,
+                        message,
+                        snapshot.BytesReceived,
+                        snapshot.TotalBytes,
+                        ProductTransferFormatting.FormatRate(snapshot.BytesPerSecond)));
+                    status?.Invoke(message);
+                },
+                pauseController,
+                cancellationToken,
+                progressIntervalMilliseconds: 150,
+                validatePartial: ValidateDownloadedPackage,
+                emptyFileMessage: "下载服务器返回了空产品包。",
+                incompleteFileMessage: (expected, actual) =>
+                    $"产品包下载不完整：应为 {expected} 字节，实际 {actual} 字节。");
             WriteSha256Sidecar(stagingTarget);
             TryDeleteDirectory(productDownloadDirectory);
             Directory.Move(stagingDirectory, productDownloadDirectory);
         }
         catch
         {
-            TryDeleteFile(partialTarget);
             TryDeleteDirectory(stagingDirectory);
             throw;
         }
@@ -272,7 +227,7 @@ public sealed class McPanelStoreClient : IDisposable
             $"{fileName} 下载完成",
             new FileInfo(target).Length,
             new FileInfo(target).Length,
-            null));
+            ProductTransferFormatting.FormatRate(downloadResult?.AverageBytesPerSecond ?? 0)));
         return target;
     }
 
@@ -326,12 +281,12 @@ public sealed class McPanelStoreClient : IDisposable
             var knownTotalBytes = files.Where(file => file.Length.HasValue).Sum(file => file.Length!.Value);
             var allLengthsKnown = files.All(file => file.Length.HasValue);
             status?.Invoke(allLengthsKnown
-                ? $"已准备 {files.Count} 个文件，共 {FormatBytes(knownTotalBytes)}，开始下载..."
+                ? $"已准备 {files.Count} 个文件，共 {ProductTransferFormatting.FormatBytes(knownTotalBytes)}，开始下载..."
                 : $"已准备 {files.Count} 个文件，开始下载...");
             progress?.Invoke(new ProductDownloadProgress(
                 3,
                 allLengthsKnown
-                    ? $"已准备 {files.Count} 个文件，共 {FormatBytes(knownTotalBytes)}，开始下载..."
+                    ? $"已准备 {files.Count} 个文件，共 {ProductTransferFormatting.FormatBytes(knownTotalBytes)}，开始下载..."
                     : $"已准备 {files.Count} 个文件，开始下载...",
                 0,
                 allLengthsKnown ? knownTotalBytes : null,
@@ -360,8 +315,8 @@ public sealed class McPanelStoreClient : IDisposable
                         : 3 + completed * 96d / files.Count;
                     var speed = bytes / Math.Max((now - downloadStartedAt).TotalSeconds, 0.001);
                     var transferText = allLengthsKnown
-                        ? $"正在下载产品文件：{FormatBytes(bytes)} / {FormatBytes(knownTotalBytes)}"
-                        : $"正在下载产品文件：{FormatBytes(bytes)}（{completed} / {files.Count} 个文件）";
+                        ? $"正在下载产品文件：{ProductTransferFormatting.FormatBytes(bytes)} / {ProductTransferFormatting.FormatBytes(knownTotalBytes)}"
+                        : $"正在下载产品文件：{ProductTransferFormatting.FormatBytes(bytes)}（{completed} / {files.Count} 个文件）";
                     progress?.Invoke(new ProductDownloadProgress(
                         percent,
                         transferText,
@@ -399,8 +354,8 @@ public sealed class McPanelStoreClient : IDisposable
                     {
                         var bytes = Interlocked.Read(ref downloadedBytes);
                         status?.Invoke(allLengthsKnown
-                            ? $"已下载 {FormatBytes(bytes)} / {FormatBytes(knownTotalBytes)}（{completed} / {files.Count} 个文件，{MaxConcurrentFileDownloads} 路并发）"
-                            : $"已下载 {FormatBytes(bytes)}（{completed} / {files.Count} 个文件，{MaxConcurrentFileDownloads} 路并发）");
+                            ? $"已下载 {ProductTransferFormatting.FormatBytes(bytes)} / {ProductTransferFormatting.FormatBytes(knownTotalBytes)}（{completed} / {files.Count} 个文件，{MaxConcurrentFileDownloads} 路并发）"
+                            : $"已下载 {ProductTransferFormatting.FormatBytes(bytes)}（{completed} / {files.Count} 个文件，{MaxConcurrentFileDownloads} 路并发）");
                     }
                 });
 
@@ -549,53 +504,27 @@ public sealed class McPanelStoreClient : IDisposable
         }
 
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-        var partialTarget = $"{target}.download";
-        try
-        {
-            TryDeleteFile(partialTarget);
+        var lastReportedBytes = 0L;
+        await DownloadService.SaveResponseAsync(
+            response,
+            target,
+            snapshot =>
             {
-                await WaitForDownloadPermissionAsync(pauseController, cancellationToken);
-                using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
-                using var destination = new FileStream(
-                    partialTarget,
-                    FileMode.Create,
-                    FileAccess.Write,
-                    FileShare.None,
-                    1024 * 128,
-                    useAsync: true);
-                var buffer = new byte[128 * 1024];
-                long received = 0;
-                while (true)
+                var delta = snapshot.BytesReceived - lastReportedBytes;
+                if (delta > 0)
                 {
-                    await WaitForDownloadPermissionAsync(pauseController, cancellationToken);
-                    var read = await source.ReadAsync(buffer, cancellationToken);
-                    if (read == 0)
-                    {
-                        break;
-                    }
-
-                    await WaitForDownloadPermissionAsync(pauseController, cancellationToken);
-                    await destination.WriteAsync(buffer, 0, read, cancellationToken);
-                    received += read;
-                    bytesReceived?.Invoke(read);
+                    bytesReceived?.Invoke(delta);
                 }
 
-                await destination.FlushAsync(cancellationToken);
-
-                var declaredLength = expectedLength ?? response.Content.Headers.ContentLength;
-                if (declaredLength is >= 0 && received != declaredLength.Value)
-                {
-                    throw new InvalidDataException($"文件下载不完整：{fileUri}，应为 {declaredLength.Value} 字节，实际 {received} 字节。");
-                }
-            }
-
-            FileCompat.Move(partialTarget, target, overwrite: true);
-        }
-        catch
-        {
-            TryDeleteFile(partialTarget);
-            throw;
-        }
+                lastReportedBytes = snapshot.BytesReceived;
+            },
+            pauseController,
+            cancellationToken,
+            progressIntervalMilliseconds: 0,
+            expectedBytes: expectedLength,
+            emptyFileMessage: $"产品文件下载为空：{fileUri}",
+            incompleteFileMessage: (expected, actual) =>
+                $"文件下载不完整：{fileUri}，应为 {expected} 字节，实际 {actual} 字节。");
     }
 
     private static Task WaitForDownloadPermissionAsync(
@@ -749,20 +678,6 @@ public sealed class McPanelStoreClient : IDisposable
         uri.AbsoluteUri.EndsWith("/", StringComparison.Ordinal)
             ? uri
             : new Uri($"{uri.AbsoluteUri}/", UriKind.Absolute);
-
-    private static string FormatBytes(long bytes)
-    {
-        string[] units = ["B", "KB", "MB", "GB", "TB"];
-        var value = (double)Math.Max(0, bytes);
-        var unit = 0;
-        while (value >= 1024 && unit < units.Length - 1)
-        {
-            value /= 1024;
-            unit++;
-        }
-
-        return $"{value:0.##} {units[unit]}";
-    }
 
     private sealed record RemoteWebFile(Uri Uri, long? Length);
 

@@ -14,7 +14,7 @@ public sealed class ProductCacheStore
 
     public ProductCacheStore()
     {
-        var directory = Path.Combine(AppContext.BaseDirectory, "Cache");
+        var directory = ComponentPaths.CacheRoot;
         Directory.CreateDirectory(directory);
         _cacheFile = Path.Combine(directory, "products-cache.json");
         MigrateLegacyCacheIfNeeded();
@@ -70,7 +70,7 @@ public sealed class ProductCacheStore
             catch (Exception error)
             {
                 RollingLogWriter.Append(
-                    Path.Combine(AppContext.BaseDirectory, "StoreData", "Work", "product-cache.log"),
+                    Path.Combine(ComponentPaths.WorkRoot, "product-cache.log"),
                     $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] 迁移旧产品缓存失败：{error}{Environment.NewLine}");
             }
         }

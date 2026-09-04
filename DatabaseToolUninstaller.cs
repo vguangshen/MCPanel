@@ -511,18 +511,12 @@ internal static class DatabaseToolUninstaller
         string failureMessage,
         CancellationToken cancellationToken)
     {
-        using var process = Process.Start(new ProcessStartInfo
-        {
-            FileName = executable,
-            Arguments = arguments,
-            UseShellExecute = true,
-            Verb = "runas",
-            WindowStyle = hidden ? ProcessWindowStyle.Hidden : ProcessWindowStyle.Normal
-        });
-        if (process is null)
-        {
-            throw new InvalidOperationException("无法启动数据库工具卸载程序。");
-        }
+        using var process = ProcessRunner.Start(
+            executable,
+            arguments,
+            Path.GetDirectoryName(executable),
+            elevated: true,
+            windowStyle: hidden ? ProcessWindowStyle.Hidden : ProcessWindowStyle.Normal);
 
         await ProcessLifecycle.WaitForExitAsync(process, cancellationToken);
         if (!acceptedExitCodes.Contains(process.ExitCode))

@@ -339,10 +339,11 @@ internal sealed class ProductWebsiteService
     private static void DeleteManagedCertificatesFromKnownRoots(string productId)
     {
         var roots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var locator = new ComponentLocator();
         foreach (var root in ComponentPaths.NginxSearchRoots)
         {
             roots.Add(root);
-            var executable = NginxRuntimeManager.FindNginxExe(root);
+            var executable = locator.FindNginxExecutable(root);
             if (!string.IsNullOrWhiteSpace(executable))
             {
                 roots.Add(Path.GetDirectoryName(executable!)!);
@@ -378,9 +379,7 @@ internal sealed class ProductWebsiteService
         }
     }
 
-    private static string? FindNginxExe() => ComponentPaths.NginxSearchRoots
-        .Select(NginxRuntimeManager.FindNginxExe)
-        .FirstOrDefault(path => path is not null);
+    private static string? FindNginxExe() => new ComponentLocator().FindNginxExecutable();
 
     private static string ManagedId(string productId) => $"product-domain:{SafeName(productId)}";
 

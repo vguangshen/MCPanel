@@ -37,7 +37,7 @@ internal sealed class GitHubUpdateCredentialStore
     private readonly string _credentialFile;
 
     public GitHubUpdateCredentialStore()
-        : this(Path.Combine(AppContext.BaseDirectory, "StoreData", "Updates", "github-update-credential.json"))
+        : this(Path.Combine(ComponentPaths.UpdatesRoot, "github-update-credential.json"))
     {
     }
 

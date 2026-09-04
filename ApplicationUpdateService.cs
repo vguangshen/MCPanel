@@ -95,12 +95,9 @@ public sealed class ApplicationUpdateService
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true, PropertyNameCaseInsensitive = true };
     private readonly GitHubUpdateCredentialStore _gitHubUpdateCredentials = new();
     private int _updaterCleanupStarted;
-    private static readonly HashSet<string> PreservedTopLevelNames = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "StoreData", "AccountApi", "Runtime", "Downloads", "Tools", "web", "Cache", "Frp", "Nginx", "MySQL", "MSSQL", "Tomcat", "SSMS", "Navicat Premium Lite",
-        "config.ini", "config.ini.previous", "device.identity", "database.config", "database.config.previous", "logs"
-    };
-    public string UpdatesRoot => Path.Combine(AppContext.BaseDirectory, "StoreData", "Updates");
+    private static readonly IReadOnlyCollection<string> PreservedTopLevelNames =
+        DeploymentLayoutManifest.PreservedTopLevelNames;
+    public string UpdatesRoot => ComponentPaths.UpdatesRoot;
     public static Version CurrentVersion => Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 0, 0, 0);
     public static string CurrentVersionText => $"{CurrentVersion.Major}.{CurrentVersion.Minor}.{Math.Max(0, CurrentVersion.Build)}";
 
@@ -400,31 +397,21 @@ public sealed class ApplicationUpdateService
             {
                 using var response = await download(cancellationToken);
                 ensureResponse(response);
-                var length = response.Content.Headers.ContentLength;
-                using var source = await response.Content.ReadAsStreamAsync();
-                // 必须在 Move 前结束此作用域，确保 Windows 已释放 .part 文件句柄。
-                using (var target = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None, 1024 * 1024, true))
-                {
-                    var buffer = new byte[1024 * 1024];
-                    long received = 0;
-                    int read;
-                    while ((read = await source.ReadAsync(buffer, 0, buffer.Length, cancellationToken)) > 0)
+                await DownloadService.SaveResponseAsync(
+                    response,
+                    packageFile,
+                    snapshot =>
                     {
-                        await target.WriteAsync(buffer, 0, read, cancellationToken);
-                        received += read;
-                        if (length is > 0) progress?.Report(Math.Min(75, received * 75d / length.Value));
-                    }
-                    await target.FlushAsync(cancellationToken);
-                }
-
-                try
-                {
-                    FileCompat.Move(temporary, packageFile, overwrite: true);
-                }
-                catch (IOException ex)
-                {
-                    throw new IOException("更新包下载完成但无法保存，文件可能正被其他进程使用。请关闭其他 MCPanel 更新任务后重试。", ex);
-                }
+                        if (snapshot.TotalBytes is > 0)
+                        {
+                            progress?.Report(Math.Min(
+                                75,
+                                snapshot.BytesReceived * 75d / snapshot.TotalBytes.Value));
+                        }
+                    },
+                    cancellationToken: cancellationToken,
+                    temporarySuffix: ".part",
+                    bufferSize: 1024 * 1024);
             }
             finally
             {
@@ -516,15 +503,11 @@ public sealed class ApplicationUpdateService
         var planFile = Path.Combine(helperRoot, "update-plan.json");
         AtomicFile.WriteAllText(planFile, JsonSerializer.Serialize(plan, JsonOptions));
         var helperExe = Path.Combine(helperRoot, "MCPanel.exe");
-        _ = Process.Start(new ProcessStartInfo
-        {
-            FileName = helperExe,
-            Arguments = $"--apply-update \"{planFile}\"",
-            WorkingDirectory = helperRoot,
-            UseShellExecute = true,
-            Verb = RequiresElevation(installDirectory) ? "runas" : string.Empty,
-            WindowStyle = ProcessWindowStyle.Hidden
-        }) ?? throw new InvalidOperationException("无法启动独立更新器。");
+        using var updater = ProcessRunner.Start(
+            helperExe,
+            $"--apply-update {Compat.QuoteCommandLineArgument(planFile)}",
+            helperRoot,
+            elevated: RequiresElevation(installDirectory));
     }
 
     public void DiscardPreparedUpdate(PreparedApplicationUpdate? update)
@@ -574,13 +557,10 @@ public sealed class ApplicationUpdateService
             Exception? restartError = null;
             try
             {
-                _ = Process.Start(new ProcessStartInfo
-                {
-                    FileName = Path.Combine(plan.InstallDirectory, plan.MainExecutableName),
-                    Arguments = string.Empty,
-                    WorkingDirectory = plan.InstallDirectory,
-                    UseShellExecute = true
-                }) ?? throw new InvalidOperationException("无法启动更新后的 MCPanel.exe。");
+                using var restarted = ProcessRunner.Start(
+                    Path.Combine(plan.InstallDirectory, plan.MainExecutableName),
+                    string.Empty,
+                    plan.InstallDirectory);
             }
             catch (Exception error)
             {
@@ -683,7 +663,7 @@ public sealed class ApplicationUpdateService
         ValidateTransactionPlan(plan);
         var installRoot = plan.InstallDirectory;
         var payloadRoot = plan.PayloadDirectory;
-        var rollbackRoot = Path.Combine(installRoot, "StoreData", "Updates", "Rollback", "Current");
+        var rollbackRoot = Path.Combine(ComponentPaths.GetUpdatesRoot(installRoot), "Rollback", "Current");
         var existingConfigFile = Path.Combine(installRoot, "MCPanel.exe.config");
         var preservedAppSettings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -777,7 +757,7 @@ public sealed class ApplicationUpdateService
         var payloadRoot = NormalizeDirectoryPath(plan.PayloadDirectory, "更新暂存目录");
         var stagingRoot = NormalizeDirectoryPath(plan.StagingRoot, "更新暂存根目录");
         var stagingParent = NormalizeDirectoryPath(
-            Path.Combine(installRoot, "StoreData", "Updates", "Staging"),
+            Path.Combine(ComponentPaths.GetUpdatesRoot(installRoot), "Staging"),
             "更新暂存父目录");
         var stagingParentInfo = Directory.GetParent(stagingRoot);
         if (stagingParentInfo is null ||
@@ -823,7 +803,7 @@ public sealed class ApplicationUpdateService
         }
 
         var packageFile = Path.GetFullPath(plan.PackageFile);
-        var downloadRoot = Path.Combine(plan.InstallDirectory, "StoreData", "Updates", "Downloads");
+        var downloadRoot = Path.Combine(ComponentPaths.GetUpdatesRoot(plan.InstallDirectory), "Downloads");
         if (!IsPathInside(downloadRoot, packageFile) ||
             !packageFile.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
         {
@@ -1432,7 +1412,7 @@ public sealed class ApplicationUpdateService
     {
         try
         {
-            var path = Path.Combine(installRoot, "StoreData", "Updates", "last-update.json");
+            var path = Path.Combine(ComponentPaths.GetUpdatesRoot(installRoot), "last-update.json");
             AtomicFile.WriteAllText(path, JsonSerializer.Serialize(new { Success = success, Message = message, Version = version, Time = DateTime.Now }, JsonOptions));
         }
         catch

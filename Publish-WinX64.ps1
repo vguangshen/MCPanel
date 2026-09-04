@@ -9,11 +9,15 @@ $projectFile = Join-Path $projectRoot 'MCPanel.csproj'
 $outputDir = [IO.Path]::GetFullPath($OutputDirectory)
 $frameworkBuildDir = Join-Path $projectRoot 'bin\Release\net462'
 $stagingDir = Join-Path $projectRoot 'obj\publish\net462'
-$preservedNames = @(
-    'StoreData', 'AccountApi', 'Runtime', 'Downloads', 'Tools', 'web', 'Cache', 'Frp', 'Nginx', 'MySQL', 'MSSQL', 'Tomcat',
-    'SSMS', 'Navicat Premium Lite', 'config.ini', 'config.ini.previous', 'device.identity',
-    'database.config', 'database.config.previous', 'logs'
-)
+$layoutManifestPath = Join-Path $projectRoot 'deployment-layout.json'
+if (!(Test-Path -LiteralPath $layoutManifestPath)) {
+    throw "Deployment layout manifest was not found: $layoutManifestPath"
+}
+$layoutManifest = Get-Content -LiteralPath $layoutManifestPath -Raw | ConvertFrom-Json
+$preservedNames = @($layoutManifest.preservedTopLevelNames | ForEach-Object { [string]$_ })
+if ($preservedNames.Count -eq 0) {
+    throw "Deployment layout manifest does not define preserved top-level names: $layoutManifestPath"
+}
 $nugetPackagesRoot = if ([string]::IsNullOrWhiteSpace($env:NUGET_PACKAGES)) {
     Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)) '.nuget\packages'
 } else {

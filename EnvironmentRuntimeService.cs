@@ -29,29 +29,39 @@ public sealed record EnvironmentRuntimeState(
     string? DetectedSqlServerReleaseId = null,
     string? DetectedSqlServerDisplayName = null);
 
+public sealed record EnvironmentRuntimeSnapshot(
+    IReadOnlyDictionary<EnvironmentKind, EnvironmentRuntimeState> States,
+    IReadOnlyDictionary<EnvironmentKind, string?> InstallDirectories);
+
 public sealed class EnvironmentRuntimeService
 {
     private static readonly SemaphoreSlim ElevatedActionLock = new(1, 1);
 
     public EnvironmentRuntimeState GetState(EnvironmentKind kind)
     {
+        return GetState(kind, new ComponentLocator());
+    }
+
+    private static EnvironmentRuntimeState GetState(EnvironmentKind kind, ComponentLocator locator)
+    {
         return kind switch
         {
-            EnvironmentKind.Tomcat => GetTomcatState(),
-            EnvironmentKind.Nginx => GetNginxState(),
-            EnvironmentKind.MySql => GetMySqlState(),
-            EnvironmentKind.SqlServer => GetSqlServerState(),
-            EnvironmentKind.Iis => GetIisState(),
+            EnvironmentKind.Tomcat => GetTomcatState(locator),
+            EnvironmentKind.Nginx => GetNginxState(locator),
+            EnvironmentKind.MySql => GetMySqlState(locator),
+            EnvironmentKind.SqlServer => GetSqlServerState(locator),
+            EnvironmentKind.Iis => GetIisState(locator),
             _ => NotInstalled()
         };
     }
 
     public IReadOnlyDictionary<EnvironmentKind, EnvironmentRuntimeState> GetStates()
     {
+        var locator = new ComponentLocator();
         var result = new Dictionary<EnvironmentKind, EnvironmentRuntimeState>();
         foreach (var kind in new[] { EnvironmentKind.Iis, EnvironmentKind.Nginx, EnvironmentKind.MySql, EnvironmentKind.SqlServer, EnvironmentKind.Tomcat })
         {
-            result[kind] = GetState(kind);
+            result[kind] = GetState(kind, locator);
         }
 
         return result;
@@ -59,16 +69,21 @@ public sealed class EnvironmentRuntimeService
 
     public string? GetInstallDirectory(EnvironmentKind kind)
     {
+        return GetInstallDirectory(kind, new ComponentLocator());
+    }
+
+    private static string? GetInstallDirectory(EnvironmentKind kind, ComponentLocator locator)
+    {
         try
         {
             var directory = kind switch
             {
                 EnvironmentKind.Iis => ServiceExists("W3SVC") ? FindIisRoot() : null,
-                EnvironmentKind.Nginx => Path.GetDirectoryName(FindNginxExe()),
-                EnvironmentKind.MySql => FindMySqlRoot(),
+                EnvironmentKind.Nginx => Path.GetDirectoryName(locator.FindNginxExecutable()),
+                EnvironmentKind.MySql => locator.FindMySqlRoot(GetServiceExecutablePath("MySQL80")),
                 EnvironmentKind.SqlServer => FindSqlServerDataRoot() ?? FindServiceExecutableDirectory("MSSQLSERVER"),
-                EnvironmentKind.Tomcat => FindTomcatRoot(),
-                EnvironmentKind.FrpTunnel => Path.Combine(AppContext.BaseDirectory, "Frp"),
+                EnvironmentKind.Tomcat => locator.FindTomcatRoot(),
+                EnvironmentKind.FrpTunnel => ComponentPaths.FrpRoot,
                 _ => null
             };
 
@@ -84,24 +99,49 @@ public sealed class EnvironmentRuntimeService
 
     public IReadOnlyDictionary<EnvironmentKind, string?> GetInstallDirectories()
     {
+        var locator = new ComponentLocator();
         var result = new Dictionary<EnvironmentKind, string?>();
         foreach (EnvironmentKind kind in Enum.GetValues(typeof(EnvironmentKind)))
         {
-            result[kind] = GetInstallDirectory(kind);
+            result[kind] = GetInstallDirectory(kind, locator);
         }
 
         return result;
     }
 
+    public EnvironmentRuntimeSnapshot GetSnapshot()
+    {
+        var locator = new ComponentLocator();
+        var states = new Dictionary<EnvironmentKind, EnvironmentRuntimeState>();
+        var installDirectories = new Dictionary<EnvironmentKind, string?>();
+
+        foreach (var kind in new[]
+                 {
+                     EnvironmentKind.Iis,
+                     EnvironmentKind.Nginx,
+                     EnvironmentKind.MySql,
+                     EnvironmentKind.SqlServer,
+                     EnvironmentKind.Tomcat
+                 })
+        {
+            states[kind] = GetState(kind, locator);
+            installDirectories[kind] = GetInstallDirectory(kind, locator);
+        }
+
+        installDirectories[EnvironmentKind.FrpTunnel] = GetInstallDirectory(EnvironmentKind.FrpTunnel, locator);
+        return new EnvironmentRuntimeSnapshot(states, installDirectories);
+    }
+
     public bool IsRunning(EnvironmentKind kind)
     {
+        var locator = new ComponentLocator();
         return kind switch
         {
-            EnvironmentKind.Tomcat => GetTomcatState().IsRunning,
-            EnvironmentKind.Nginx => GetNginxState().IsRunning,
-            EnvironmentKind.MySql => GetMySqlState().IsRunning,
-            EnvironmentKind.SqlServer => GetSqlServerState().IsRunning,
-            EnvironmentKind.Iis => GetIisState().IsRunning,
+            EnvironmentKind.Tomcat => GetTomcatState(locator).IsRunning,
+            EnvironmentKind.Nginx => GetNginxState(locator).IsRunning,
+            EnvironmentKind.MySql => GetMySqlState(locator).IsRunning,
+            EnvironmentKind.SqlServer => GetSqlServerState(locator).IsRunning,
+            EnvironmentKind.Iis => GetIisState(locator).IsRunning,
             _ => false
         };
     }
@@ -114,7 +154,11 @@ public sealed class EnvironmentRuntimeService
             throw new FileNotFoundException("未找到 IIS 管理器。请先安装 IIS 管理控制台。", inetmgr);
         }
 
-        Process.Start(new ProcessStartInfo { FileName = inetmgr, UseShellExecute = true });
+        using var manager = ProcessRunner.StartFile(
+            inetmgr,
+            string.Empty,
+            Path.GetDirectoryName(inetmgr) ?? ComponentPaths.ApplicationRoot,
+            windowStyle: ProcessWindowStyle.Normal);
     }
 
     public string StartTomcatInCatalinaConsole()
@@ -133,7 +177,7 @@ public sealed class EnvironmentRuntimeService
         }
 
         EnvironmentInstaller.NormalizeTomcatJvmPropertiesFile(tomcatRoot);
-        var workDirectory = Path.Combine(StoreDataRoot, "Work");
+        var workDirectory = ComponentPaths.WorkRoot;
         Directory.CreateDirectory(workDirectory);
         var launcher = Path.Combine(workDirectory, "run-tomcat-catalina.cmd");
         AtomicFile.WriteAllText(
@@ -151,13 +195,11 @@ public sealed class EnvironmentRuntimeService
             """,
             new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
 
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = launcher,
-            WorkingDirectory = binDirectory,
-            UseShellExecute = true,
-            WindowStyle = ProcessWindowStyle.Normal
-        });
+        using var diagnosticWindow = ProcessRunner.StartFile(
+            launcher,
+            string.Empty,
+            binDirectory,
+            windowStyle: ProcessWindowStyle.Normal);
 
         return "已打开 Catalina 前台诊断窗口。Tomcat 的启动日志和错误会保留在该窗口中。";
     }
@@ -778,7 +820,7 @@ public sealed class EnvironmentRuntimeService
 
     private static async Task UninstallSqlServerCompletelyAsync(CancellationToken cancellationToken)
     {
-        var workDirectory = Path.Combine(StoreDataRoot, "Work");
+        var workDirectory = ComponentPaths.WorkRoot;
         var operationId = Guid.NewGuid().ToString("N");
         var script = Path.Combine(workDirectory, $"uninstall-sqlserver-{operationId}.ps1");
         var log = Path.Combine(workDirectory, $"uninstall-sqlserver-{operationId}.log");
@@ -802,7 +844,7 @@ public sealed class EnvironmentRuntimeService
 
     private static async Task UninstallMySqlCompletelyAsync(CancellationToken cancellationToken)
     {
-        var workDirectory = Path.Combine(StoreDataRoot, "Work");
+        var workDirectory = ComponentPaths.WorkRoot;
         var operationId = Guid.NewGuid().ToString("N");
         var script = Path.Combine(workDirectory, $"uninstall-mysql-{operationId}.ps1");
         var log = Path.Combine(workDirectory, $"uninstall-mysql-{operationId}.log");
@@ -826,7 +868,7 @@ public sealed class EnvironmentRuntimeService
 
     private static async Task<string> UninstallIisCompletelyAsync(CancellationToken cancellationToken)
     {
-        var workDirectory = Path.Combine(StoreDataRoot, "Work");
+        var workDirectory = ComponentPaths.WorkRoot;
         var operationId = Guid.NewGuid().ToString("N");
         var script = Path.Combine(workDirectory, $"uninstall-iis-{operationId}.ps1");
         var log = Path.Combine(workDirectory, $"uninstall-iis-{operationId}.log");
@@ -1340,9 +1382,9 @@ public sealed class EnvironmentRuntimeService
             detectedSqlServerDisplayName);
     private static EnvironmentRuntimeState NotInstalled() => new(false, false, "等待安装", RuntimeStatusKind.NotInstalled);
 
-    private static EnvironmentRuntimeState GetNginxState()
+    private static EnvironmentRuntimeState GetNginxState(ComponentLocator locator)
     {
-        var nginxExe = FindNginxExe();
+        var nginxExe = locator.FindNginxExecutable();
         if (nginxExe is null)
         {
             return NotInstalled();
@@ -1370,9 +1412,9 @@ public sealed class EnvironmentRuntimeService
         return Installed(isRunning, $"Nginx 已安装到 {nginxRoot}。{healthText}{actualPortText}{optionText}");
     }
 
-    private static EnvironmentRuntimeState GetTomcatState()
+    private static EnvironmentRuntimeState GetTomcatState(ComponentLocator locator)
     {
-        var tomcatRoot = FindTomcatRoot();
+        var tomcatRoot = locator.FindTomcatRoot();
         if (tomcatRoot is null)
         {
             return NotInstalled();
@@ -1394,7 +1436,7 @@ public sealed class EnvironmentRuntimeService
         return Installed(status, $"Tomcat 已安装到 {tomcatRoot}。{detail}");
     }
 
-    private static EnvironmentRuntimeState GetSqlServerState()
+    private static EnvironmentRuntimeState GetSqlServerState(ComponentLocator locator)
     {
         if (ServiceExists("MSSQLSERVER"))
         {
@@ -1432,7 +1474,7 @@ public sealed class EnvironmentRuntimeService
             : NotInstalled();
     }
 
-    private static EnvironmentRuntimeState GetIisState()
+    private static EnvironmentRuntimeState GetIisState(ComponentLocator locator)
     {
         if (File.Exists(IisPendingUninstallMarker))
         {
@@ -1447,12 +1489,12 @@ public sealed class EnvironmentRuntimeService
         return ServiceExists("W3SVC") ? Installed(ServiceStatus("W3SVC"), "IIS 已安装，可管理 Default Web Site。") : NotInstalled();
     }
 
-    private static EnvironmentRuntimeState GetMySqlState()
+    private static EnvironmentRuntimeState GetMySqlState(ComponentLocator locator)
     {
-        var credentials = LoadEffectiveMySqlCredentials();
-        var mysqlRoot = FindMySqlRoot();
         var serviceExists = ServiceExists("MySQL80");
         var serviceExe = serviceExists ? GetServiceExecutablePath("MySQL80") : null;
+        var mysqlRoot = locator.FindMySqlRoot(serviceExe);
+        var credentials = LoadEffectiveMySqlCredentials(locator, mysqlRoot);
         var mysqldExe = FindMySqlServerExecutable(mysqlRoot, serviceExe);
         var detectedVersion = ReadMySqlServerVersion(mysqldExe);
         var detectedReleaseId = MySqlReleaseCatalog.FindByServerVersion(detectedVersion)?.Id;
@@ -1510,7 +1552,7 @@ public sealed class EnvironmentRuntimeService
 
     private static async Task RunSqlServerServiceActionAsync(string action, CancellationToken cancellationToken)
     {
-        var workDirectory = Path.Combine(StoreDataRoot, "Work");
+        var workDirectory = ComponentPaths.WorkRoot;
         var operationId = Guid.NewGuid().ToString("N");
         var script = Path.Combine(workDirectory, $"sqlserver-service-action-{operationId}.ps1");
         var log = Path.Combine(workDirectory, $"sqlserver-service-action-{operationId}.log");
@@ -1697,7 +1739,7 @@ public sealed class EnvironmentRuntimeService
 
     private static async Task RunMySqlServiceActionAsync(string action, CancellationToken cancellationToken)
     {
-        var workDirectory = Path.Combine(StoreDataRoot, "Work");
+        var workDirectory = ComponentPaths.WorkRoot;
         var operationId = Guid.NewGuid().ToString("N");
         var script = Path.Combine(workDirectory, $"mysql-service-action-{operationId}.ps1");
         var log = Path.Combine(workDirectory, $"mysql-service-action-{operationId}.log");
@@ -2265,104 +2307,52 @@ public sealed class EnvironmentRuntimeService
 
     private static bool ServiceExists(string serviceName)
     {
-        try
-        {
-            using var process = Process.Start(new ProcessStartInfo
-            {
-                FileName = "sc.exe",
-                Arguments = $"query {serviceName}",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            });
-            process?.WaitForExit(2500);
-            return process?.ExitCode == 0;
-        }
-        catch
-        {
-            return false;
-        }
+        return QueryService(serviceName)?.ExitCode == 0;
     }
 
     private static bool ServiceRunning(string serviceName)
     {
-        try
-        {
-            using var process = Process.Start(new ProcessStartInfo
-            {
-                FileName = "sc.exe",
-                Arguments = $"query {serviceName}",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            });
-            if (process is null)
-            {
-                return false;
-            }
-
-            var output = process.StandardOutput.ReadToEnd();
-            process.WaitForExit(2500);
-            return process.ExitCode == 0 && output.Contains("RUNNING", StringComparison.OrdinalIgnoreCase);
-        }
-        catch
-        {
-            return false;
-        }
+        var result = QueryService(serviceName);
+        return result is not null &&
+               result.ExitCode == 0 &&
+               result.StandardOutput.Contains("RUNNING", StringComparison.OrdinalIgnoreCase);
     }
 
     private static RuntimeStatusKind ServiceStatus(string serviceName)
     {
+        var result = QueryService(serviceName);
+        if (result is null)
+        {
+            return RuntimeStatusKind.Unknown;
+        }
+
+        if (result.ExitCode != 0)
+        {
+            return RuntimeStatusKind.NotInstalled;
+        }
+
+        var output = result.StandardOutput;
+        if (output.Contains("RUNNING", StringComparison.OrdinalIgnoreCase)) return RuntimeStatusKind.Running;
+        if (output.Contains("START_PENDING", StringComparison.OrdinalIgnoreCase)) return RuntimeStatusKind.Starting;
+        if (output.Contains("STOP_PENDING", StringComparison.OrdinalIgnoreCase)) return RuntimeStatusKind.Stopping;
+        if (output.Contains("STOPPED", StringComparison.OrdinalIgnoreCase)) return RuntimeStatusKind.Stopped;
+        return RuntimeStatusKind.Unknown;
+    }
+
+    private static ProcessRunResult? QueryService(string serviceName)
+    {
         try
         {
-            using var process = Process.Start(new ProcessStartInfo
-            {
-                FileName = "sc.exe",
-                Arguments = $"query {serviceName}",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            });
-            if (process is null)
-            {
-                return RuntimeStatusKind.Unknown;
-            }
-
-            var output = process.StandardOutput.ReadToEnd();
-            process.WaitForExit(2500);
-            if (process.ExitCode != 0)
-            {
-                return RuntimeStatusKind.NotInstalled;
-            }
-
-            if (output.Contains("RUNNING", StringComparison.OrdinalIgnoreCase))
-            {
-                return RuntimeStatusKind.Running;
-            }
-
-            if (output.Contains("START_PENDING", StringComparison.OrdinalIgnoreCase))
-            {
-                return RuntimeStatusKind.Starting;
-            }
-
-            if (output.Contains("STOP_PENDING", StringComparison.OrdinalIgnoreCase))
-            {
-                return RuntimeStatusKind.Stopping;
-            }
-
-            if (output.Contains("STOPPED", StringComparison.OrdinalIgnoreCase))
-            {
-                return RuntimeStatusKind.Stopped;
-            }
-
-            return RuntimeStatusKind.Unknown;
+            return ProcessRunner.RunSynchronously(
+                "sc.exe",
+                $"query {Compat.QuoteCommandLineArgument(serviceName)}",
+                ComponentPaths.ApplicationRoot,
+                captureOutput: true,
+                timeout: TimeSpan.FromMilliseconds(2500));
         }
         catch
         {
-            return RuntimeStatusKind.Unknown;
+            return null;
         }
     }
 
@@ -2386,77 +2376,9 @@ public sealed class EnvironmentRuntimeService
             out _);
     }
 
-    private static string? FindTomcatRoot()
-    {
-        foreach (var root in ComponentPaths.TomcatSearchRoots)
-        {
-            var known = Path.Combine(root, "apache-tomcat-8.5.57");
-            if (File.Exists(Path.Combine(known, "bin", "startup.bat")) &&
-                File.Exists(Path.Combine(known, "conf", "server.xml")))
-            {
-                return known;
-            }
-
-            var result = SafeEnumerateDirectories(root, "apache-tomcat-*", false)
-                .Concat(SafeEnumerateDirectories(root, "*", false))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .FirstOrDefault(path => File.Exists(Path.Combine(path, "bin", "startup.bat")) &&
-                                        File.Exists(Path.Combine(path, "conf", "server.xml")));
-            if (result is not null)
-            {
-                return result;
-            }
-        }
-
-        return null;
-    }
-
-    private static string? FindNginxExe()
-    {
-        foreach (var root in ComponentPaths.NginxSearchRoots)
-        {
-            var result = NginxRuntimeManager.FindNginxExe(root);
-            if (result is not null)
-            {
-                return result;
-            }
-        }
-
-        return null;
-    }
-
-    private static string? FindMySqlExe()
-    {
-        foreach (var root in ComponentPaths.MySqlSearchRoots)
-        {
-            var result = FindMySqlExeInRoot(root);
-            if (result is not null)
-            {
-                return result;
-            }
-        }
-
-        return null;
-    }
-
-    private static string? FindMySqlExeInRoot(string root)
-    {
-        var expected = Path.Combine(root, "bin", "mysql.exe");
-        if (File.Exists(expected))
-        {
-            return expected;
-        }
-
-        var knownNested = Path.Combine(root, "mysql", "bin", "mysql.exe");
-        if (File.Exists(knownNested))
-        {
-            return knownNested;
-        }
-
-        return SafeEnumerateDirectories(root, "*", false)
-            .Select(path => Path.Combine(path, "bin", "mysql.exe"))
-            .FirstOrDefault(File.Exists);
-    }
+    private static string? FindTomcatRoot() => new ComponentLocator().FindTomcatRoot();
+    private static string? FindNginxExe() => new ComponentLocator().FindNginxExecutable();
+    private static string? FindMySqlExe() => new ComponentLocator().FindMySqlExecutable();
 
     private static HashSet<int> GetActiveTcpPorts()
     {
@@ -2546,18 +2468,19 @@ public sealed class EnvironmentRuntimeService
 
     private static string? FindMySqlRoot()
     {
-        var serviceExecutable = GetServiceExecutablePath("MySQL80");
-        var mysqlExe = !string.IsNullOrWhiteSpace(serviceExecutable) && File.Exists(serviceExecutable)
-            ? serviceExecutable
-            : FindMySqlExe() ?? serviceExecutable;
-        return mysqlExe is null ? null : Directory.GetParent(Path.GetDirectoryName(mysqlExe)!)?.FullName;
+        return new ComponentLocator().FindMySqlRoot(GetServiceExecutablePath("MySQL80"));
     }
 
-    private static MySqlDefaultCredentials LoadEffectiveMySqlCredentials()
+    private static MySqlDefaultCredentials LoadEffectiveMySqlCredentials() =>
+        LoadEffectiveMySqlCredentials(new ComponentLocator(), null);
+
+    private static MySqlDefaultCredentials LoadEffectiveMySqlCredentials(
+        ComponentLocator locator,
+        string? mysqlRoot)
     {
         var credentials = MySqlCredentialStore.Load();
-        var mysqlRoot = FindMySqlRoot();
-        var configuredPort = mysqlRoot is null ? null : TryReadMySqlConfiguredPort(mysqlRoot);
+        var resolvedRoot = mysqlRoot ?? locator.FindMySqlRoot(GetServiceExecutablePath("MySQL80"));
+        var configuredPort = resolvedRoot is null ? null : TryReadMySqlConfiguredPort(resolvedRoot);
         return configuredPort is > 0 and <= 65535
             ? credentials with { Port = configuredPort.Value }
             : credentials;
@@ -2595,41 +2518,17 @@ public sealed class EnvironmentRuntimeService
         {
             return null;
         }
+        var executablePath = mysqldExecutable!;
 
         try
         {
-            using var process = Process.Start(new ProcessStartInfo
-            {
-                FileName = mysqldExecutable,
-                Arguments = "--version",
-                WorkingDirectory = Path.GetDirectoryName(mysqldExecutable)!,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            });
-            if (process is null)
-            {
-                return null;
-            }
-
-            if (!process.WaitForExit(3000))
-            {
-                try
-                {
-                    process.Kill();
-                }
-                catch
-                {
-                    // The version probe is best-effort and must not affect the runtime state check.
-                }
-
-                return null;
-            }
-
-            var output = process.StandardOutput.ReadToEnd();
-            var error = process.StandardError.ReadToEnd();
-            return MySqlReleaseCatalog.ExtractServerVersion($"{output}\n{error}");
+            var result = ProcessRunner.RunSynchronously(
+                executablePath,
+                "--version",
+                Path.GetDirectoryName(executablePath),
+                captureOutput: true,
+                timeout: TimeSpan.FromSeconds(3));
+            return MySqlReleaseCatalog.ExtractServerVersion(result.CombinedOutput);
         }
         catch
         {
@@ -2644,10 +2543,11 @@ public sealed class EnvironmentRuntimeService
             Path.GetFullPath(ComponentPaths.RuntimeRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
             Path.GetFullPath(ComponentPaths.LegacyRuntimeRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
         };
+        var locator = new ComponentLocator();
 
         foreach (var root in ComponentPaths.MySqlInstallationRoots)
         {
-            var mysqlExe = FindMySqlExeInRoot(root);
+            var mysqlExe = locator.FindMySqlExecutable(root);
             if (mysqlExe is null)
             {
                 continue;
@@ -2718,65 +2618,24 @@ public sealed class EnvironmentRuntimeService
         return File.Exists(executablePath) ? Path.GetDirectoryName(executablePath) : null;
     }
 
-    private static IEnumerable<string> SafeEnumerateDirectories(string root, string pattern, bool recursive)
-    {
-        try
-        {
-            return Directory.EnumerateDirectories(root, pattern, recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly);
-        }
-        catch
-        {
-            return [];
-        }
-    }
-
     private static async Task<string> RunFileAsync(string fileName, string arguments, string workingDirectory, bool elevated, CancellationToken cancellationToken)
     {
-        if (!File.Exists(fileName))
+        var result = await ProcessRunner.RunFileAsync(
+            fileName,
+            arguments,
+            workingDirectory,
+            elevated,
+            cancellationToken,
+            captureOutput: !elevated,
+            timeout: TimeSpan.FromSeconds(30));
+        if (result.ExitCode != 0)
         {
-            throw new FileNotFoundException("找不到运行文件。", fileName);
+            throw new InvalidOperationException(string.IsNullOrWhiteSpace(result.CombinedOutput)
+                ? $"命令退出码：{result.ExitCode}"
+                : result.CombinedOutput);
         }
 
-        var isBatch = Path.GetExtension(fileName).Equals(".bat", StringComparison.OrdinalIgnoreCase) ||
-                      Path.GetExtension(fileName).Equals(".cmd", StringComparison.OrdinalIgnoreCase);
-        using var process = Process.Start(new ProcessStartInfo
-        {
-            FileName = isBatch ? "cmd.exe" : fileName,
-            Arguments = isBatch ? $"/c \"\"{fileName}\" {arguments}\"" : arguments,
-            WorkingDirectory = workingDirectory,
-            UseShellExecute = elevated,
-            Verb = elevated ? "runas" : string.Empty,
-            WindowStyle = ProcessWindowStyle.Hidden,
-            CreateNoWindow = true,
-            RedirectStandardOutput = !elevated,
-            RedirectStandardError = !elevated
-        });
-
-        if (process is null)
-        {
-            throw new InvalidOperationException("无法启动运行文件。");
-        }
-
-        var outputTask = elevated ? Task.FromResult(string.Empty) : process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var errorTask = elevated ? Task.FromResult(string.Empty) : process.StandardError.ReadToEndAsync(cancellationToken);
-        try
-        {
-            await ProcessLifecycle.WaitForExitAsync(process, cancellationToken, TimeSpan.FromSeconds(30));
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-
-        var output = $"{await outputTask}\n{await errorTask}".Trim();
-        if (process.HasExited && process.ExitCode != 0)
-        {
-            throw new InvalidOperationException(string.IsNullOrWhiteSpace(output)
-                ? $"命令退出码：{process.ExitCode}"
-                : output);
-        }
-
-        return output;
+        return result.CombinedOutput;
     }
 
     private static void StartDetached(string fileName, string workingDirectory)
@@ -2786,13 +2645,7 @@ public sealed class EnvironmentRuntimeService
             throw new FileNotFoundException("找不到运行文件。", fileName);
         }
 
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = fileName,
-            WorkingDirectory = workingDirectory,
-            UseShellExecute = true,
-            WindowStyle = ProcessWindowStyle.Hidden
-        });
+        ProcessRunner.StartDetached(fileName, workingDirectory);
     }
 
     private static bool IsPortAvailable(int port)
@@ -2983,7 +2836,7 @@ public sealed class EnvironmentRuntimeService
 
     private static async Task RunElevatedPowerShellAsync(string command, CancellationToken cancellationToken)
     {
-        var workDirectory = Path.Combine(StoreDataRoot, "Work");
+        var workDirectory = ComponentPaths.WorkRoot;
         var operationId = Guid.NewGuid().ToString("N");
         var script = Path.Combine(workDirectory, $"environment-action-{operationId}.ps1");
         var log = Path.Combine(workDirectory, $"environment-action-{operationId}.log");
@@ -3052,47 +2905,27 @@ public sealed class EnvironmentRuntimeService
         CancellationToken cancellationToken,
         string? logPath = null)
     {
-        Process? startedProcess;
         try
         {
-            startedProcess = Process.Start(new ProcessStartInfo
+            var result = await ProcessRunner.RunPowerShellFileAsync(
+                script,
+                elevated: true,
+                cancellationToken: cancellationToken);
+            var exitCode = result.ExitCode;
+            if (exitCode != 0 && exitCode != 3010)
             {
-                FileName = "powershell.exe",
-                Arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{script}\"",
-                Verb = "runas",
-                UseShellExecute = true,
-                WindowStyle = ProcessWindowStyle.Hidden
-            });
+                throw EnvironmentOperationDiagnostics.CreateScriptFailure(
+                    Path.GetFileNameWithoutExtension(script) + " ",
+                    exitCode,
+                    logPath);
+            }
+
+            return exitCode;
         }
         catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
         {
             throw new EnvironmentOperationException("已取消管理员授权，操作未执行。", null, ex);
         }
-
-        if (startedProcess is null)
-        {
-            throw new EnvironmentOperationException("无法启动管理脚本。", null);
-        }
-
-        using var process = startedProcess;
-        try
-        {
-            await ProcessLifecycle.WaitForExitAsync(process, cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        var exitCode = process.ExitCode;
-        if (exitCode != 0 && exitCode != 3010)
-        {
-            throw EnvironmentOperationDiagnostics.CreateScriptFailure(
-                Path.GetFileNameWithoutExtension(script) + " ",
-                exitCode,
-                logPath);
-        }
-
-        return exitCode;
     }
 
     private static void DeleteDirectory(string path)
@@ -3219,9 +3052,9 @@ public sealed class EnvironmentRuntimeService
 
     private static string EscapePowerShellPath(string path) => path.Replace("'", "''");
     private static string AppCmdPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "inetsrv", "appcmd.exe");
-    private static string StoreDataRoot => Path.Combine(AppContext.BaseDirectory, "StoreData");
-    private static string IisPendingUninstallMarker => Path.Combine(StoreDataRoot, "RuntimeState", "iis-pending-uninstall-restart.flag");
-    private static string IisUninstalledMarker => Path.Combine(StoreDataRoot, "RuntimeState", "iis-uninstalled.flag");
+    private static string StoreDataRoot => ComponentPaths.StoreDataRoot;
+    private static string IisPendingUninstallMarker => Path.Combine(ComponentPaths.RuntimeStateRoot, "iis-pending-uninstall-restart.flag");
+    private static string IisUninstalledMarker => Path.Combine(ComponentPaths.RuntimeStateRoot, "iis-uninstalled.flag");
     internal static bool HasIisUninstallContinuation => File.Exists(IisPendingUninstallMarker);
     internal static string IisUninstallContinuationMessage => "IIS 组件卸载已暂存，请重启设备后点击“继续卸载”。";
 }

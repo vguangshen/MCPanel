@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Net;
@@ -42,8 +41,8 @@ public sealed class CustomWebsiteService
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private static readonly SemaphoreSlim OperationLock = new(1, 1);
-    private static string StateFile => Path.Combine(AppContext.BaseDirectory, "StoreData", "RuntimeState", "custom-websites.json");
-    private static string WorkDirectory => Path.Combine(AppContext.BaseDirectory, "StoreData", "Work");
+    private static string StateFile => Path.Combine(ComponentPaths.RuntimeStateRoot, "custom-websites.json");
+    private static string WorkDirectory => ComponentPaths.WorkRoot;
 
     public IReadOnlyList<CustomWebsiteDefinition> LoadAll()
     {
@@ -586,36 +585,9 @@ public sealed class CustomWebsiteService
         CancellationToken cancellationToken,
         Action? onStarted = null)
     {
-        using var process = Process.Start(new ProcessStartInfo
-        {
-            FileName = "powershell.exe",
-            Arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{scriptFile}\"",
-            Verb = "runas",
-            UseShellExecute = true,
-            WindowStyle = ProcessWindowStyle.Hidden
-        });
-        if (process is null) throw new InvalidOperationException("无法启动 IIS 网站管理脚本。");
+        using var process = ProcessRunner.StartPowerShellFile(scriptFile, elevated: true);
         onStarted?.Invoke();
-        try
-        {
-            await process.WaitForExitAsync(cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            try
-            {
-                if (!process.HasExited)
-                {
-                    process.Kill(entireProcessTree: true);
-                    process.WaitForExit(5000);
-                }
-            }
-            catch
-            {
-            }
-
-            throw;
-        }
+        await ProcessLifecycle.WaitForExitAsync(process, cancellationToken);
         if (process.ExitCode != 0)
         {
             throw new InvalidOperationException($"IIS 网站管理脚本执行失败，退出码：{process.ExitCode}。");

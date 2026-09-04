@@ -480,6 +480,7 @@ internal static class ProductInstallWorker
         {
             throw new InvalidOperationException("无法定位 MCPanel 主程序，不能启动管理员产品安装会话。");
         }
+        var executablePath = executable!;
 
         var arguments = string.Join(
             " ",
@@ -487,20 +488,13 @@ internal static class ProductInstallWorker
             Compat.QuoteCommandLineArgument(queueRoot),
             Compat.QuoteCommandLineArgument(stopPath),
             Compat.QuoteCommandLineArgument(heartbeatPath));
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = executable,
-            Arguments = arguments,
-            WorkingDirectory = Path.GetDirectoryName(executable) ?? AppContext.BaseDirectory,
-            UseShellExecute = true,
-            Verb = IsAdministrator() ? string.Empty : "runas",
-            WindowStyle = ProcessWindowStyle.Hidden
-        };
-
         try
         {
-            return Process.Start(startInfo)
-                ?? throw new InvalidOperationException("无法启动管理员产品安装进程。");
+            return ProcessRunner.Start(
+                executablePath,
+                arguments,
+                Path.GetDirectoryName(executablePath) ?? ComponentPaths.ApplicationRoot,
+                elevated: true);
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
         {
@@ -795,7 +789,7 @@ internal static class ProductInstallWorker
     }
 
     private static string GetWorkRoot() =>
-        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "StoreData", "Work"))
+        Path.GetFullPath(ComponentPaths.WorkRoot)
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
     private static bool IsPathInside(string root, string path)
@@ -840,9 +834,7 @@ internal static class ProductInstallWorker
             "产品安装",
             exception,
             Path.Combine(
-                AppContext.BaseDirectory,
-                "StoreData",
-                "Work",
+                ComponentPaths.WorkRoot,
                 $"product-install-{SafeFileName(productId)}.log"));
         var detail = "安装失败：" + exception.Message;
         if (!string.IsNullOrWhiteSpace(logPath))

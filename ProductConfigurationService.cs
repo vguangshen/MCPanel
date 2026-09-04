@@ -180,14 +180,9 @@ internal static class ProductConfigurationService
 
     internal static string DetectMySqlAmbient(string? declaredEnvironment)
     {
-        foreach (var root in ComponentPaths.MySqlSearchRoots)
+        var executable = new ComponentLocator().FindMySqlExecutable();
+        if (executable is not null)
         {
-            var executable = FindMySqlExecutable(root);
-            if (executable is null)
-            {
-                continue;
-            }
-
             try
             {
                 var version = FileVersionInfo.GetVersionInfo(executable);
@@ -222,7 +217,7 @@ internal static class ProductConfigurationService
         var files = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var deployment in ProductDeploymentService.LoadTomcatDeploymentInfos())
         {
-            var productRoot = Path.Combine(AppContext.BaseDirectory, "web", SafeName(deployment.ProductId));
+            var productRoot = Path.Combine(ComponentPaths.WebRoot, SafeName(deployment.ProductId));
             var file = FindNamedFile(productRoot, "systemConfig.yml");
             if (file is null)
             {
@@ -346,42 +341,12 @@ internal static class ProductConfigurationService
     {
         try
         {
-            var directory = Path.Combine(AppContext.BaseDirectory, "StoreData", "Work");
+            var directory = ComponentPaths.WorkRoot;
             RollingLogWriter.Append(Path.Combine(directory, "product-config-refresh.log"),
                 $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {productId} / {file}{Environment.NewLine}{exception}{Environment.NewLine}{Environment.NewLine}",
                 Encoding.UTF8);
         }
         catch { }
-    }
-
-    private static string? FindMySqlExecutable(string root)
-    {
-        if (!Directory.Exists(root))
-        {
-            return null;
-        }
-
-        var candidates = new[]
-        {
-            Path.Combine(root, "bin", "mysql.exe"),
-            Path.Combine(root, "mysql", "bin", "mysql.exe")
-        };
-        var direct = candidates.FirstOrDefault(File.Exists);
-        if (direct is not null)
-        {
-            return direct;
-        }
-
-        try
-        {
-            return Directory.EnumerateDirectories(root, "*", SearchOption.TopDirectoryOnly)
-                .Select(directory => Path.Combine(directory, "bin", "mysql.exe"))
-                .FirstOrDefault(File.Exists);
-        }
-        catch
-        {
-            return null;
-        }
     }
 
     private static bool PathHasDirectory(string path, string name) =>

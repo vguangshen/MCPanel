@@ -71,9 +71,7 @@ internal static class EnvironmentInstallWorker
                     "安装",
                     ex,
                     Path.Combine(
-                        AppContext.BaseDirectory,
-                        "StoreData",
-                        "Work",
+                        ComponentPaths.WorkRoot,
                         $"environment-install-{kind.ToString().ToLowerInvariant()}.log"));
             var detail = restartRequired ? ex.Message : "安装失败：" + ex.Message;
             if (!string.IsNullOrWhiteSpace(logPath))
@@ -97,6 +95,7 @@ internal static class EnvironmentInstallWorker
         {
             throw new InvalidOperationException("无法定位 MCPanel 主程序，不能启动管理员安装会话。");
         }
+        var executablePath = executable!;
 
         var arguments = string.Join(" ",
             WorkerArgument,
@@ -110,20 +109,13 @@ internal static class EnvironmentInstallWorker
             arguments += " " + Compat.QuoteCommandLineArgument(releaseId);
         }
 
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = executable,
-            Arguments = arguments,
-            WorkingDirectory = Path.GetDirectoryName(executable) ?? AppContext.BaseDirectory,
-            UseShellExecute = true,
-            Verb = "runas",
-            WindowStyle = ProcessWindowStyle.Hidden
-        };
-
         try
         {
-            return Process.Start(startInfo)
-                ?? throw new InvalidOperationException("无法启动管理员安装进程。");
+            return ProcessRunner.Start(
+                executablePath,
+                arguments,
+                Path.GetDirectoryName(executablePath) ?? ComponentPaths.ApplicationRoot,
+                elevated: true);
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
         {
@@ -133,7 +125,7 @@ internal static class EnvironmentInstallWorker
 
     public static string CreateProgressFile()
     {
-        var directory = Path.Combine(AppContext.BaseDirectory, "StoreData", "Work");
+        var directory = ComponentPaths.WorkRoot;
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, "environment-install-" + Guid.NewGuid().ToString("N") + ".json");
         AtomicFile.WriteAllText(path, JsonSerializer.Serialize(
@@ -228,7 +220,7 @@ internal static class EnvironmentInstallWorker
 
         try
         {
-            var progressRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "StoreData", "Work"))
+            var progressRoot = Path.GetFullPath(ComponentPaths.WorkRoot)
                 .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
             progressPath = Path.GetFullPath(args[index + 2]);
             return progressPath.StartsWith(progressRoot, StringComparison.OrdinalIgnoreCase);

@@ -26,11 +26,15 @@ if ([string]::IsNullOrWhiteSpace($PublishDirectory)) {
     $publishDirectory = [IO.Path]::GetFullPath($PublishDirectory)
 }
 $executable = Join-Path $publishDirectory 'MCPanel.exe'
-$preservedNames = @(
-    'StoreData', 'AccountApi', 'Runtime', 'Downloads', 'Tools', 'web', 'Cache', 'Frp', 'Nginx', 'MySQL', 'MSSQL', 'Tomcat',
-    'SSMS', 'Navicat Premium Lite', 'config.ini', 'config.ini.previous', 'device.identity',
-    'database.config', 'database.config.previous', 'logs'
-)
+$layoutManifestPath = Join-Path $scriptRoot 'deployment-layout.json'
+if (!(Test-Path -LiteralPath $layoutManifestPath)) {
+    throw "Deployment layout manifest was not found: $layoutManifestPath"
+}
+$layoutManifest = Get-Content -LiteralPath $layoutManifestPath -Raw | ConvertFrom-Json
+$preservedNames = @($layoutManifest.preservedTopLevelNames | ForEach-Object { [string]$_ })
+if ($preservedNames.Count -eq 0) {
+    throw "Deployment layout manifest does not define preserved top-level names: $layoutManifestPath"
+}
 
 if (!(Test-Path -LiteralPath $executable)) {
     throw "Published application was not found: $executable"

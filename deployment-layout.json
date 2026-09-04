@@ -1,0 +1,24 @@
+{
+  "preservedTopLevelNames": [
+    "StoreData",
+    "AccountApi",
+    "Runtime",
+    "Downloads",
+    "Tools",
+    "web",
+    "Cache",
+    "Frp",
+    "Nginx",
+    "MySQL",
+    "MSSQL",
+    "Tomcat",
+    "SSMS",
+    "Navicat Premium Lite",
+    "config.ini",
+    "config.ini.previous",
+    "device.identity",
+    "database.config",
+    "database.config.previous",
+    "logs"
+  ]
+}

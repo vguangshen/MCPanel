@@ -3,7 +3,6 @@ using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Security.Cryptography;
-using System.Security.Principal;
 using System.Text.Json;
 using System.Text;
 using System.Xml.Linq;
@@ -24,7 +23,7 @@ public sealed class ProductDeploymentService
 
     public void PruneStaleDeploymentState()
     {
-        var stateDirectory = Path.Combine(StoreDataRoot, "RuntimeState", "Products");
+        var stateDirectory = ComponentPaths.ProductStateRoot;
         if (!Directory.Exists(stateDirectory))
         {
             return;
@@ -197,7 +196,7 @@ public sealed class ProductDeploymentService
 
     private static void VerifyDownloadedPackageAudit(string packagePath)
     {
-        var downloadsRoot = Path.GetFullPath(Path.Combine(WebRoot, ".downloads"))
+        var downloadsRoot = Path.GetFullPath(ComponentPaths.ProductDownloadRoot)
             .TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
         var fullPath = Path.GetFullPath(packagePath);
         if (!fullPath.StartsWith(downloadsRoot, StringComparison.OrdinalIgnoreCase)) return;
@@ -438,7 +437,7 @@ public sealed class ProductDeploymentService
         ReportUninstallProgress(progress, 25, "正在移除 IIS 应用、应用池和共享站点端口...");
         if (iisState is not null && File.Exists(appcmd))
         {
-            var script = Path.Combine(StoreDataRoot, "Work", $"unbind-product-{safeName}.ps1");
+            var script = Path.Combine(ComponentPaths.WorkRoot, $"unbind-product-{safeName}.ps1");
             Directory.CreateDirectory(Path.GetDirectoryName(script)!);
             await FileCompat.WriteAllTextAsync(script, $$"""
                 $ErrorActionPreference='Stop'
@@ -612,7 +611,7 @@ public sealed class ProductDeploymentService
 
     public static IReadOnlyList<IisProductDeploymentInfo> LoadIisDeploymentInfos()
     {
-        var stateDirectory = Path.Combine(StoreDataRoot, "RuntimeState", "Products");
+        var stateDirectory = ComponentPaths.ProductStateRoot;
         if (!Directory.Exists(stateDirectory))
         {
             return [];
@@ -669,7 +668,7 @@ public sealed class ProductDeploymentService
 
     public static IReadOnlyList<TomcatProductDeploymentInfo> LoadTomcatDeploymentInfos()
     {
-        var stateDirectory = Path.Combine(StoreDataRoot, "RuntimeState", "Products");
+        var stateDirectory = ComponentPaths.ProductStateRoot;
         if (!Directory.Exists(stateDirectory))
         {
             return [];
@@ -1108,7 +1107,7 @@ public sealed class ProductDeploymentService
         var appcmd = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "inetsrv", "appcmd.exe");
         if (File.Exists(appcmd))
         {
-            var script = Path.Combine(StoreDataRoot, "Work", $"remove-stale-iis-{safeName}.ps1");
+            var script = Path.Combine(ComponentPaths.WorkRoot, $"remove-stale-iis-{safeName}.ps1");
             Directory.CreateDirectory(Path.GetDirectoryName(script)!);
             await FileCompat.WriteAllTextAsync(script, $$"""
                 $ErrorActionPreference='Stop'
@@ -1163,7 +1162,7 @@ public sealed class ProductDeploymentService
             await FileCompat.WriteAllTextAsync(indexFile, "<!doctype html><meta charset=\"utf-8\"><title>MCPanel</title><h1>MCPanel</h1>", new UTF8Encoding(false), cancellationToken);
         }
 
-        var script = Path.Combine(StoreDataRoot, "Work", $"bind-iis-{safeName}.ps1");
+        var script = Path.Combine(ComponentPaths.WorkRoot, $"bind-iis-{safeName}.ps1");
         Directory.CreateDirectory(Path.GetDirectoryName(script)!);
         var enable32Bit = !string.Equals(product.SysType?.Trim(), "64", StringComparison.OrdinalIgnoreCase);
         var managedPipelineMode = ResolveIisPipelineMode(product.RunEnvironment, managedRuntimeVersion);
@@ -1472,71 +1471,22 @@ public sealed class ProductDeploymentService
 
     private static async Task RunElevatedPowerShellAsync(string scriptPath, CancellationToken cancellationToken)
     {
-        using var identity = WindowsIdentity.GetCurrent();
-        var isAdministrator = new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
-        using var process = Process.Start(new ProcessStartInfo
+        var result = await ProcessRunner.RunPowerShellFileAsync(
+            scriptPath,
+            elevated: true,
+            cancellationToken: cancellationToken);
+        if (result.ExitCode != 0)
         {
-            FileName = "powershell.exe",
-            Arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{scriptPath}\"",
-            Verb = isAdministrator ? string.Empty : "runas",
-            UseShellExecute = true,
-            WindowStyle = ProcessWindowStyle.Hidden
-        });
-
-        if (process is null)
-        {
-            throw new InvalidOperationException("无法启动 IIS 绑定脚本。");
-        }
-
-        await ProcessLifecycle.WaitForExitAsync(process, cancellationToken);
-        if (process.ExitCode != 0)
-        {
-            throw new InvalidOperationException($"IIS 配置脚本执行失败，退出码：{process.ExitCode}。");
+            throw new InvalidOperationException($"IIS 配置脚本执行失败，退出码：{result.ExitCode}。");
         }
     }
 
     private static string? FindTomcatRoot()
     {
-        foreach (var runtime in ComponentPaths.TomcatSearchRoots)
-        {
-            if (!Directory.Exists(runtime))
-            {
-                continue;
-            }
-
-            try
-            {
-                var known = Path.Combine(runtime, "apache-tomcat-8.5.57");
-                if (File.Exists(Path.Combine(known, "bin", "startup.bat")) &&
-                    File.Exists(Path.Combine(known, "conf", "server.xml")) &&
-                    Directory.Exists(Path.Combine(known, "webapps")))
-                {
-                    return known;
-                }
-
-                var result = Directory.EnumerateDirectories(runtime, "apache-tomcat-*", SearchOption.TopDirectoryOnly)
-                    .Concat(Directory.EnumerateDirectories(runtime, "*", SearchOption.TopDirectoryOnly))
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .FirstOrDefault(path =>
-                        File.Exists(Path.Combine(path, "bin", "startup.bat")) &&
-                        File.Exists(Path.Combine(path, "conf", "server.xml")) &&
-                        Directory.Exists(Path.Combine(path, "webapps")));
-                if (result is not null)
-                {
-                    return result;
-                }
-            }
-            catch (UnauthorizedAccessException)
-            {
-                // Continue with the next compatibility root.
-            }
-            catch (IOException)
-            {
-                // Continue with the next compatibility root.
-            }
-        }
-
-        return null;
+        return new ComponentLocator().FindTomcatRoot(
+            TomcatComponentRequirements.StartupScript |
+            TomcatComponentRequirements.ServerXml |
+            TomcatComponentRequirements.WebAppsDirectory);
     }
 
     private static string? FindWar(string preparedPath)
@@ -1731,20 +1681,15 @@ public sealed class ProductDeploymentService
     {
         try
         {
-            using var process = Process.Start(new ProcessStartInfo
+            var result = ProcessRunner.RunSynchronously(
+                appcmd,
+                $"list site {Compat.QuoteCommandLineArgument(siteName)} /text:bindings",
+                Path.GetDirectoryName(appcmd),
+                captureOutput: true,
+                timeout: TimeSpan.FromSeconds(3));
+            if (result.ExitCode == 0)
             {
-                FileName = appcmd,
-                Arguments = $"list site \"{siteName}\" /text:bindings",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            });
-            if (process is not null)
-            {
-                var output = process.StandardOutput.ReadToEnd();
-                process.WaitForExit(3000);
-                var match = System.Text.RegularExpressions.Regex.Match(output, @"http/[^:]*:(?<port>\d+):", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                var match = System.Text.RegularExpressions.Regex.Match(result.StandardOutput, @"http/[^:]*:(?<port>\d+):", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                 if (match.Success && int.TryParse(match.Groups["port"].Value, out var existingPort))
                 {
                     return existingPort;
@@ -1847,18 +1792,18 @@ public sealed class ProductDeploymentService
         var directories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             ProductInstallPathResolver.ResolveProductDirectory(product),
-            Path.Combine(WebRoot, safeName),
-            Path.Combine(DownloadRoot, safeName),
-            $"{Path.Combine(DownloadRoot, safeName)}.downloading",
-            Path.Combine(StoreDataRoot, "Products", safeName),
-            $"{Path.Combine(StoreDataRoot, "Products", safeName)}.downloading",
+            Path.Combine(ComponentPaths.WebRoot, safeName),
+            Path.Combine(ComponentPaths.ProductDownloadRoot, safeName),
+            $"{Path.Combine(ComponentPaths.ProductDownloadRoot, safeName)}.downloading",
+            Path.Combine(ComponentPaths.LegacyProductDownloadRoot, safeName),
+            $"{Path.Combine(ComponentPaths.LegacyProductDownloadRoot, safeName)}.downloading",
             Path.Combine(ComponentPaths.RuntimeRoot, "IISApps", safeName),
             Path.Combine(ComponentPaths.RuntimeRoot, "TomcatProductRuns", safeName),
             Path.Combine(ComponentPaths.RuntimeRoot, "TomcatInstances", safeName),
             Path.Combine(ComponentPaths.LegacyRuntimeRoot, "IISApps", safeName),
             Path.Combine(ComponentPaths.LegacyRuntimeRoot, "TomcatProductRuns", safeName),
             Path.Combine(ComponentPaths.LegacyRuntimeRoot, "TomcatInstances", safeName),
-            Path.Combine(StoreDataRoot, "InstalledProducts", safeName)
+            Path.Combine(ComponentPaths.LegacyInstalledProductRoot, safeName)
         };
 
         foreach (var root in new[]
@@ -1892,7 +1837,7 @@ public sealed class ProductDeploymentService
                      $"bind-iis-{safeName}.ps1"
                  })
         {
-            DeleteFileIfExists(Path.Combine(StoreDataRoot, "Work", scriptName));
+            DeleteFileIfExists(Path.Combine(ComponentPaths.WorkRoot, scriptName));
         }
     }
 
@@ -1932,24 +1877,16 @@ public sealed class ProductDeploymentService
         Path.Combine(tomcatRoot, "conf", "Catalina", "localhost", $"{safeName}.xml");
 
     private static string GetIisStateFile(string safeName) =>
-        Path.Combine(StoreDataRoot, "RuntimeState", "Products", $"{safeName}.json");
+        Path.Combine(ComponentPaths.ProductStateRoot, $"{safeName}.json");
 
     private static string GetTomcatStateFile(string safeName) =>
-        Path.Combine(StoreDataRoot, "RuntimeState", "Products", $"{safeName}.tomcat.json");
+        Path.Combine(ComponentPaths.ProductStateRoot, $"{safeName}.tomcat.json");
 
-    private static string WebRoot => Path.Combine(AppContext.BaseDirectory, "web");
+    private static string WebRoot => ComponentPaths.WebRoot;
 
-    private static string DownloadRoot => Path.Combine(WebRoot, ".downloads");
+    private static string DownloadRoot => ComponentPaths.ProductDownloadRoot;
 
-    private static string StoreDataRoot
-    {
-        get
-        {
-            var root = Path.Combine(AppContext.BaseDirectory, "StoreData");
-            Directory.CreateDirectory(root);
-            return root;
-        }
-    }
+    private static string StoreDataRoot => ComponentPaths.StoreDataRoot;
 
     private enum ProductRuntimeKind
     {
