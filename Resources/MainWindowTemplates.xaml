@@ -726,15 +726,15 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="36" />
+                    <ColumnDefinition Width="52" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="54" />
                     <ColumnDefinition Width="40" />
                     <ColumnDefinition Width="40" />
                 </Grid.ColumnDefinitions>
 
-                <Border Width="34"
-                        Height="34"
+                <Border Width="42"
+                        Height="42"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center"
                         CornerRadius="8"
@@ -748,7 +748,7 @@
                            Margin="3"
                            RenderOptions.BitmapScalingMode="HighQuality" />
                 </Border>
-                <StackPanel Grid.Column="1" Margin="0,0,8,0">
+                <StackPanel Grid.Column="1" Margin="10,0,8,0">
                     <TextBlock Text="{Binding ProductName}"
                                ToolTip="{Binding ProductName}"
                                Foreground="{DynamicResource TextBrush}"
@@ -791,14 +791,14 @@
                              Style="{DynamicResource MetricProgress}"
                              Value="{Binding Progress, Mode=OneWay}"
                              Maximum="100"
-                             Margin="36,8,0,0" />
+                             Margin="62,8,0,0" />
                 <TextBlock Grid.Row="2"
                            Grid.ColumnSpan="5"
                            Text="{Binding Message}"
                            ToolTip="{Binding Message}"
                            Foreground="{DynamicResource MutedBrush}"
                            FontSize="10"
-                           Margin="36,6,0,0"
+                           Margin="62,6,0,0"
                            TextTrimming="CharacterEllipsis" />
             </Grid>
         </Border>

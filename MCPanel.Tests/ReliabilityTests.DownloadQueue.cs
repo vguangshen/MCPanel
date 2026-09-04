@@ -177,13 +177,55 @@ public sealed partial class ReliabilityTests
                 new InstallationProgressViewModel(),
                 root,
                 autoStartWorker: false);
-            Assert.AreEqual(2, restored.Items.Count, "已完成、失败或取消的旧记录不应在重启后重新出现。");
+            Assert.AreEqual(3, restored.Items.Count, "最近的终态记录和未完成队列都应在重启后恢复。");
             Assert.AreEqual(first.QueueId, restored.CurrentItem!.QueueId);
             Assert.AreEqual(ProductInstallQueueStatus.Pending, restored.Items[0].State);
-            Assert.AreEqual(ProductInstallQueueStatus.Pending, restored.Items[1].State);
+            Assert.AreEqual(second.QueueId, restored.Items[1].QueueId);
+            Assert.AreEqual(ProductInstallQueueStatus.Cancelled, restored.Items[1].State);
+            Assert.AreEqual("已取消排队，未开始下载。", restored.Items[1].Message);
+            Assert.AreEqual(0, restored.Items[1].QueuePosition);
             Assert.AreEqual(1, restored.Items[0].QueuePosition);
-            Assert.AreEqual(third.QueueId, restored.Items[1].QueueId);
-            Assert.AreEqual(2, restored.Items[1].QueuePosition);
+            Assert.AreEqual(third.QueueId, restored.Items[2].QueueId);
+            Assert.AreEqual(ProductInstallQueueStatus.Pending, restored.Items[2].State);
+            Assert.AreEqual(2, restored.Items[2].QueuePosition);
+        }
+        finally
+        {
+            DeleteTemporaryTree(root);
+        }
+    }
+
+    [TestMethod]
+    public void ProductInstallQueueRestoresCompletedHistoryWithoutRequeueing()
+    {
+        var root = CreateTemporaryDirectory();
+        try
+        {
+            string queueId;
+            using (var queue = new ProductInstallQueueService(
+                       new InstallationProgressViewModel(),
+                       root,
+                       autoStartWorker: false))
+            {
+                var item = queue.Enqueue(
+                    new ProductItem("QUEUE-COMPLETED", "已完成产品", "测试", string.Empty, ProductSource.Online),
+                    isUpdate: false);
+                item.SetState(ProductInstallQueueStatus.Completed);
+                item.SetProgress(100);
+                item.SetMessage("产品文件与运行服务已处理完成。");
+                queueId = item.QueueId;
+            }
+
+            using var restored = new ProductInstallQueueService(
+                new InstallationProgressViewModel(),
+                root,
+                autoStartWorker: false);
+            Assert.AreEqual(1, restored.Items.Count, "已完成的下载记录应在重启后保留。");
+            Assert.AreEqual(queueId, restored.Items[0].QueueId);
+            Assert.AreEqual(ProductInstallQueueStatus.Completed, restored.Items[0].State);
+            Assert.AreEqual(100d, restored.Items[0].Progress, 0.001d);
+            Assert.AreEqual("产品文件与运行服务已处理完成。", restored.Items[0].Message);
+            Assert.IsNull(restored.CurrentItem, "已完成记录不能在重启后重新进入安装队列。");
         }
         finally
         {

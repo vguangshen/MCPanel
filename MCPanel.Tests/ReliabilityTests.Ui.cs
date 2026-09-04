@@ -169,11 +169,19 @@ public sealed partial class ReliabilityTests
                     Assert.IsNotNull(container, $"第 {index + 1} 条队列任务没有生成可视行。");
 
                     var productIconFrame = FindVisualChildren<Border>(container!)
-                        .SingleOrDefault(candidate => candidate.Width == 34d && candidate.Height == 34d);
+                        .SingleOrDefault(candidate => candidate.Width == 42d && candidate.Height == 42d);
                     Assert.IsNotNull(productIconFrame, $"第 {index + 1} 条队列任务必须显示产品图标容器。");
                     var productIcon = FindVisualChildren<Image>(productIconFrame!)
                         .SingleOrDefault();
                     Assert.IsNotNull(productIcon, $"第 {index + 1} 条队列任务必须渲染产品图标。");
+                    Assert.AreEqual(42d, productIconFrame!.ActualWidth, 0.1d,
+                        "队列产品图标必须保持固定的放大尺寸。");
+                    var productDetails = FindVisualChildren<StackPanel>(container!)
+                        .SingleOrDefault(candidate => candidate.Margin.Left == 10d && candidate.Margin.Right == 8d);
+                    Assert.IsNotNull(productDetails, "产品名称与图标之间必须保留固定间距。");
+                    var progressBar = FindVisualChildren<ProgressBar>(container!).Single();
+                    Assert.AreEqual(62d, progressBar.Margin.Left, 0.1d,
+                        "队列进度条必须与产品文字起始位置对齐。");
 
                     var visibleButtons = FindVisualChildren<Button>(container!)
                         .Where(candidate => candidate.Visibility == Visibility.Visible)

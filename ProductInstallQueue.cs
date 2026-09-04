@@ -440,24 +440,36 @@ internal sealed class ProductInstallQueueService : IDisposable
                 ? ParseTerminalState(progress?.State)
                 : null;
             var state = recoveredTerminalState ?? persisted.State;
-            // Completed, failed and cancelled rows are transient session
-            // history. Do not recreate them on a fresh launch: when there is
-            // no live queue, the download panel must be empty rather than
-            // showing stale jobs from a prior run.
-            if (IsTerminal(state))
-            {
-                continue;
-            }
-            var message = string.IsNullOrWhiteSpace(persisted.Message)
-                ? "已恢复安装队列，等待继续处理。"
-                : persisted.Message;
+            var isTerminal = IsTerminal(state);
+            var recoveredTerminalProgress = recoveredTerminalState is not null ? progress : null;
+            var message = isTerminal && !string.IsNullOrWhiteSpace(recoveredTerminalProgress?.Message)
+                ? recoveredTerminalProgress!.Message
+                : string.IsNullOrWhiteSpace(persisted.Message)
+                    ? "已恢复安装队列，等待继续处理。"
+                    : persisted.Message;
+            var restoredProgress = isTerminal
+                ? state == ProductInstallQueueStatus.Completed
+                    ? 100d
+                    : Compat.Clamp(recoveredTerminalProgress?.Percent ?? persisted.Progress, 0, 100)
+                : 0d;
             var item = new ProductInstallQueueItemViewModel(
                 persisted.QueueId,
                 persisted.Sequence,
                 persisted.Request,
                 state,
-                state == ProductInstallQueueStatus.Pending ? 0 : Compat.Clamp(persisted.Progress, 0, 100),
+                restoredProgress,
                 message);
+
+            if (isTerminal)
+            {
+                item.SetResult(
+                    recoveredTerminalProgress?.ResultPath ?? persisted.ResultPath,
+                    recoveredTerminalProgress?.LogPath ?? persisted.LogPath);
+                RestoreTerminalPaths(item, persisted);
+                Items.Add(item);
+                _nextSequence = Math.Max(_nextSequence, item.Sequence);
+                continue;
+            }
 
             item.SetState(ProductInstallQueueStatus.Pending);
             item.SetProgress(0);
@@ -665,6 +677,42 @@ internal sealed class ProductInstallQueueService : IDisposable
                ProductInstallWorker.TryReadProgress(persistedPath, out var progress)
             ? progress
             : null;
+    }
+
+    private void RestoreTerminalPaths(
+        ProductInstallQueueItemViewModel item,
+        ProductInstallQueuePersistedItem persisted)
+    {
+        if (string.IsNullOrWhiteSpace(persisted.ProgressPath))
+        {
+            return;
+        }
+
+        try
+        {
+            var progressPath = Path.GetFullPath(persisted.ProgressPath);
+            var sessionRoot = Path.GetDirectoryName(progressPath);
+            if (string.IsNullOrWhiteSpace(sessionRoot) ||
+                !IsPathInside(_queueWorkRoot, sessionRoot))
+            {
+                return;
+            }
+
+            item.SetPaths(
+                progressPath,
+                string.Empty,
+                string.Empty,
+                ProductInstallWorker.CreateQueueEnvelopeFile(
+                    sessionRoot,
+                    persisted.Sequence,
+                    persisted.QueueId));
+        }
+        catch
+        {
+            // A stale session path must never prevent the history row from
+            // being restored. Its files will be cleaned up by normal history
+            // trimming when a valid path is available.
+        }
     }
 
     private void RefreshQueuePositions()
