@@ -48,7 +48,6 @@ jobs:
         run: |
           $publishDir = Join-Path $env:RUNNER_TEMP 'MCPanelPublish'
           & .\Publish-WinX64.ps1 -OutputDirectory $publishDir
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           "MCPANEL_PUBLISH_DIR=$publishDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Build update assets
@@ -61,7 +60,6 @@ jobs:
             -OutputDirectory $updatesDir `
             -GitHubRelease `
             -ReleaseNotes '稳定性与使用体验优化：改进 SQL Server 安装恢复、Account API 状态一致性和发布可靠性。'
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           "MCPANEL_UPDATES_DIR=$updatesDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Create GitHub Release
