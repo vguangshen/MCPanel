@@ -1,0 +1,83 @@
+name: Release MCPanel
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: startsWith(github.event.head_commit.message, 'Release MCPanel ')
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Read application version
+        id: version
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content -LiteralPath 'MCPanel.csproj' -Raw
+          $version = [string]$project.Project.PropertyGroup.Version
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw 'MCPanel.csproj does not define Version.'
+          }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "Release version: $version"
+
+      - name: Test and publish
+        shell: pwsh
+        run: |
+          $publishDir = Join-Path $env:RUNNER_TEMP 'MCPanelPublish'
+          & .\Publish-WinX64.ps1 -OutputDirectory $publishDir
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "MCPANEL_PUBLISH_DIR=$publishDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build update assets
+        shell: pwsh
+        run: |
+          $updatesDir = Join-Path $env:RUNNER_TEMP 'MCPanelUpdates'
+          & .\Build-UpdatePackage.ps1 `
+            -Version '${{ steps.version.outputs.version }}' `
+            -PublishDirectory $env:MCPANEL_PUBLISH_DIR `
+            -OutputDirectory $updatesDir `
+            -GitHubRelease `
+            -ReleaseNotes '稳定性与使用体验优化：改进 SQL Server 安装恢复、Account API 状态一致性和发布可靠性。'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "MCPANEL_UPDATES_DIR=$updatesDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          $tag = "v$version"
+          $zip = Join-Path $env:MCPANEL_UPDATES_DIR "MCPanel-$version.zip"
+          $hash = "$zip.sha256"
+          $manifest = Join-Path $env:MCPANEL_UPDATES_DIR 'update-manifest.json'
+          $notes = @"
+          本版本以稳定性和用户体验优化为主，不改变原有产品下载和部署链路。
+
+          - 避免已有 SQL Server 启动异常时普通安装自动进入彻底清理流程。
+          - 保留 SQL 安装前已有的 Windows PendingFileRenameOperations，并与安装后新增项合并恢复。
+          - UAC 使用其他管理员账号时，安装后补充原桌面用户的 SQL Server 管理权限。
+          - 已配置第三方 SQL Server 证书时保持原配置，不因打开 SSMS 而替换证书或重启服务。
+          - Account API 启用失败自动回滚开关状态，避免下次启动反复重试。
+          - Account API 数据库配置改为完整快照替换，避免热更新期间出现瞬时空配置。
+          - 发布前强制运行可靠性测试，测试失败不生成发布包。
+          "@
+          gh release create $tag $zip $hash $manifest `
+            --target '${{ github.sha }}' `
+            --title "MCPanel $version" `
+            --notes $notes
