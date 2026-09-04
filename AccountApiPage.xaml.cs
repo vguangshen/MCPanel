@@ -457,10 +457,32 @@ public partial class AccountApiPage : UserControl, INotifyPropertyChanged, IDisp
             enabled ? "正在启用账号 API…" : "正在停用账号 API…",
             async () =>
             {
-                await _service.SetEnabledAsync(enabled);
-                if (enabled)
+                if (!enabled)
+                {
+                    await _service.SetEnabledAsync(false);
+                    return;
+                }
+
+                await _service.SetEnabledAsync(true);
+                try
                 {
                     await _service.StartAsync();
+                }
+                catch
+                {
+                    // Do not leave a failed start persisted as "enabled". Otherwise
+                    // the next refresh and the next MCPanel startup keep retrying a
+                    // service that the user was just told failed to start.
+                    try
+                    {
+                        await _service.SetEnabledAsync(false);
+                    }
+                    catch
+                    {
+                        // Preserve the original startup error; RefreshPageAsync will
+                        // surface any remaining persisted-state mismatch afterwards.
+                    }
+                    throw;
                 }
             });
     }
