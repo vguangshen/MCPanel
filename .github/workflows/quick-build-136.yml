@@ -19,4 +19,4 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Compile
         shell: pwsh
-        run: dotnet build .\MCPanel.csproj -c Release --no-restore:$false
+        run: dotnet build .\MCPanel.csproj -c Release
