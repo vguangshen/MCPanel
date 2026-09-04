@@ -13,12 +13,12 @@ public sealed partial class ReliabilityTests
         StringAssert.Contains(script, "@('MSSQLSERVER','SQLSERVERAGENT')");
         StringAssert.Contains(script, "保留 SQL Native Client、ODBC/OLE DB Driver");
         StringAssert.Contains(script, "Where-Object { $_.DisplayName -like 'MCPanel SQL Server *' }");
-        Assert.IsFalse(script.Contains("$_.Name -like 'MSSQL$*'", System.StringComparison.Ordinal));
-        Assert.IsFalse(script.Contains("$_.Name -like 'SQLAgent$*'", System.StringComparison.Ordinal));
-        Assert.IsFalse(script.Contains("Microsoft ODBC Driver.*SQL", System.StringComparison.Ordinal));
-        Assert.IsFalse(script.Contains("Microsoft OLE DB Driver.*SQL", System.StringComparison.Ordinal));
-        Assert.IsFalse(script.Contains("(Join-Path $env:ProgramFiles 'Microsoft SQL Server')", System.StringComparison.Ordinal));
-        Assert.IsFalse(script.Contains("HKLM:\\SOFTWARE\\Microsoft\\Microsoft SQL Server'", System.StringComparison.Ordinal));
+        Assert.IsTrue(script.IndexOf("$_.Name -like 'MSSQL$*'", System.StringComparison.Ordinal) < 0);
+        Assert.IsTrue(script.IndexOf("$_.Name -like 'SQLAgent$*'", System.StringComparison.Ordinal) < 0);
+        Assert.IsTrue(script.IndexOf("Microsoft ODBC Driver.*SQL", System.StringComparison.Ordinal) < 0);
+        Assert.IsTrue(script.IndexOf("Microsoft OLE DB Driver.*SQL", System.StringComparison.Ordinal) < 0);
+        Assert.IsTrue(script.IndexOf("(Join-Path $env:ProgramFiles 'Microsoft SQL Server')", System.StringComparison.Ordinal) < 0);
+        Assert.IsTrue(script.IndexOf("HKLM:\\SOFTWARE\\Microsoft\\Microsoft SQL Server'", System.StringComparison.Ordinal) < 0);
     }
 
     [TestMethod]
@@ -29,7 +29,7 @@ public sealed partial class ReliabilityTests
             "mysql-action.log",
             "mysql-action.result");
 
-        Assert.IsFalse(script.Contains("Reset-RootPassword $paths", System.StringComparison.Ordinal));
+        Assert.IsTrue(script.IndexOf("Reset-RootPassword $paths", System.StringComparison.Ordinal) < 0);
         StringAssert.Contains(script, "为避免意外修改数据库密码，MCPanel 已停止自动重置");
     }
 
