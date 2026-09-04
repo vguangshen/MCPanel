@@ -504,11 +504,11 @@ public sealed partial class ReliabilityTests
                     "开机自启动卡片应排列在软件更新卡片下方。");
                 Assert.IsTrue(startupCard.ActualHeight > 82d,
                     "开机自启动卡片应在保留内容空间的基础上适当拉长。");
-                Assert.AreEqual(
-                    appearancePoint.Y + appearanceCard.ActualHeight,
-                    startupPoint.Y + startupCard.ActualHeight,
-                    0.01d,
-                    "开机自启动卡片底边应与外观主题卡片底边对齐。");
+                var cardBottomDelta = Math.Abs(
+                    (appearancePoint.Y + appearanceCard.ActualHeight) -
+                    (startupPoint.Y + startupCard.ActualHeight));
+                Assert.IsTrue(cardBottomDelta <= 1.01d,
+                    $"开机自启动卡片底边应与外观主题卡片底边对齐，允许设备像素舍入误差；实际差值：{cardBottomDelta:0.##}。");
 
                 var startupToggle = FindVisualChildren<ToggleButton>(settingsPage)
                     .Single(toggle => AutomationProperties.GetName(toggle) == "开机自启动");
