@@ -20,6 +20,20 @@ jobs:
         with:
           ref: fix/1.3.8-sql-iis-reliability
 
+      - name: Apply patch
+        shell: pwsh
+        run: |
+          $patchPath = '.github/scripts/patch_sql_iis_138.py'
+          $patchText = Get-Content -LiteralPath $patchPath -Raw
+          $patchText = $patchText.Replace('NT AUTHORITY\NETWORK SERVICE', 'NT AUTHORITY\\NETWORK SERVICE')
+          $patchText = $patchText.Replace('updated, count = re.subn(pattern, replacement, text, count=1, flags=re.S)', 'updated, count = re.subn(pattern, lambda _match: replacement, text, count=1, flags=re.S)')
+          [IO.File]::WriteAllText((Resolve-Path $patchPath), $patchText, (New-Object Text.UTF8Encoding($false)))
+          python $patchPath
+
+      - name: Verify protected product download chain unchanged
+        shell: pwsh
+        run: git diff --exit-code origin/main -- McPanelStoreClient.cs SvnProductTransferService.cs DownloadService.cs
+
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
@@ -30,19 +44,6 @@ jobs:
         run: |
           choco install vcredist-all -y --no-progress
           if ($LASTEXITCODE -ne 0) { throw 'Failed to install VC++ runtime dependencies.' }
-
-      - name: Apply patch
-        shell: pwsh
-        run: |
-          $patchPath = '.github/scripts/patch_sql_iis_138.py'
-          $patchText = Get-Content -LiteralPath $patchPath -Raw
-          $patchText = $patchText.Replace('NT AUTHORITY\NETWORK SERVICE', 'NT AUTHORITY\\NETWORK SERVICE')
-          [IO.File]::WriteAllText((Resolve-Path $patchPath), $patchText, (New-Object Text.UTF8Encoding($false)))
-          python $patchPath
-
-      - name: Verify protected product download chain unchanged
-        shell: pwsh
-        run: git diff --exit-code origin/main -- McPanelStoreClient.cs SvnProductTransferService.cs DownloadService.cs
 
       - name: Test and publish
         shell: pwsh
