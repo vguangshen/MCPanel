@@ -68,6 +68,7 @@ public sealed class InstalledProductItem : ObservableObject
     private bool _canBrowse;
     private bool _isTomcatDeployment;
     private bool _isManagementExpanded;
+    private TomcatProductRuntimeMode _tomcatRuntimeMode = TomcatProductRuntimeMode.Stopped;
 
     public InstalledProductItem(ProductItem product, string installPath)
     {
@@ -97,6 +98,8 @@ public sealed class InstalledProductItem : ObservableObject
             {
                 OnPropertyChanged(nameof(CanStartTomcatProduct));
                 OnPropertyChanged(nameof(CanStopTomcatProduct));
+                OnPropertyChanged(nameof(CanRestartTomcatProduct));
+                OnPropertyChanged(nameof(CanClearTomcatCache));
             }
         }
     }
@@ -116,12 +119,30 @@ public sealed class InstalledProductItem : ObservableObject
                 OnPropertyChanged(nameof(DeploymentLabel));
                 OnPropertyChanged(nameof(CanStartTomcatProduct));
                 OnPropertyChanged(nameof(CanStopTomcatProduct));
+                OnPropertyChanged(nameof(CanRestartTomcatProduct));
+                OnPropertyChanged(nameof(CanClearTomcatCache));
             }
         }
     }
     public bool IsIisDeployment => !IsTomcatDeployment;
-    public bool CanStartTomcatProduct => IsTomcatDeployment && !CanBrowse;
-    public bool CanStopTomcatProduct => IsTomcatDeployment && CanBrowse;
+    public TomcatProductRuntimeMode TomcatRuntimeMode
+    {
+        get => _tomcatRuntimeMode;
+        private set
+        {
+            if (SetProperty(ref _tomcatRuntimeMode, value))
+            {
+                OnPropertyChanged(nameof(CanStartTomcatProduct));
+                OnPropertyChanged(nameof(CanStopTomcatProduct));
+                OnPropertyChanged(nameof(CanRestartTomcatProduct));
+                OnPropertyChanged(nameof(CanClearTomcatCache));
+            }
+        }
+    }
+    public bool CanStartTomcatProduct => IsTomcatDeployment && TomcatRuntimeMode is TomcatProductRuntimeMode.Stopped or TomcatProductRuntimeMode.Shared;
+    public bool CanStopTomcatProduct => IsTomcatDeployment && TomcatRuntimeMode is TomcatProductRuntimeMode.Independent or TomcatProductRuntimeMode.Catalina;
+    public bool CanRestartTomcatProduct => CanStopTomcatProduct;
+    public bool CanClearTomcatCache => IsTomcatDeployment && TomcatRuntimeMode is TomcatProductRuntimeMode.Stopped or TomcatProductRuntimeMode.Independent or TomcatProductRuntimeMode.Catalina;
     public string DeploymentLabel
     {
         get
@@ -172,20 +193,28 @@ public sealed class InstalledProductItem : ObservableObject
                 return;
             }
 
-            var tomcatNetwork = IPGlobalProperties.GetIPGlobalProperties();
-            var tomcatListening = tomcatNetwork.GetActiveTcpListeners().Any(endpoint => endpoint.Port == tomcatDeployment.Value.Port);
+            var runtime = TomcatProductInstanceManager.GetRuntimeInfo(ProductId);
+            TomcatRuntimeMode = runtime.Mode;
 
             SiteDisplayText = $"Tomcat / {ProductId}";
             PoolDisplayText = $"应用上下文：/{ProductId}";
             Url = $"http://localhost:{tomcatDeployment.Value.Port}/{ProductId}/";
 
-            RuntimeStatusText = tomcatListening ? "运行中" : "已部署，未运行";
-            RuntimeStatusBrush = tomcatListening ? Brushes.MediumSeaGreen : Brushes.Goldenrod;
-            CanBrowse = tomcatListening;
+            RuntimeStatusText = TomcatProductInstanceManager.FormatRuntimeStatus(runtime);
+            RuntimeStatusBrush = runtime.Mode switch
+            {
+                TomcatProductRuntimeMode.Shared => Brushes.MediumSeaGreen,
+                TomcatProductRuntimeMode.Independent => Brushes.MediumSeaGreen,
+                TomcatProductRuntimeMode.Catalina => Brushes.DeepSkyBlue,
+                TomcatProductRuntimeMode.PortConflict => Brushes.IndianRed,
+                _ => Brushes.Goldenrod
+            };
+            CanBrowse = runtime.IsRunning && runtime.PortListening;
             return;
         }
 
         IsTomcatDeployment = false;
+        TomcatRuntimeMode = TomcatProductRuntimeMode.Stopped;
         var info = ProductDeploymentService.LoadIisDeploymentInfo(ProductId);
         if (info is null)
         {

@@ -230,6 +230,29 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
             }
         }
 
+        if (item.Kind == EnvironmentKind.Tomcat && action is "Start" or "Restart")
+        {
+            var runningProducts = TomcatProductInstanceManager.GetRunningProductIds();
+            if (runningProducts.Count > 0)
+            {
+                var preview = string.Join("、", runningProducts.Take(8));
+                if (runningProducts.Count > 8)
+                {
+                    preview += $" 等 {runningProducts.Count} 个应用";
+                }
+                var confirm = MessageBox.Show(
+                    $"当前有独立 Tomcat 调试实例正在运行：{preview}。{Environment.NewLine}{Environment.NewLine}" +
+                    "启动总 Tomcat Server 会先停止这些独立实例，以避免端口冲突。是否继续？",
+                    "切换到总 Tomcat Server",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning);
+                if (confirm != MessageBoxResult.Yes)
+                {
+                    return;
+                }
+            }
+        }
+
         try
         {
             item.SetBusyState(RuntimeBusyBadgeText(action), $"{item.Title} 正在{RuntimeActionText(action)}...");
