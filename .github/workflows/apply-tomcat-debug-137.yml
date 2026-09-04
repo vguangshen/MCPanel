@@ -29,23 +29,16 @@ jobs:
           $path = '.\tools\apply-tomcat-debug-137.ps1'
           $text = [IO.File]::ReadAllText($path)
           $text = $text.Replace('$Path:', '${Path}:')
-
-          # The repository text is normalized to LF by the patch helper. Normalize
-          # PowerShell here-string templates too; on Windows they otherwise retain CRLF.
           $marker = 'function Replace-Once([string]$Path, [string]$Old, [string]$New) {'
           $index = $text.IndexOf($marker, [StringComparison]::Ordinal)
           if ($index -lt 0) { throw 'Replace-Once function was not found.' }
           $insertAt = $index + $marker.Length
           $normalizer = "`r`n    `$Old = `$Old.Replace(`"``r``n`", `"``n`")`r`n    `$New = `$New.Replace(`"``r``n`", `"``n`")"
           $text = $text.Insert($insertAt, $normalizer)
-
-          # Replace-Once should mutate only the first exact occurrence. Some UI
-          # notification pairs intentionally occur more than once in the source.
           $condition = '    if ($count -ne 1) {'
           $index = $text.IndexOf($condition, [StringComparison]::Ordinal)
           if ($index -lt 0) { throw 'Replace-Once condition was not found.' }
           $text = $text.Remove($index, $condition.Length).Insert($index, '    if ($count -lt 1) {')
-
           $write = '    Write-Normalized $Path ($text.Replace($Old, $New))'
           $index = $text.IndexOf($write, [StringComparison]::Ordinal)
           if ($index -lt 0) { throw 'Replace-Once write statement was not found.' }
@@ -55,13 +48,9 @@ jobs:
               Write-Normalized $Path $updated
           '@.TrimStart()
           $text = $text.Remove($index, $write.Length).Insert($index, $replacement)
-
-          # The template contains a 180-degree arrow rotation as well as a 180px
-          # management-panel animation. Widen only the panel animation.
           $text = $text.Replace(
             'Replace-AllExact $path ''To="180"'' ''To="250"'' 1',
             'Replace-AllExact $path ''From="0" To="180"'' ''From="0" To="250"'' 1')
-
           [IO.File]::WriteAllText($path, $text, [Text.UTF8Encoding]::new($false))
 
       - name: Apply 1.3.7 patch
@@ -84,9 +73,7 @@ jobs:
           $changed = @(git diff --name-only origin/main --)
           $forbidden = @('McPanelStoreClient.cs', 'SvnProductTransferService.cs', 'DownloadService.cs')
           $touched = @($changed | Where-Object { $forbidden -contains $_ })
-          if ($touched.Count -gt 0) {
-            throw "1.3.7 unexpectedly touched product download chain: $($touched -join ', ')"
-          }
+          if ($touched.Count -gt 0) { throw "1.3.7 unexpectedly touched product download chain: $($touched -join ', ')" }
           Write-Host 'Original product download chain is unchanged.'
 
       - name: Install SharpSvn native runtime dependencies
@@ -101,12 +88,16 @@ jobs:
           $publishDir = Join-Path $env:RUNNER_TEMP 'MCPanel137Publish'
           & .\Publish-WinX64.ps1 -OutputDirectory $publishDir
 
-      - name: Commit validated changes
+      - name: Commit validated source changes
         shell: pwsh
         run: |
-          git rm .github/workflows/apply-tomcat-debug-137.yml tools/apply-tomcat-debug-137.ps1
+          # Workflow files are persisted separately through the GitHub connector,
+          # because the Actions token intentionally lacks workflow-write permission.
+          git checkout origin/main -- .github/workflows/release.yml
+          git rm -f tools/apply-tomcat-debug-137.ps1
           git config user.name 'Xiangming'
           git config user.email '40314529+vguangshen@users.noreply.github.com'
           git add -A
-          git commit -m 'Implement MCPanel 1.3.7 Tomcat debug workflow'
+          git reset .github/workflows/apply-tomcat-debug-137.yml
+          git commit -m 'Implement MCPanel 1.3.7 Tomcat debug workflow [skip ci]'
           git push origin HEAD:fix/1.3.7-tomcat-debug-stage
