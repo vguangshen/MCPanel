@@ -97,6 +97,22 @@ jobs:
           if (-not $test.StartsWith('using System.IO;')) {
             $test = "using System.IO;`n" + $test
           }
+
+          # TcpListener only gained IDisposable in newer target frameworks.
+          # MCPanel.Tests targets net462, so stop the temporary listeners
+          # explicitly rather than relying on using-var.
+          $test = $test.Replace(
+            '        using var blocker = new TcpListener(IPAddress.Loopback, 0);',
+            '        var blocker = new TcpListener(IPAddress.Loopback, 0);')
+          $test = $test.Replace(
+            '        using var listener = new TcpListener(IPAddress.Loopback, 0);',
+            '        var listener = new TcpListener(IPAddress.Loopback, 0);')
+          $test = $test.Replace(
+            "        finally`n        {`n            host.Dispose();`n        }`n    }`n`n    private static int ReserveFreeTcpPort()",
+            "        finally`n        {`n            host.Dispose();`n            blocker.Stop();`n        }`n    }`n`n    private static int ReserveFreeTcpPort()")
+          $test = $test.Replace(
+            "        listener.Start();`n        return ((IPEndPoint)listener.LocalEndpoint).Port;",
+            "        listener.Start();`n        var port = ((IPEndPoint)listener.LocalEndpoint).Port;`n        listener.Stop();`n        return port;")
           [IO.File]::WriteAllText($testPath, $test, [Text.UTF8Encoding]::new($false))
 
       - name: Guard original product download chain
