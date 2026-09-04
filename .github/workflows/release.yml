@@ -36,6 +36,53 @@ jobs:
       - name: Apply Account API 1.3.4 lifecycle fix
         shell: pwsh
         run: |
+          $scriptPath = 'tools\apply-account-api-134-fix.ps1'
+          $script = [IO.File]::ReadAllText($scriptPath).Replace("`r`n", "`n")
+
+          $oldExact = @'
+          function Replace-Exact([string]$Text, [string]$Old, [string]$New, [string]$Label) {
+              if (-not $Text.Contains($Old)) {
+                  throw "Patch anchor not found: $Label"
+              }
+              return $Text.Replace($Old, $New)
+          }
+          '@.Trim().Replace("`r`n", "`n")
+          $newExact = @'
+          function Replace-Exact([string]$Text, [string]$Old, [string]$New, [string]$Label) {
+              $Old = $Old.Replace("`r`n", "`n")
+              $New = $New.Replace("`r`n", "`n")
+              if (-not $Text.Contains($Old)) {
+                  throw "Patch anchor not found: $Label"
+              }
+              return $Text.Replace($Old, $New)
+          }
+          '@.Trim().Replace("`r`n", "`n")
+          if (-not $script.Contains($oldExact)) { throw 'Replace-Exact helper anchor not found.' }
+          $script = $script.Replace($oldExact, $newExact)
+
+          $oldRegex = @'
+          function Replace-RegexOnce([string]$Text, [string]$Pattern, [string]$Replacement, [string]$Label) {
+              $matches = [regex]::Matches($Text, $Pattern)
+              if ($matches.Count -ne 1) {
+                  throw "Expected exactly one match for $Label, found $($matches.Count)."
+              }
+              return [regex]::Replace($Text, $Pattern, $Replacement, 1)
+          }
+          '@.Trim().Replace("`r`n", "`n")
+          $newRegex = @'
+          function Replace-RegexOnce([string]$Text, [string]$Pattern, [string]$Replacement, [string]$Label) {
+              $Replacement = $Replacement.Replace("`r`n", "`n")
+              $matches = [regex]::Matches($Text, $Pattern)
+              if ($matches.Count -ne 1) {
+                  throw "Expected exactly one match for $Label, found $($matches.Count)."
+              }
+              return [regex]::Replace($Text, $Pattern, $Replacement, 1)
+          }
+          '@.Trim().Replace("`r`n", "`n")
+          if (-not $script.Contains($oldRegex)) { throw 'Replace-RegexOnce helper anchor not found.' }
+          $script = $script.Replace($oldRegex, $newRegex)
+          [IO.File]::WriteAllText($scriptPath, $script, [Text.UTF8Encoding]::new($false))
+
           & .\tools\apply-account-api-134-fix.ps1
           $testPath = 'MCPanel.Tests\ReliabilityTests.AccountApiLifecycle.cs'
           $test = [IO.File]::ReadAllText($testPath).Replace("`r`n", "`n")
@@ -68,7 +115,7 @@ jobs:
       - name: Commit validated source to integration branch
         shell: pwsh
         run: |
-          git checkout '${{ github.event.before }}' -- '.github/workflows/release.yml'
+          git checkout 'bec11776678c9cce3bfb039dc1cfe0c91e8c6999' -- '.github/workflows/release.yml'
           if (Test-Path '.github\workflows\account-api-134-fix.yml') {
             Remove-Item -LiteralPath '.github\workflows\account-api-134-fix.yml' -Force
           }
