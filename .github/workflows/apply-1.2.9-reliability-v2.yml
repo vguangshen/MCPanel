@@ -1,0 +1,45 @@
+name: Apply 1.2.9 reliability patch v2
+
+on:
+  push:
+    branches:
+      - fix/1.2.9-reliability
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/1.2.9-reliability
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Apply targeted patch
+        run: python tools/apply_129_reliability.py
+
+      - name: Restore
+        run: dotnet restore MCPanel.Tests/MCPanel.Tests.csproj
+
+      - name: Test
+        run: dotnet test MCPanel.Tests/MCPanel.Tests.csproj -c Release --no-restore
+
+      - name: Commit tested changes
+        shell: pwsh
+        run: |
+          Remove-Item .github/workflows/apply-1.2.9-reliability.yml -Force -ErrorAction SilentlyContinue
+          Remove-Item .github/workflows/diag-branch.yml -Force -ErrorAction SilentlyContinue
+          Remove-Item .github/workflows/apply-1.2.9-reliability-v2.yml -Force -ErrorAction SilentlyContinue
+          Remove-Item tools/apply_129_reliability.py -Force -ErrorAction SilentlyContinue
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: harden 1.2.9 runtime recovery [skip ci]"
+          git push origin HEAD:fix/1.2.9-reliability
