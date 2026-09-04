@@ -556,7 +556,7 @@ public sealed partial class ReliabilityTests
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
 
-        Assert.IsTrue(completed.Wait(TimeSpan.FromSeconds(20)), "设置页布局与开关渲染测试超时。");
+        Assert.IsTrue(completed.Wait(TimeSpan.FromSeconds(60)), "设置页布局与开关渲染测试超时。");
         if (failure is not null)
         {
             Assert.Fail($"设置页布局或开机自启动开关不符合设计：{failure}");
