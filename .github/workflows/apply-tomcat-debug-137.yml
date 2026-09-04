@@ -1,0 +1,62 @@
+name: Apply Tomcat debug 1.3.7
+
+on:
+  push:
+    branches:
+      - fix/1.3.7-tomcat-debug-stage
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install SharpSvn native runtime dependencies
+        shell: pwsh
+        run: |
+          choco install vcredist-all -y --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to install VC++ runtime bundle.' }
+
+      - name: Apply 1.3.7 patch
+        shell: pwsh
+        run: .\tools\apply-tomcat-debug-137.ps1
+
+      - name: Guard original product download chain
+        shell: pwsh
+        run: |
+          git fetch origin main
+          $changed = @(git diff --name-only origin/main --)
+          $forbidden = @('McPanelStoreClient.cs', 'SvnProductTransferService.cs', 'DownloadService.cs')
+          $touched = @($changed | Where-Object { $forbidden -contains $_ })
+          if ($touched.Count -gt 0) {
+            throw "1.3.7 unexpectedly touched product download chain: $($touched -join ', ')"
+          }
+          Write-Host 'Original product download chain is unchanged.'
+
+      - name: Test and publish
+        shell: pwsh
+        run: |
+          $publishDir = Join-Path $env:RUNNER_TEMP 'MCPanel137Publish'
+          & .\Publish-WinX64.ps1 -OutputDirectory $publishDir
+
+      - name: Commit validated changes
+        shell: pwsh
+        run: |
+          git rm .github/workflows/apply-tomcat-debug-137.yml tools/apply-tomcat-debug-137.ps1
+          git config user.name 'Xiangming'
+          git config user.email '40314529+vguangshen@users.noreply.github.com'
+          git add -A
+          git commit -m 'Implement MCPanel 1.3.7 Tomcat debug workflow'
+          git push origin HEAD:fix/1.3.7-tomcat-debug-stage
