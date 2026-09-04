@@ -48,6 +48,10 @@ internal static class EnvironmentInstallWorker
                 await PrepareSqlServerInstallAsync(reporter).ConfigureAwait(true);
             }
 
+            var pendingRenameSnapshot = kind == EnvironmentKind.SqlServer
+                ? CapturePendingFileRenameOperations()
+                : null;
+
             using var installer = new EnvironmentInstaller();
             var item = new EnvironmentItem(kind, kind.ToString(), string.Empty, string.Empty);
             if (kind == EnvironmentKind.MySql)
@@ -59,7 +63,17 @@ internal static class EnvironmentInstallWorker
                 item.SelectedSqlServerReleaseId = selectedReleaseId!;
             }
 
-            await installer.InstallAsync(item, reporter.Report, CancellationToken.None).ConfigureAwait(true);
+            try
+            {
+                await installer.InstallAsync(item, reporter.Report, CancellationToken.None).ConfigureAwait(true);
+            }
+            finally
+            {
+                if (kind == EnvironmentKind.SqlServer)
+                {
+                    RestorePendingFileRenameOperations(pendingRenameSnapshot);
+                }
+            }
 
             if (kind == EnvironmentKind.SqlServer && !string.IsNullOrWhiteSpace(interactiveWindowsUser))
             {
@@ -167,15 +181,9 @@ internal static class EnvironmentInstallWorker
             throw new InvalidOperationException(
                 "检测到 MSSQLSERVER 默认实例的注册信息仍然存在，但 Windows 服务已经不存在。普通安装不会自动删除这些系统残留。请先使用“卸载 SQL Server”完成清理，或确认旧实例已处理后再重新安装。");
         }
-
-        if (HasPendingFileRenameOperations())
-        {
-            throw new InstallRestartRequiredException(
-                "Windows 当前存在待重启的文件操作。为避免 SQL Server 安装过程中清除其他软件的待处理任务，请先重启 Windows，然后再次点击安装。");
-        }
     }
 
-    private static bool HasPendingFileRenameOperations()
+    private static string[]? CapturePendingFileRenameOperations()
     {
         try
         {
@@ -185,16 +193,58 @@ internal static class EnvironmentInstallWorker
             var value = key?.GetValue("PendingFileRenameOperations");
             return value switch
             {
-                string text => !string.IsNullOrWhiteSpace(text),
-                string[] values => values.Any(item => !string.IsNullOrWhiteSpace(item)),
-                _ => value is not null
+                string[] values => values.Where(item => item is not null).ToArray(),
+                string text when !string.IsNullOrEmpty(text) => new[] { text },
+                _ => null
             };
         }
         catch
         {
-            // If Windows denies the probe, leave the legacy installer behavior
-            // untouched rather than blocking installation on an inconclusive check.
-            return false;
+            return null;
+        }
+    }
+
+    private static void RestorePendingFileRenameOperations(string[]? originalValues)
+    {
+        if (originalValues is null || originalValues.Length == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            using var key = Registry.LocalMachine.OpenSubKey(
+                @"SYSTEM\CurrentControlSet\Control\Session Manager",
+                writable: true);
+            if (key is null)
+            {
+                return;
+            }
+
+            var current = key.GetValue("PendingFileRenameOperations") switch
+            {
+                string[] values => values,
+                string text when !string.IsNullOrEmpty(text) => new[] { text },
+                _ => Array.Empty<string>()
+            };
+
+            var merged = originalValues
+                .Concat(current)
+                .Where(item => item is not null)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (merged.Length > 0)
+            {
+                key.SetValue("PendingFileRenameOperations", merged, RegistryValueKind.MultiString);
+            }
+        }
+        catch (Exception restoreError)
+        {
+            EnvironmentOperationDiagnostics.RecordFailure(
+                "SqlServer",
+                "恢复 Windows PendingFileRenameOperations",
+                restoreError,
+                Path.Combine(ComponentPaths.WorkRoot, "sqlserver-pending-rename-restore.log"));
         }
     }
 
