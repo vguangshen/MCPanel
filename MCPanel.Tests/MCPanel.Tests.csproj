@@ -5,6 +5,8 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <UseWPF>true</UseWPF>
+    <PlatformTarget>x64</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
@@ -19,5 +21,6 @@
       <HintPath>..\Vendor\SharpSvn\SharpSvn.dll</HintPath>
       <Private>true</Private>
     </Reference>
+    <None Include="..\Vendor\SharpSvn\SharpPlink-x64.svnExe" Link="SharpPlink-x64.svnExe" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
