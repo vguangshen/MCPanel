@@ -30,6 +30,15 @@ jobs:
           $text = [IO.File]::ReadAllText($path)
           $text = $text.Replace('$Path:', '${Path}:')
 
+          # The repository text is normalized to LF by the patch helper. Normalize
+          # PowerShell here-string templates too; on Windows they otherwise retain CRLF.
+          $marker = 'function Replace-Once([string]$Path, [string]$Old, [string]$New) {'
+          $index = $text.IndexOf($marker, [StringComparison]::Ordinal)
+          if ($index -lt 0) { throw 'Replace-Once function was not found.' }
+          $insertAt = $index + $marker.Length
+          $normalizer = "`r`n    `$Old = `$Old.Replace(`"``r``n`", `"``n`")`r`n    `$New = `$New.Replace(`"``r``n`", `"``n`")"
+          $text = $text.Insert($insertAt, $normalizer)
+
           # Replace-Once should mutate only the first exact occurrence. Some UI
           # notification pairs intentionally occur more than once in the source.
           $condition = '    if ($count -ne 1) {'
