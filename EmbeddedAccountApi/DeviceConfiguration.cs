@@ -155,7 +155,7 @@ namespace MarchCenter.AccountApi
             }
             catch
             {
-                options.Systems.Clear(); foreach (var pair in previousProfiles) options.Systems[pair.Key] = pair.Value;
+                options.Systems = previousProfiles;
                 throw;
             }
             return new Dictionary<string, object> { { "success", true }, { "version", envelope.Version }, { "appliedAt", DateTimeOffset.UtcNow.ToString("o") } };
@@ -207,7 +207,7 @@ namespace MarchCenter.AccountApi
             }
             catch
             {
-                options.Systems.Clear(); foreach (var pair in previousProfiles) options.Systems[pair.Key] = pair.Value;
+                options.Systems = previousProfiles;
                 throw;
             }
             return new Dictionary<string, object> { { "success", true }, { "rolledBackAt", DateTimeOffset.UtcNow.ToString("o") } };
@@ -232,8 +232,10 @@ namespace MarchCenter.AccountApi
             if (testConnections) TestProfiles(next);
             lock (Gate)
             {
-                options.Systems.Clear();
-                foreach (var pair in next) options.Systems[pair.Key] = pair.Value;
+                // Publish the complete profile set in one assignment. Requests
+                // therefore observe either the previous snapshot or the new one,
+                // never a transient empty/partially rebuilt dictionary.
+                options.Systems = next;
             }
         }
 
