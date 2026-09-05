@@ -1,0 +1,537 @@
+name: One-time product progress semantics v2
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/one-time-product-progress-semantics-v2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install SharpSvn runtime
+        shell: pwsh
+        run: choco install vcredist-all -y --no-progress
+
+      - name: Apply product progress patch
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          def read(path):
+              return Path(path).read_text(encoding='utf-8-sig').replace('\r\n', '\n')
+
+          def write(path, text):
+              Path(path).write_text(text, encoding='utf-8', newline='\n')
+
+          def r1(path, old, new):
+              text = read(path)
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{path}: expected one occurrence, found {count}: {old[:140]!r}')
+              write(path, text.replace(old, new, 1))
+
+          # 1. Transfer model: a total is shown as a denominator only when the source says it is authoritative.
+          r1('ProductDownloadProgress.cs',
+             '    long ScannedBytes = 0)\n',
+             '    long ScannedBytes = 0,\n    bool HasReliableTotal = false)\n')
+          r1('ProductDownloadProgress.cs',
+             '            var received = ProductTransferFormatting.FormatBytes(BytesReceived);\n            if (ScannedFiles > 0 || ScannedBytes > 0)',
+             '            var received = ProductTransferFormatting.FormatBytes(BytesReceived);\n            var hasReliableTotal = HasReliableTotal && TotalBytes is > 0;\n            if (ScannedFiles > 0 || ScannedBytes > 0)')
+          r1('ProductDownloadProgress.cs', 'var downloaded = TotalBytes is > 0', 'var downloaded = hasReliableTotal')
+          r1('ProductDownloadProgress.cs', 'return TotalBytes is > 0', 'return hasReliableTotal')
+
+          # 2. HTTP/WebDAV can opt into determinate progress. SVN deliberately keeps the default false.
+          r1('McPanelStoreClient.cs',
+             '                        snapshot.TotalBytes,\n                        ProductTransferFormatting.FormatRate(snapshot.BytesPerSecond)));',
+             '                        snapshot.TotalBytes,\n                        ProductTransferFormatting.FormatRate(snapshot.BytesPerSecond),\n                        HasReliableTotal: snapshot.TotalBytes is > 0));')
+          r1('McPanelStoreClient.cs',
+             '            new FileInfo(target).Length,\n            ProductTransferFormatting.FormatRate(downloadResult?.AverageBytesPerSecond ?? 0)));',
+             '            new FileInfo(target).Length,\n            ProductTransferFormatting.FormatRate(downloadResult?.AverageBytesPerSecond ?? 0),\n            HasReliableTotal: true));')
+          r1('McPanelStoreClient.cs',
+             '                allLengthsKnown ? knownTotalBytes : null,\n                null));',
+             '                allLengthsKnown ? knownTotalBytes : null,\n                null,\n                HasReliableTotal: allLengthsKnown));')
+          r1('McPanelStoreClient.cs',
+             '                        allLengthsKnown ? knownTotalBytes : null,\n                        ProductTransferFormatting.FormatRate(speed)));',
+             '                        allLengthsKnown ? knownTotalBytes : null,\n                        ProductTransferFormatting.FormatRate(speed),\n                        HasReliableTotal: allLengthsKnown));')
+          r1('McPanelStoreClient.cs',
+             '                allLengthsKnown ? knownTotalBytes : finalBytes,\n                ProductTransferFormatting.FormatRate(finalBytes / Math.Max((DateTime.UtcNow - downloadStartedAt).TotalSeconds, 0.001))));',
+             '                allLengthsKnown ? knownTotalBytes : finalBytes,\n                ProductTransferFormatting.FormatRate(finalBytes / Math.Max((DateTime.UtcNow - downloadStartedAt).TotalSeconds, 0.001)),\n                HasReliableTotal: true));')
+
+          # 3. Carry reliability through the elevated install worker.
+          r1('ProductInstallWorker.cs',
+             '        private long _scannedBytes;\n        private double _downloadPercent;',
+             '        private long _scannedBytes;\n        private double _downloadPercent;\n        private bool _hasReliableTotal;')
+          r1('ProductInstallWorker.cs',
+             '            _stagePercent = _downloadPercent;',
+             '            _stagePercent = update.HasReliableTotal ? _downloadPercent : null;')
+          r1('ProductInstallWorker.cs',
+             '            _scannedBytes = update.ScannedBytes;\n            Write(',
+             '            _scannedBytes = update.ScannedBytes;\n            _hasReliableTotal = update.HasReliableTotal;\n            Write(')
+          r1('ProductInstallWorker.cs',
+             '                scannedFiles: update.ScannedFiles,\n                scannedBytes: update.ScannedBytes);',
+             '                scannedFiles: update.ScannedFiles,\n                scannedBytes: update.ScannedBytes,\n                hasReliableTotal: update.HasReliableTotal);')
+          r1('ProductInstallWorker.cs',
+             '            int scannedFiles = 0,\n            long scannedBytes = 0)',
+             '            int scannedFiles = 0,\n            long scannedBytes = 0,\n            bool? hasReliableTotal = null)')
+          r1('ProductInstallWorker.cs',
+             '                if (scannedFiles > 0 || scannedBytes > 0)\n                {\n                    _scannedFiles = scannedFiles;\n                    _scannedBytes = scannedBytes;\n                }\n\n                try',
+             '                if (scannedFiles > 0 || scannedBytes > 0)\n                {\n                    _scannedFiles = scannedFiles;\n                    _scannedBytes = scannedBytes;\n                }\n                _hasReliableTotal = hasReliableTotal ?? _hasReliableTotal;\n\n                try')
+          r1('ProductInstallWorker.cs',
+             '                                _scannedFiles,\n                                _scannedBytes),',
+             '                                _scannedFiles,\n                                _scannedBytes,\n                                _hasReliableTotal),')
+          r1('ProductInstallWorker.cs',
+             '    int ScannedFiles = 0,\n    long ScannedBytes = 0);',
+             '    int ScannedFiles = 0,\n    long ScannedBytes = 0,\n    bool HasReliableTotal = false);')
+
+          # 4. Full progress panel: show stages, real transfer telemetry, and percentages only for reliable totals.
+          r1('ViewModels/ProductViewModels.cs',
+             '    public string StageText { get => _stageText; private set => SetProperty(ref _stageText, value); }',
+             '''    public string StageText
+              {
+                  get => _stageText;
+                  private set
+                  {
+                      if (SetProperty(ref _stageText, value))
+                      {
+                          OnPropertyChanged(nameof(ProgressText));
+                          OnPropertyChanged(nameof(IsProgressIndeterminate));
+                      }
+                  }
+              }''')
+          r1('ViewModels/ProductViewModels.cs',
+             '                OnPropertyChanged(nameof(PauseActionText));\n',
+             '                OnPropertyChanged(nameof(PauseActionText));\n                OnPropertyChanged(nameof(ProgressText));\n                OnPropertyChanged(nameof(IsProgressIndeterminate));\n')
+          r1('ViewModels/ProductViewModels.cs',
+             '                OnPropertyChanged(nameof(OverallDownloadProgress));\n',
+             '                OnPropertyChanged(nameof(OverallDownloadProgress));\n                OnPropertyChanged(nameof(DisplayDownloadProgress));\n                OnPropertyChanged(nameof(ProgressText));\n')
+          r1('ViewModels/ProductViewModels.cs',
+             '    public string ProgressText => $"{Progress:0.0}%";\n    public bool IsProgressIndeterminate => IsVisible &&\n        (StageText == "准备下载" || (StageText == "下载产品文件" && !_downloadTotalKnown));',
+             '''    public double DisplayDownloadProgress => _downloadTotalKnown ? DownloadProgress : 0d;
+              public string ProgressText => StageText == "处理完成"
+                  ? "完成"
+                  : IsPaused
+                      ? "已暂停"
+                      : StageText == "下载产品文件" && _downloadTotalKnown
+                          ? $"{DownloadProgress:0}%"
+                          : "处理中";
+              public bool IsProgressIndeterminate => IsVisible &&
+                  !IsPaused &&
+                  StageText != "处理完成" &&
+                  (StageText != "下载产品文件" || !_downloadTotalKnown);
+              public bool IsQueueActivityAnimating
+              {
+                  get
+                  {
+                      var firstActive = QueueItems
+                          .Where(item => !item.IsTerminal)
+                          .OrderBy(item => item.Sequence)
+                          .FirstOrDefault();
+                      return firstActive is not null && !firstActive.IsPaused;
+                  }
+              }''')
+          r1('ViewModels/ProductViewModels.cs',
+             '        _downloadTotalKnown = update.TotalBytes is > 0;',
+             '        _downloadTotalKnown = update.HasReliableTotal && update.TotalBytes is > 0;\n        OnPropertyChanged(nameof(DisplayDownloadProgress));')
+          r1('ViewModels/ProductViewModels.cs',
+             '                update.ScannedFiles,\n                update.ScannedBytes).TransferText',
+             '                update.ScannedFiles,\n                update.ScannedBytes,\n                update.HasReliableTotal).TransferText')
+          r1('ViewModels/ProductViewModels.cs',
+             '        OnPropertyChanged(nameof(OverallDownloadProgress));\n    }\n\n    private static string ResolveStage',
+             '        OnPropertyChanged(nameof(OverallDownloadProgress));\n        OnPropertyChanged(nameof(IsQueueActivityAnimating));\n    }\n\n    private static string ResolveStage')
+
+          # 5. Product cards use a spinner for unknown-size transfer/deployment; percentage text appears only when meaningful.
+          r1('ViewModels/ProductViewModels.cs',
+             '    private double _downloadProgress;\n    private int _installSequence',
+             '    private double _downloadProgress;\n    private bool _isDownloadProgressIndeterminate;\n    private int _installSequence')
+          r1('ViewModels/ProductViewModels.cs',
+             '    public double DownloadProgress { get => _downloadProgress; set => SetProperty(ref _downloadProgress, value); }',
+             '''    public double DownloadProgress
+              {
+                  get => _downloadProgress;
+                  set
+                  {
+                      if (SetProperty(ref _downloadProgress, Compat.Clamp(value, 0, 100)))
+                      {
+                          OnPropertyChanged(nameof(DisplayDownloadProgress));
+                          OnPropertyChanged(nameof(DownloadProgressText));
+                      }
+                  }
+              }
+              public bool IsDownloadProgressIndeterminate
+              {
+                  get => _isDownloadProgressIndeterminate;
+                  set
+                  {
+                      if (SetProperty(ref _isDownloadProgressIndeterminate, value))
+                      {
+                          OnPropertyChanged(nameof(DisplayDownloadProgress));
+                          OnPropertyChanged(nameof(DownloadProgressText));
+                      }
+                  }
+              }
+              public double DisplayDownloadProgress => IsDownloadProgressIndeterminate ? 0d : DownloadProgress;
+              public string DownloadProgressText => IsDownloadProgressIndeterminate ? string.Empty : $"{DownloadProgress:0}%";''')
+
+          # 6. Queue rows become stage-oriented and expose useful real transfer telemetry.
+          r1('ProductInstallQueue.cs',
+             '    private bool _isPaused;\n    private bool _isRemovalRequested;',
+             '    private bool _isPaused;\n    private bool _isRemovalRequested;\n    private bool _hasReliableTotal;\n    private long _bytesReceived;\n    private long? _totalBytes;\n    private string? _speedText;\n    private int _scannedFiles;')
+          r1('ProductInstallQueue.cs',
+             '    public double DownloadProgress\n    {\n        get => _downloadProgress;\n        private set => SetProperty(ref _downloadProgress, Compat.Clamp(value, 0, 100));\n    }\n\n    public string ProgressText => $"{Progress:0.0}%";',
+             '''    public double DownloadProgress
+              {
+                  get => _downloadProgress;
+                  private set
+                  {
+                      if (SetProperty(ref _downloadProgress, Compat.Clamp(value, 0, 100)))
+                      {
+                          OnPropertyChanged(nameof(DisplayDownloadProgress));
+                          OnPropertyChanged(nameof(ProgressText));
+                      }
+                  }
+              }
+
+              public double DisplayDownloadProgress => _hasReliableTotal ? DownloadProgress : 0d;
+              public bool IsProgressIndeterminate => State == ProductInstallQueueStatus.Running &&
+                                                     !IsPaused &&
+                                                     (_stage != InstallProgressStage.Downloading || !_hasReliableTotal);
+              public string ProgressText => State switch
+              {
+                  ProductInstallQueueStatus.Pending => string.Empty,
+                  ProductInstallQueueStatus.Running when IsPaused => "已暂停",
+                  ProductInstallQueueStatus.Running when _stage == InstallProgressStage.Downloading && _hasReliableTotal => $"{DownloadProgress:0}%",
+                  ProductInstallQueueStatus.Running when _stage == InstallProgressStage.Downloading => "下载中",
+                  ProductInstallQueueStatus.Running when _stage == InstallProgressStage.Installing => "部署中",
+                  ProductInstallQueueStatus.Running => "准备中",
+                  ProductInstallQueueStatus.Completed => "完成",
+                  ProductInstallQueueStatus.Failed => "失败",
+                  ProductInstallQueueStatus.Cancelled => "已取消",
+                  _ => string.Empty
+              };
+              public string TransferText
+              {
+                  get
+                  {
+                      if (!IsDownloading)
+                      {
+                          return string.Empty;
+                      }
+
+                      var parts = new List<string>();
+                      if (_bytesReceived > 0)
+                      {
+                          var downloaded = $"已下载 {ProductTransferFormatting.FormatBytes(_bytesReceived)}";
+                          if (_hasReliableTotal && _totalBytes is > 0)
+                          {
+                              downloaded += $" / {ProductTransferFormatting.FormatBytes(_totalBytes.Value)}";
+                          }
+                          parts.Add(downloaded);
+                      }
+                      if (!string.IsNullOrWhiteSpace(_speedText))
+                      {
+                          parts.Add($"速度 {_speedText}");
+                      }
+                      if (_scannedFiles > 0)
+                      {
+                          parts.Add($"已扫描 {_scannedFiles:N0} 项");
+                      }
+                      return string.Join(" · ", parts);
+                  }
+              }''')
+          # State transitions need to refresh computed stage UI.
+          r1('ProductInstallQueue.cs',
+             '            OnPropertyChanged(nameof(RemoveToolTip));\n        }\n    }\n\n    public double Progress',
+             '            OnPropertyChanged(nameof(RemoveToolTip));\n            OnPropertyChanged(nameof(ProgressText));\n            OnPropertyChanged(nameof(IsProgressIndeterminate));\n            OnPropertyChanged(nameof(TransferText));\n        }\n    }\n\n    public double Progress')
+          r1('ProductInstallQueue.cs',
+             '                OnPropertyChanged(nameof(CanTogglePause));\n            }\n        }\n    }\n    public bool IsRemovalRequested',
+             '                OnPropertyChanged(nameof(CanTogglePause));\n                OnPropertyChanged(nameof(ProgressText));\n                OnPropertyChanged(nameof(IsProgressIndeterminate));\n            }\n        }\n    }\n    public bool IsRemovalRequested')
+          r1('ProductInstallQueue.cs',
+             '                ProductInstallQueueStatus.Running => IsUpdate ? "正在更新" : "正在安装",',
+             '''                ProductInstallQueueStatus.Running => _stage switch
+                  {
+                      InstallProgressStage.Preparing => "准备中",
+                      InstallProgressStage.Downloading => IsUpdate ? "正在下载更新" : "正在下载",
+                      InstallProgressStage.Installing => IsUpdate ? "正在部署更新" : "正在部署",
+                      _ => IsUpdate ? "正在更新" : "正在安装"
+                  },''')
+          r1('ProductInstallQueue.cs',
+             '        _stage = update.Stage;\n        DownloadProgress = update.Stage switch',
+             '        _stage = update.Stage;\n        _hasReliableTotal = update.HasReliableTotal && update.TotalBytes is > 0;\n        _bytesReceived = update.BytesReceived;\n        _totalBytes = update.TotalBytes;\n        _speedText = update.SpeedText;\n        _scannedFiles = update.ScannedFiles;\n        DownloadProgress = update.Stage switch')
+          r1('ProductInstallQueue.cs',
+             '        OnPropertyChanged(nameof(IsDownloading));\n        OnPropertyChanged(nameof(CanTogglePause));\n        if (!IsPaused && !IsRemovalRequested)',
+             '        OnPropertyChanged(nameof(IsDownloading));\n        OnPropertyChanged(nameof(CanTogglePause));\n        OnPropertyChanged(nameof(StateText));\n        OnPropertyChanged(nameof(ProgressText));\n        OnPropertyChanged(nameof(DisplayDownloadProgress));\n        OnPropertyChanged(nameof(IsProgressIndeterminate));\n        OnPropertyChanged(nameof(TransferText));\n        if (!IsPaused && !IsRemovalRequested)')
+
+          # 7. Mirror the stage semantics into product cards.
+          r1('MainWindow.Products.cs',
+             '            product.DownloadProgress = 0;\n            product.StatusText = preflight.BuildMessage();',
+             '            product.DownloadProgress = 0;\n            product.IsDownloadProgressIndeterminate = false;\n            product.StatusText = preflight.BuildMessage();')
+          r1('MainWindow.Products.cs',
+             '            product.SetQueueState(item.State, item.QueuePosition);\n            product.IsBusy = false;\n            product.StatusText = $"已加入安装队列，等待第 {item.QueuePosition} 项处理。";',
+             '            product.SetQueueState(item.State, item.QueuePosition);\n            product.IsBusy = false;\n            product.IsDownloadProgressIndeterminate = false;\n            product.StatusText = $"已加入安装队列，等待第 {item.QueuePosition} 项处理。";')
+          r1('MainWindow.Products.cs',
+             '            product.DownloadProgress = 0;\n            product.StatusText = $"加入安装队列失败：',
+             '            product.DownloadProgress = 0;\n            product.IsDownloadProgressIndeterminate = false;\n            product.StatusText = $"加入安装队列失败：')
+          r1('MainWindow.Products.cs',
+             '            product.SetQueueState(null, 0);\n            product.IsBusy = false;\n            return;',
+             '            product.SetQueueState(null, 0);\n            product.IsBusy = false;\n            product.IsDownloadProgressIndeterminate = false;\n            return;')
+          r1('MainWindow.Products.cs',
+             '        product.SetQueueState(item.State, item.QueuePosition);\n        product.IsBusy = item.State == ProductInstallQueueStatus.Running;',
+             '        product.SetQueueState(item.State, item.QueuePosition);\n        product.IsBusy = item.State == ProductInstallQueueStatus.Running;\n        product.IsDownloadProgressIndeterminate = item.IsProgressIndeterminate;')
+          r1('MainWindow.Products.cs',
+             '        product.IsBusy = true;\n        product.DownloadProgress = progress.Percent;\n        product.StatusText = progress.Message;',
+             '        product.IsBusy = true;\n        product.DownloadProgress = progress.Stage == InstallProgressStage.Downloading\n            ? progress.StagePercent ?? progress.Percent\n            : 0;\n        product.IsDownloadProgressIndeterminate = progress.Stage != InstallProgressStage.Completed &&\n                                                  (progress.Stage != InstallProgressStage.Downloading || !progress.HasReliableTotal);\n        product.StatusText = progress.Message;')
+          r1('MainWindow.Products.cs',
+             '            product.SetQueueState(null, 0);\n            product.IsBusy = false;\n            if (item.State == ProductInstallQueueStatus.Completed)',
+             '            product.SetQueueState(null, 0);\n            product.IsBusy = false;\n            product.IsDownloadProgressIndeterminate = false;\n            if (item.State == ProductInstallQueueStatus.Completed)')
+
+          # 8. Circular progress control: add a rotating activity arc for indeterminate work.
+          r1('Controls/PanelProgressControls.cs',
+             '    public static readonly DependencyProperty AnimatedValueProperty =\n        DependencyProperty.Register(\n            nameof(AnimatedValue),\n            typeof(double),\n            typeof(CircularProgress),\n            new FrameworkPropertyMetadata(0d, FrameworkPropertyMetadataOptions.AffectsRender));',
+             '''    public static readonly DependencyProperty AnimatedValueProperty =
+                  DependencyProperty.Register(
+                      nameof(AnimatedValue),
+                      typeof(double),
+                      typeof(CircularProgress),
+                      new FrameworkPropertyMetadata(0d, FrameworkPropertyMetadataOptions.AffectsRender));
+
+              public static readonly DependencyProperty IsIndeterminateProperty =
+                  DependencyProperty.Register(
+                      nameof(IsIndeterminate),
+                      typeof(bool),
+                      typeof(CircularProgress),
+                      new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.AffectsRender, OnIsIndeterminateChanged));
+
+              private static readonly DependencyProperty IndeterminateAngleProperty =
+                  DependencyProperty.Register(
+                      "IndeterminateAngle",
+                      typeof(double),
+                      typeof(CircularProgress),
+                      new FrameworkPropertyMetadata(0d, FrameworkPropertyMetadataOptions.AffectsRender));''')
+          r1('Controls/PanelProgressControls.cs',
+             '    private static readonly Duration ValueAnimationDuration =\n        new(TimeSpan.FromMilliseconds(700));',
+             '''    private static readonly Duration ValueAnimationDuration =
+                  new(TimeSpan.FromMilliseconds(700));
+              private static readonly Duration IndeterminateAnimationDuration =
+                  new(TimeSpan.FromMilliseconds(1050));
+
+              public CircularProgress()
+              {
+                  Loaded += (_, _) =>
+                  {
+                      if (IsIndeterminate)
+                      {
+                          StartIndeterminateAnimation();
+                      }
+                  };
+                  Unloaded += (_, _) => StopIndeterminateAnimation();
+              }''')
+          r1('Controls/PanelProgressControls.cs',
+             '    public double AnimatedValue => (double)GetValue(AnimatedValueProperty);',
+             '''    public double AnimatedValue => (double)GetValue(AnimatedValueProperty);
+
+              public bool IsIndeterminate
+              {
+                  get => (bool)GetValue(IsIndeterminateProperty);
+                  set => SetValue(IsIndeterminateProperty, value);
+              }
+
+              private double IndeterminateAngle => (double)GetValue(IndeterminateAngleProperty);''')
+          r1('Controls/PanelProgressControls.cs',
+             '        drawingContext.DrawEllipse(null, trackPen, center, radius, radius);\n\n        var percent = Compat.Clamp(AnimatedValue, 0, 100);',
+             '''        drawingContext.DrawEllipse(null, trackPen, center, radius, radius);
+
+              if (IsIndeterminate)
+              {
+                  var startAngle = IndeterminateAngle - 90d;
+                  var endAngle = startAngle + 96d;
+                  var start = PointOnCircle(center, radius, startAngle);
+                  var end = PointOnCircle(center, radius, endAngle);
+                  var geometry = new StreamGeometry();
+                  using (var context = geometry.Open())
+                  {
+                      context.BeginFigure(start, isFilled: false, isClosed: false);
+                      context.ArcTo(end, new Size(radius, radius), 0, false, SweepDirection.Clockwise, true, false);
+                  }
+
+                  geometry.Freeze();
+                  drawingContext.DrawGeometry(null, progressPen, geometry);
+                  return;
+              }
+
+              var percent = Compat.Clamp(AnimatedValue, 0, 100);''')
+          r1('Controls/PanelProgressControls.cs',
+             '    private static void OnValueChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs args)',
+             '''    private static void OnIsIndeterminateChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs args)
+              {
+                  var control = (CircularProgress)dependencyObject;
+                  if ((bool)args.NewValue && control.IsLoaded)
+                  {
+                      control.StartIndeterminateAnimation();
+                  }
+                  else
+                  {
+                      control.StopIndeterminateAnimation();
+                  }
+              }
+
+              private void StartIndeterminateAnimation()
+              {
+                  var animation = new DoubleAnimation
+                  {
+                      From = 0d,
+                      To = 360d,
+                      Duration = IndeterminateAnimationDuration,
+                      RepeatBehavior = RepeatBehavior.Forever,
+                      FillBehavior = FillBehavior.HoldEnd
+                  };
+                  BeginAnimation(IndeterminateAngleProperty, animation, HandoffBehavior.SnapshotAndReplace);
+              }
+
+              private void StopIndeterminateAnimation()
+              {
+                  BeginAnimation(IndeterminateAngleProperty, null);
+                  SetValue(IndeterminateAngleProperty, 0d);
+              }
+
+              private static void OnValueChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs args)''')
+
+          # 9. XAML: top ring becomes activity status, queue/modal bars become stage-aware.
+          r1('MainWindow.xaml',
+             '                                    <local:CircularProgress Value="{Binding InstallationProgress.OverallDownloadProgress}"\n                                                            Width="48"',
+             '                                    <local:CircularProgress Value="0"\n                                                            IsIndeterminate="{Binding InstallationProgress.IsQueueActivityAnimating}"\n                                                            Width="48"')
+          r1('MainWindow.xaml',
+             '                                                            Visibility="{Binding InstallationProgress.IsDownloading, Converter={StaticResource BooleanToVisibility}}" />',
+             '                                                            Visibility="{Binding InstallationProgress.HasActiveQueue, Converter={StaticResource BooleanToVisibility}}" />')
+          r1('MainWindow.xaml',
+             '                                <TextBlock Text="总体进度" Foreground="{DynamicResource MutedBrush}" FontSize="12" />',
+             '                                <TextBlock Text="当前阶段" Foreground="{DynamicResource MutedBrush}" FontSize="12" />')
+          r1('MainWindow.xaml',
+             '                                     Value="{Binding InstallationProgress.Progress, Mode=OneWay}"',
+             '                                     Value="{Binding InstallationProgress.DisplayDownloadProgress, Mode=OneWay}"')
+          r1('MainWindow.xaml',
+             '                                   Text="任务按加入时间逐项处理；关闭面板或窗口到托盘不会中断后台下载、安装和部署。"',
+             '                                   Text="任务按加入时间逐项处理；SVN 下载显示真实容量、速度和阶段状态，不使用不可靠的估算百分比。关闭面板或窗口到托盘不会中断后台任务。"')
+
+          r1('Resources/MainWindowTemplates.xaml',
+             '                        <local:CircularProgress Value="{Binding DownloadProgress, Mode=OneWay}"\n                                                 ProgressBrush="{DynamicResource PrimaryBrush}"',
+             '                        <local:CircularProgress Value="{Binding DisplayDownloadProgress, Mode=OneWay}"\n                                                 IsIndeterminate="{Binding IsDownloadProgressIndeterminate}"\n                                                 ProgressBrush="{DynamicResource PrimaryBrush}"')
+          r1('Resources/MainWindowTemplates.xaml',
+             '                        <TextBlock Text="{Binding DownloadProgress, StringFormat={}{0:N0}%}"',
+             '                        <TextBlock Text="{Binding DownloadProgressText}"')
+          r1('Resources/MainWindowTemplates.xaml',
+             '                <Grid.RowDefinitions>\n                    <RowDefinition Height="Auto" />\n                    <RowDefinition Height="Auto" />\n                    <RowDefinition Height="Auto" />\n                </Grid.RowDefinitions>\n                <Grid.ColumnDefinitions>\n                    <ColumnDefinition Width="52" />',
+             '                <Grid.RowDefinitions>\n                    <RowDefinition Height="Auto" />\n                    <RowDefinition Height="Auto" />\n                    <RowDefinition Height="Auto" />\n                    <RowDefinition Height="Auto" />\n                </Grid.RowDefinitions>\n                <Grid.ColumnDefinitions>\n                    <ColumnDefinition Width="52" />')
+          r1('Resources/MainWindowTemplates.xaml',
+             '                <ProgressBar Grid.Row="1"\n                             Grid.ColumnSpan="5"\n                             Style="{DynamicResource MetricProgress}"\n                             Value="{Binding Progress, Mode=OneWay}"\n                             Maximum="100"\n                             Margin="62,8,0,0" />',
+             '                <ProgressBar Grid.Row="1"\n                             Grid.ColumnSpan="5"\n                             Style="{DynamicResource MetricProgress}"\n                             Value="{Binding DisplayDownloadProgress, Mode=OneWay}"\n                             Maximum="100"\n                             IsIndeterminate="{Binding IsProgressIndeterminate}"\n                             Margin="62,8,0,0" />')
+          r1('Resources/MainWindowTemplates.xaml',
+             '                <TextBlock Grid.Row="2"\n                           Grid.ColumnSpan="5"\n                           Text="{Binding Message}"\n                           ToolTip="{Binding Message}"\n                           Foreground="{DynamicResource MutedBrush}"\n                           FontSize="10"\n                           Margin="62,6,0,0"\n                           TextTrimming="CharacterEllipsis" />',
+             '                <TextBlock Grid.Row="2"\n                           Grid.ColumnSpan="5"\n                           Text="{Binding Message}"\n                           ToolTip="{Binding Message}"\n                           Foreground="{DynamicResource MutedBrush}"\n                           FontSize="10"\n                           Margin="62,6,0,0"\n                           TextTrimming="CharacterEllipsis" />\n                <TextBlock Grid.Row="3"\n                           Grid.ColumnSpan="5"\n                           Text="{Binding TransferText}"\n                           ToolTip="{Binding TransferText}"\n                           Foreground="{DynamicResource PrimaryBrush}"\n                           FontSize="10"\n                           Margin="62,4,0,0"\n                           TextTrimming="CharacterEllipsis" />')
+
+          # Focused tests: unreliable SVN total must never become a visible denominator/percentage.
+          test = '''using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+          namespace MCPanel.Tests;
+
+          public sealed partial class ReliabilityTests
+          {
+              [TestMethod]
+              public void ProductTransferOnlyShowsAuthoritativeTotals()
+              {
+                  var uncertain = new ProductDownloadProgress(
+                      42,
+                      "SVN",
+                      6L * 1024 * 1024 * 1024,
+                      7L * 1024 * 1024 * 1024,
+                      "20.0 MB/s",
+                      HasReliableTotal: false);
+                  StringAssert.Contains(uncertain.TransferText, "已下载 6 GB");
+                  Assert.IsFalse(uncertain.TransferText.Contains(" / "));
+
+                  var reliable = uncertain with { HasReliableTotal = true };
+                  StringAssert.Contains(reliable.TransferText, "已下载 6 GB / 7 GB");
+              }
+
+              [TestMethod]
+              public void QueueUsesActivityProgressForUnknownSizeSvn()
+              {
+                  var root = CreateTemporaryDirectory();
+                  try
+                  {
+                      using var queue = new ProductInstallQueueService(
+                          new InstallationProgressViewModel(), root, autoStartWorker: false);
+                      var item = queue.Enqueue(
+                          new ProductItem("PROGRESS-SVN", "SVN 产品", "测试", string.Empty, ProductSource.Online),
+                          isUpdate: false);
+                      item.SetState(ProductInstallQueueStatus.Running);
+                      item.ApplyProgress(new ProductInstallWorkerProgress(
+                          "running", 0.9, "正在扫描并下载", InstallProgressStage.Downloading, 1,
+                          "18.5 MB/s", 6L * 1024 * 1024 * 1024, 7L * 1024 * 1024 * 1024,
+                          ScannedFiles: 12846, HasReliableTotal: false));
+
+                      Assert.IsTrue(item.IsProgressIndeterminate);
+                      Assert.AreEqual(0d, item.DisplayDownloadProgress, 0.001);
+                      Assert.AreEqual("下载中", item.ProgressText);
+                      StringAssert.Contains(item.TransferText, "已下载 6 GB");
+                      StringAssert.Contains(item.TransferText, "速度 18.5 MB/s");
+                      StringAssert.Contains(item.TransferText, "已扫描 12,846 项");
+                      Assert.IsFalse(item.TransferText.Contains(" / "));
+
+                      item.ApplyProgress(new ProductInstallWorkerProgress(
+                          "running", 27, "HTTP 下载", InstallProgressStage.Downloading, 30,
+                          "25.0 MB/s", 3L * 1024 * 1024 * 1024, 10L * 1024 * 1024 * 1024,
+                          HasReliableTotal: true));
+                      Assert.IsFalse(item.IsProgressIndeterminate);
+                      Assert.AreEqual(30d, item.DisplayDownloadProgress, 0.001);
+                      Assert.AreEqual("30%", item.ProgressText);
+                      StringAssert.Contains(item.TransferText, "3 GB / 10 GB");
+                  }
+                  finally
+                  {
+                      DeleteTemporaryTree(root);
+                  }
+              }
+
+              [TestMethod]
+              public void CircularProgressSupportsActivityMode()
+              {
+                  var ring = new CircularProgress { IsIndeterminate = true };
+                  Assert.IsTrue(ring.IsIndeterminate);
+              }
+          }
+          '''
+          write('MCPanel.Tests/ReliabilityTests.ProductProgressSemantics.cs', test)
+          '@ | python -
+
+      - name: Test product progress semantics
+        shell: pwsh
+        run: |
+          dotnet test .\MCPanel.Tests\MCPanel.Tests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Regression tests failed.' }
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { throw 'git diff --check failed.' }
+
+      - name: Commit patch
+        shell: pwsh
+        run: |
+          git config user.name "Xiangming"
+          git config user.email "40314529+vguangshen@users.noreply.github.com"
+          git add ProductDownloadProgress.cs McPanelStoreClient.cs ProductInstallWorker.cs ProductInstallQueue.cs MainWindow.Products.cs Controls/PanelProgressControls.cs ViewModels/ProductViewModels.cs MainWindow.xaml Resources/MainWindowTemplates.xaml MCPanel.Tests/ReliabilityTests.ProductProgressSemantics.cs
+          git commit -m "ui: use stage-aware product transfer progress"
+          git push origin main
