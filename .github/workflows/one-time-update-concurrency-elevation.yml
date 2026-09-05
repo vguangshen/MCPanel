@@ -1,0 +1,167 @@
+name: One-time update concurrency and elevation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'tools/apply-update-concurrency-elevation.flag'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Patch update flow
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          import re
+
+          def replace_once(text, old, new, label):
+              if old not in text:
+                  raise SystemExit(f'{label}: expected text not found')
+              return text.replace(old, new, 1)
+
+          # ApplicationUpdateService: pre-authorize one elevated helper at the existing
+          # confirmation point, then reuse that exact helper once the update package is ready.
+          path = Path('ApplicationUpdateService.cs')
+          text = path.read_text(encoding='utf-8')
+          if 'using System.ComponentModel;' not in text:
+              text = text.replace('using System.Diagnostics;\n', 'using System.Diagnostics;\nusing System.ComponentModel;\n', 1)
+
+          marker = 'internal sealed class GitHubReleaseUpdate\n'
+          auth_class = '''internal sealed class ApplicationUpdateAuthorization\n{\n    public string HelperRoot { get; init; } = string.Empty;\n    public string PlanFile { get; init; } = string.Empty;\n    public string CancelFile { get; init; } = string.Empty;\n    public string InstallDirectory { get; init; } = string.Empty;\n    public int ParentProcessId { get; init; }\n    public Process? HelperProcess { get; set; }\n    public bool PlanSubmitted { get; set; }\n}\n\n'''
+          if auth_class not in text:
+              text = replace_once(text, marker, auth_class + marker, 'insert authorization type')
+
+          launch_pattern = re.compile(r'    public void LaunchUpdater\(PreparedApplicationUpdate update\)\n    \{.*?\n    \}\n\n    public void DiscardPreparedUpdate', re.S)
+          launch_replacement = '''    internal static bool ShouldRequestPreauthorizedUpdater(bool isAdministrator) => !isAdministrator;\n\n    internal ApplicationUpdateAuthorization? RequestUpdateAuthorization()\n    {\n        if (!ShouldRequestPreauthorizedUpdater(ProcessRunner.IsAdministrator()))\n        {\n            return null;\n        }\n\n        var helperRoot = Path.Combine(\n            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),\n            "MCPanel", "Updater", Guid.NewGuid().ToString("N"));\n        Directory.CreateDirectory(helperRoot);\n        try\n        {\n            CopyUpdaterRuntime(AppContext.BaseDirectory, helperRoot);\n            var installDirectory = Path.GetFullPath(AppContext.BaseDirectory);\n            var planFile = Path.Combine(helperRoot, "update-plan.json");\n            var cancelFile = Path.Combine(helperRoot, "cancel.flag");\n            var parentProcessId = Process.GetCurrentProcess().Id;\n            var helperExe = Path.Combine(helperRoot, "MCPanel.exe");\n            Process helperProcess;\n            try\n            {\n                helperProcess = ProcessRunner.Start(\n                    helperExe,\n                    string.Join(\n                        " ",\n                        "--wait-update-plan",\n                        Compat.QuoteCommandLineArgument(planFile),\n                        Compat.QuoteCommandLineArgument(cancelFile),\n                        Compat.QuoteCommandLineArgument(installDirectory),\n                        parentProcessId.ToString()),\n                    helperRoot,\n                    elevated: true);\n            }\n            catch (Win32Exception error) when (error.NativeErrorCode == 1223)\n            {\n                throw new OperationCanceledException("已取消管理员授权，更新未开始。", error);\n            }\n\n            return new ApplicationUpdateAuthorization\n            {\n                HelperRoot = helperRoot,\n                PlanFile = planFile,\n                CancelFile = cancelFile,\n                InstallDirectory = installDirectory,\n                ParentProcessId = parentProcessId,\n                HelperProcess = helperProcess\n            };\n        }\n        catch\n        {\n            TryDeleteDirectory(helperRoot);\n            throw;\n        }\n    }\n\n    internal void CancelUpdateAuthorization(ApplicationUpdateAuthorization? authorization)\n    {\n        if (authorization is null || authorization.PlanSubmitted)\n        {\n            return;\n        }\n\n        try\n        {\n            AtomicFile.WriteAllText(authorization.CancelFile, "cancel");\n        }\n        catch\n        {\n        }\n\n        try\n        {\n            if (authorization.HelperProcess is { HasExited: false })\n            {\n                authorization.HelperProcess.WaitForExit(3000);\n            }\n        }\n        catch\n        {\n        }\n        finally\n        {\n            try { authorization.HelperProcess?.Dispose(); } catch { }\n            authorization.HelperProcess = null;\n        }\n\n        TryDeleteDirectory(authorization.HelperRoot);\n    }\n\n    public void LaunchUpdater(\n        PreparedApplicationUpdate update,\n        ApplicationUpdateAuthorization? authorization = null)\n    {\n        var installDirectory = Path.GetFullPath(AppContext.BaseDirectory);\n        var stagingRoot = ResolvePreparedStagingRoot(\n            update.PayloadDirectory,\n            Path.Combine(UpdatesRoot, "Staging"));\n        var plan = new ApplicationUpdatePlan\n        {\n            InstallDirectory = installDirectory,\n            PayloadDirectory = update.PayloadDirectory,\n            TargetVersion = update.Version,\n            ParentProcessId = Process.GetCurrentProcess().Id,\n            StagingRoot = stagingRoot,\n            PackageFile = update.PackageFile,\n            DeletePackageFileAfterApply = update.DeletePackageFileAfterApply\n        };\n\n        if (authorization is not null)\n        {\n            if (authorization.PlanSubmitted ||\n                !PathsEqual(authorization.InstallDirectory, installDirectory) ||\n                authorization.ParentProcessId != plan.ParentProcessId ||\n                !Directory.Exists(authorization.HelperRoot))\n            {\n                throw new InvalidOperationException("管理员更新授权会话已经失效，请重新点击检测并更新。 ");\n            }\n\n            try\n            {\n                if (authorization.HelperProcess is null || authorization.HelperProcess.HasExited)\n                {\n                    throw new InvalidOperationException("管理员更新授权进程已退出，请重新点击检测并更新。 ");\n                }\n            }\n            catch (InvalidOperationException)\n            {\n                throw;\n            }\n            catch (Exception error)\n            {\n                throw new InvalidOperationException("无法确认管理员更新授权进程状态，请重新点击检测并更新。", error);\n            }\n\n            AtomicFile.WriteAllText(authorization.PlanFile, JsonSerializer.Serialize(plan, JsonOptions));\n            authorization.PlanSubmitted = true;\n            try { authorization.HelperProcess.Dispose(); } catch { }\n            authorization.HelperProcess = null;\n            return;\n        }\n\n        var helperRoot = Path.Combine(\n            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),\n            "MCPanel", "Updater", Guid.NewGuid().ToString("N"));\n        Directory.CreateDirectory(helperRoot);\n        CopyUpdaterRuntime(AppContext.BaseDirectory, helperRoot);\n        var planFile = Path.Combine(helperRoot, "update-plan.json");\n        AtomicFile.WriteAllText(planFile, JsonSerializer.Serialize(plan, JsonOptions));\n        var helperExe = Path.Combine(helperRoot, "MCPanel.exe");\n        using var updater = ProcessRunner.Start(\n            helperExe,\n            $"--apply-update {Compat.QuoteCommandLineArgument(planFile)}",\n            helperRoot,\n            elevated: !ProcessRunner.IsAdministrator() || RequiresElevation(installDirectory));\n    }\n\n    public void DiscardPreparedUpdate'''
+          text, count = launch_pattern.subn(launch_replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'replace LaunchUpdater: expected 1 match, got {count}')
+
+          apply_sig = '    public static async Task<int> ApplyUpdatePlanAsync(string planFile)\n    {\n'
+          apply_new = '''    public static Task<int> ApplyUpdatePlanAsync(string planFile) =>\n        ApplyUpdatePlanAsync(planFile, expectedInstallDirectory: null, expectedParentProcessId: null);\n\n    internal static async Task<int> WaitForAuthorizedUpdatePlanAsync(\n        string planFile,\n        string cancelFile,\n        string expectedInstallDirectory,\n        int expectedParentProcessId)\n    {\n        var validatedPlanFile = ValidatePlanFileLocation(planFile, requireExistingFile: false);\n        var helperRoot = Path.GetDirectoryName(validatedPlanFile)!;\n        var validatedCancelFile = Path.GetFullPath(cancelFile);\n        if (!PathsEqual(Path.GetDirectoryName(validatedCancelFile) ?? string.Empty, helperRoot) ||\n            !string.Equals(Path.GetFileName(validatedCancelFile), "cancel.flag", StringComparison.OrdinalIgnoreCase))\n        {\n            return 2;\n        }\n\n        var installDirectory = NormalizeDirectoryPath(expectedInstallDirectory, "安装目录");\n        if (expectedParentProcessId <= 0 ||\n            !Directory.Exists(installDirectory) ||\n            !File.Exists(Path.Combine(installDirectory, "MCPanel.exe")))\n        {\n            return 2;\n        }\n\n        var deadline = DateTime.UtcNow.AddHours(6);\n        while (!File.Exists(validatedPlanFile))\n        {\n            if (File.Exists(validatedCancelFile))\n            {\n                return 0;\n            }\n\n            if (DateTime.UtcNow >= deadline)\n            {\n                return 3;\n            }\n\n            try\n            {\n                using var parent = Process.GetProcessById(expectedParentProcessId);\n                if (parent.HasExited)\n                {\n                    return 0;\n                }\n            }\n            catch (ArgumentException)\n            {\n                return 0;\n            }\n\n            await Task.Delay(250);\n        }\n\n        return await ApplyUpdatePlanAsync(\n            validatedPlanFile,\n            installDirectory,\n            expectedParentProcessId);\n    }\n\n    private static async Task<int> ApplyUpdatePlanAsync(\n        string planFile,\n        string? expectedInstallDirectory,\n        int? expectedParentProcessId)\n    {\n'''
+          text = replace_once(text, apply_sig, apply_new, 'replace ApplyUpdatePlanAsync signature')
+
+          validate_insert = '''            ValidateApplyPlan(plan);\n            planValidated = true;\n'''
+          validate_new = '''            ValidateApplyPlan(plan);\n            if (!string.IsNullOrWhiteSpace(expectedInstallDirectory) &&\n                !PathsEqual(plan.InstallDirectory, expectedInstallDirectory))\n            {\n                throw new InvalidDataException("管理员更新授权与当前 MCPanel 安装目录不一致。");\n            }\n            if (expectedParentProcessId.HasValue &&\n                plan.ParentProcessId != expectedParentProcessId.Value)\n            {\n                throw new InvalidDataException("管理员更新授权与当前 MCPanel 进程不一致。");\n            }\n            planValidated = true;\n'''
+          text = replace_once(text, validate_insert, validate_new, 'bind authorized plan')
+
+          text = replace_once(
+              text,
+              '    private static string ValidatePlanFileLocation(string planFile)\n',
+              '    private static string ValidatePlanFileLocation(string planFile, bool requireExistingFile = true)\n',
+              'make plan target validation reusable')
+          text = replace_once(
+              text,
+              '            !Guid.TryParseExact(Path.GetFileName(helperRoot), "N", out _) ||\n            !File.Exists(fullPlanFile))\n',
+              '            !Guid.TryParseExact(Path.GetFileName(helperRoot), "N", out _) ||\n            (requireExistingFile && !File.Exists(fullPlanFile)))\n',
+              'allow pre-created plan target')
+
+          path.write_text(text, encoding='utf-8')
+
+          # App: elevated pre-authorization helper waits before joining normal UI singleton.
+          path = Path('App.xaml.cs')
+          text = path.read_text(encoding='utf-8')
+          marker = '''            var applyUpdateIndex = Array.FindIndex(e.Args, argument =>\n                string.Equals(argument, "--apply-update", StringComparison.OrdinalIgnoreCase));\n'''
+          block = '''            var waitUpdatePlanIndex = Array.FindIndex(e.Args, argument =>\n                string.Equals(argument, "--wait-update-plan", StringComparison.OrdinalIgnoreCase));\n            if (waitUpdatePlanIndex >= 0)\n            {\n                ShutdownMode = ShutdownMode.OnExplicitShutdown;\n                var planFile = waitUpdatePlanIndex + 1 < e.Args.Length ? e.Args[waitUpdatePlanIndex + 1] : string.Empty;\n                var cancelFile = waitUpdatePlanIndex + 2 < e.Args.Length ? e.Args[waitUpdatePlanIndex + 2] : string.Empty;\n                var installDirectory = waitUpdatePlanIndex + 3 < e.Args.Length ? e.Args[waitUpdatePlanIndex + 3] : string.Empty;\n                var processIdText = waitUpdatePlanIndex + 4 < e.Args.Length ? e.Args[waitUpdatePlanIndex + 4] : string.Empty;\n                var parentProcessId = int.TryParse(processIdText, out var parsedProcessId) ? parsedProcessId : 0;\n                var exitCode = await ApplicationUpdateService.WaitForAuthorizedUpdatePlanAsync(\n                    planFile,\n                    cancelFile,\n                    installDirectory,\n                    parentProcessId);\n                Shutdown(exitCode);\n                return;\n            }\n\n'''
+          if block not in text:
+              text = replace_once(text, marker, block + marker, 'insert update authorization worker mode')
+          path.write_text(text, encoding='utf-8')
+
+          # MainWindow field/lifecycle for the pre-authorized helper.
+          path = Path('MainWindow.xaml.cs')
+          text = path.read_text(encoding='utf-8')
+          text = replace_once(
+              text,
+              '    private CancellationTokenSource? _applicationUpdateCancellation;\n',
+              '    private CancellationTokenSource? _applicationUpdateCancellation;\n    private ApplicationUpdateAuthorization? _applicationUpdateAuthorization;\n',
+              'add update authorization field')
+          text = replace_once(
+              text,
+              '            _applicationUpdateCancellation?.Cancel();\n            _applicationUpdateCancellation?.Dispose();\n',
+              '            _applicationUpdateCancellation?.Cancel();\n            _applicationUpdateCancellation?.Dispose();\n            var updateAuthorization = Interlocked.Exchange(ref _applicationUpdateAuthorization, null);\n            _applicationUpdateService.CancelUpdateAuthorization(updateAuthorization);\n',
+              'cleanup update authorization on close')
+          path.write_text(text, encoding='utf-8')
+
+          # Settings/update UI flow.
+          path = Path('MainWindow.Settings.cs')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace(
+              '                if (!ConfirmOnlineUpdate(update.Manifest)) return null;\n                return await _applicationUpdateService.PrepareGitHubReleaseAsync(update, progress, status, cancellationToken);',
+              '                if (!ConfirmOnlineUpdate(update.Manifest)) return null;\n                if (!RequestApplicationUpdateAuthorizationAfterConfirmation()) return null;\n                return await _applicationUpdateService.PrepareGitHubReleaseAsync(update, progress, status, cancellationToken);',
+              1)
+          text = text.replace(
+              '            if (!ConfirmOnlineUpdate(manifest)) return null;\n            return await _applicationUpdateService.PrepareOnlineAsync(manifest, progress, status, cancellationToken);',
+              '            if (!ConfirmOnlineUpdate(manifest)) return null;\n            if (!RequestApplicationUpdateAuthorizationAfterConfirmation()) return null;\n            return await _applicationUpdateService.PrepareOnlineAsync(manifest, progress, status, cancellationToken);',
+              1)
+          text = text.replace(
+              '            if (!confirmed)\n            {\n                _applicationUpdateService.DiscardPreparedUpdate(prepared);\n                return null;\n            }\n\n            return prepared;',
+              '            if (!confirmed)\n            {\n                _applicationUpdateService.DiscardPreparedUpdate(prepared);\n                return null;\n            }\n\n            if (!RequestApplicationUpdateAuthorizationAfterConfirmation())\n            {\n                _applicationUpdateService.DiscardPreparedUpdate(prepared);\n                return null;\n            }\n\n            return prepared;',
+              1)
+
+          can_pattern = re.compile(r'    private bool CanStartApplicationUpdate\(\)\n    \{.*?\n    \}\n\n    private void CancelApplicationUpdate_Click', re.S)
+          can_replacement = '''    private bool CanStartApplicationUpdate()\n    {\n        return !_model.IsUpdateBusy;\n    }\n\n    private bool RequestApplicationUpdateAuthorizationAfterConfirmation()\n    {\n        try\n        {\n            var authorization = _applicationUpdateService.RequestUpdateAuthorization();\n            if (authorization is null)\n            {\n                return true;\n            }\n\n            var previous = Interlocked.Exchange(ref _applicationUpdateAuthorization, authorization);\n            _applicationUpdateService.CancelUpdateAuthorization(previous);\n            _model.UpdateStatus = "已获得管理员授权，正在准备 MCPanel 更新包...";\n            return true;\n        }\n        catch (OperationCanceledException)\n        {\n            _model.UpdateStatus = "已取消管理员授权，更新未开始。";\n            return false;\n        }\n        catch (Exception error)\n        {\n            _model.UpdateStatus = $"请求管理员权限失败：{error.GetBaseException().Message}";\n            MessageBox.Show(_model.UpdateStatus, "软件更新", MessageBoxButton.OK, MessageBoxImage.Warning);\n            return false;\n        }\n    }\n\n    private void CancelPendingUpdateAuthorization()\n    {\n        var authorization = Interlocked.Exchange(ref _applicationUpdateAuthorization, null);\n        _applicationUpdateService.CancelUpdateAuthorization(authorization);\n    }\n\n    private async Task WaitForProductInstallQueueBeforeApplyingUpdateAsync(\n        IProgress<string> status,\n        CancellationToken cancellationToken)\n    {\n        if (!_productInstallQueue.HasActiveItems)\n        {\n            return;\n        }\n\n        status.Report("MCPanel 更新包已准备完成；当前产品下载/安装继续运行，队列完成后会自动应用面板更新...");\n        while (_productInstallQueue.HasActiveItems)\n        {\n            cancellationToken.ThrowIfCancellationRequested();\n            await Task.Delay(500, cancellationToken);\n        }\n\n        status.Report("产品下载/安装队列已完成，正在应用 MCPanel 更新...");\n    }\n\n    private void CancelApplicationUpdate_Click'''
+          text, count = can_pattern.subn(can_replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'replace CanStartApplicationUpdate: expected 1 match, got {count}')
+
+          text = replace_once(
+              text,
+              '    private void CancelApplicationUpdate_Click(object sender, RoutedEventArgs e)\n    {\n        _applicationUpdateCancellation?.Cancel();\n    }\n',
+              '    private void CancelApplicationUpdate_Click(object sender, RoutedEventArgs e)\n    {\n        _applicationUpdateCancellation?.Cancel();\n        CancelPendingUpdateAuthorization();\n    }\n',
+              'cancel authorization from update cancel button')
+
+          text = replace_once(
+              text,
+              '    {\n        var cancellation = new CancellationTokenSource();\n        var previous = Interlocked.Exchange(ref _applicationUpdateCancellation, cancellation);\n',
+              '    {\n        CancelPendingUpdateAuthorization();\n        var cancellation = new CancellationTokenSource();\n        var previous = Interlocked.Exchange(ref _applicationUpdateCancellation, cancellation);\n',
+              'clear stale authorization at update start')
+
+          text = replace_once(
+              text,
+              '            cancellation.Token.ThrowIfCancellationRequested();\n            _model.UpdateStatus = "正在启动安全更新器，软件即将重启...";\n            _applicationUpdateService.LaunchUpdater(preparedForCleanup);\n            updaterLaunched = true;\n',
+              '            cancellation.Token.ThrowIfCancellationRequested();\n            await WaitForProductInstallQueueBeforeApplyingUpdateAsync(status, cancellation.Token);\n            cancellation.Token.ThrowIfCancellationRequested();\n            _model.UpdateStatus = "正在启动安全更新器，软件即将重启...";\n            var authorization = _applicationUpdateAuthorization;\n            _applicationUpdateService.LaunchUpdater(preparedForCleanup, authorization);\n            updaterLaunched = true;\n            if (authorization is not null)\n            {\n                Interlocked.CompareExchange(ref _applicationUpdateAuthorization, null, authorization);\n            }\n',
+              'wait for active product queue before apply')
+
+          text = replace_once(
+              text,
+              '            if (!updaterLaunched && preparedForCleanup is not null)\n            {\n                _applicationUpdateService.DiscardPreparedUpdate(preparedForCleanup);\n            }\n\n            if (ReferenceEquals(_applicationUpdateCancellation, cancellation))\n',
+              '            if (!updaterLaunched)\n            {\n                CancelPendingUpdateAuthorization();\n                if (preparedForCleanup is not null)\n                {\n                    _applicationUpdateService.DiscardPreparedUpdate(preparedForCleanup);\n                }\n            }\n\n            if (ReferenceEquals(_applicationUpdateCancellation, cancellation))\n',
+              'cleanup authorization on failed/cancelled update')
+          path.write_text(text, encoding='utf-8')
+
+          # Regression coverage.
+          test = Path('MCPanel.Tests/ReliabilityTests.ApplicationUpdateConcurrency119.cs')
+          test.write_text('''using System;\nusing Microsoft.VisualStudio.TestTools.UnitTesting;\n\nnamespace MCPanel.Tests;\n\npublic sealed partial class ReliabilityTests\n{\n    [TestMethod]\n    public void ApplicationUpdatePreauthorizesElevationAfterExistingConfirmation()\n    {\n        Assert.IsTrue(ApplicationUpdateService.ShouldRequestPreauthorizedUpdater(isAdministrator: false));\n        Assert.IsFalse(ApplicationUpdateService.ShouldRequestPreauthorizedUpdater(isAdministrator: true));\n\n        var settings = ReadRepositoryFile("MainWindow.Settings.cs");\n        StringAssert.Contains(settings, "if (!ConfirmOnlineUpdate(update.Manifest)) return null;\\n                if (!RequestApplicationUpdateAuthorizationAfterConfirmation()) return null;");\n        StringAssert.Contains(settings, "if (!ConfirmOnlineUpdate(manifest)) return null;\\n            if (!RequestApplicationUpdateAuthorizationAfterConfirmation()) return null;");\n\n        var app = ReadRepositoryFile("App.xaml.cs");\n        StringAssert.Contains(app, "--wait-update-plan");\n        var updater = ReadRepositoryFile("ApplicationUpdateService.cs");\n        StringAssert.Contains(updater, "elevated: true");\n        StringAssert.Contains(updater, "WaitForAuthorizedUpdatePlanAsync");\n    }\n\n    [TestMethod]\n    public void ApplicationUpdateCanPrepareWhileProductDownloadsRemainActive()\n    {\n        var settings = ReadRepositoryFile("MainWindow.Settings.cs");\n        var canStartIndex = settings.IndexOf("private bool CanStartApplicationUpdate()", StringComparison.Ordinal);\n        var cancelIndex = settings.IndexOf("private void CancelApplicationUpdate_Click", canStartIndex, StringComparison.Ordinal);\n        Assert.IsTrue(canStartIndex >= 0 && cancelIndex > canStartIndex);\n        var canStartBody = settings.Substring(canStartIndex, cancelIndex - canStartIndex);\n        Assert.IsFalse(canStartBody.Contains("_productInstallQueue.HasActiveItems", StringComparison.Ordinal));\n        StringAssert.Contains(settings, "WaitForProductInstallQueueBeforeApplyingUpdateAsync");\n        StringAssert.Contains(settings, "当前产品下载/安装继续运行");\n    }\n}\n''', encoding='utf-8')
+          '@ | python
+
+      - name: Test
+        shell: pwsh
+        run: |
+          dotnet test .\MCPanel.Tests\MCPanel.Tests.csproj -c Release --nologo
+
+      - name: Commit patch
+        shell: pwsh
+        run: |
+          git config user.name "Xiangming"
+          git config user.email "40314529+vguangshen@users.noreply.github.com"
+          git add ApplicationUpdateService.cs App.xaml.cs MainWindow.xaml.cs MainWindow.Settings.cs MCPanel.Tests/ReliabilityTests.ApplicationUpdateConcurrency119.cs
+          git commit -m "fix: allow updates alongside product downloads with preauthorized UAC"
+          git push origin HEAD:main
