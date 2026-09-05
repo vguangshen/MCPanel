@@ -25,6 +25,14 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Install SharpSvn native runtime dependencies
+        shell: pwsh
+        run: |
+          choco install vcredist-all -y --no-progress
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to install the VC++ runtime bundle required by the vendored SharpSvn build."
+          }
+
       - name: Prune retired Tomcat UI and backend capabilities
         shell: pwsh
         run: .\tools\Prune-TomcatBackend-1.3.11-v4.ps1
