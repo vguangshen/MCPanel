@@ -42,25 +42,23 @@ jobs:
           exec(compile(script, 'download-queue-tabs-final-patch.py', 'exec'))
 
           # The MainWindow queue monitor ticks every second. The UI test injects synthetic
-          # rows directly, so stop that monitor after Loaded before asserting the active view.
+          # rows directly, so stop that monitor immediately after Loaded starts it.
           ui_path = Path('MCPanel.Tests/ReliabilityTests.Ui.cs')
           ui = ui_path.read_text(encoding='utf-8-sig').replace('\r\n', '\n')
           method_start = ui.index('    public void DownloadQueuePopupTemplateRendersReadOnlyQueueRows()')
           method_end = ui.index('    [TestMethod]\n    public void DownloadQueuePopupDeleteActionReachesMainWindowQueueService()', method_start)
           segment = ui[method_start:method_end]
-          old = '''                      window.Show();
-                      window.UpdateLayout();
-          '''
-          new = '''                      window.Show();
-                      var queueTimer = typeof(MainWindow)
-                          .GetField("_timer", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?
-                          .GetValue(window) as DispatcherTimer;
-                      queueTimer?.Stop();
-                      window.UpdateLayout();
-          '''
-          if old not in segment:
-              raise RuntimeError('render regression window.Show anchor not found')
-          segment = segment.replace(old, new, 1)
+          show_pos = segment.index('window.Show();')
+          line_start = segment.rfind('\n', 0, show_pos) + 1
+          line_indent = segment[line_start:show_pos]
+          show_end = show_pos + len('window.Show();')
+          timer_code = (
+              'window.Show();\n'
+              + line_indent + 'var queueTimer = typeof(MainWindow)\n'
+              + line_indent + '    .GetField("_timer", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?\n'
+              + line_indent + '    .GetValue(window) as DispatcherTimer;\n'
+              + line_indent + 'queueTimer?.Stop();')
+          segment = segment[:show_pos] + timer_code + segment[show_end:]
           ui = ui[:method_start] + segment + ui[method_end:]
           ui_path.write_text(ui, encoding='utf-8', newline='\n')
           '@ | python -
