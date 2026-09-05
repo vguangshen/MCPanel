@@ -118,6 +118,7 @@ public partial class AccountApiPage : UserControl, INotifyPropertyChanged, IDisp
     public bool CanUninstallService => false;
     public bool CanOpenRuntime => _snapshot?.Configuration.RuntimeExists == true;
     public bool CanOpenConfig => _snapshot?.Configuration.ConfigExists == true;
+    public bool CanEditEndpoint => !IsBusy && _snapshot?.Configuration.ConfigExists == true;
     public bool CanOpenLogs => _snapshot?.Configuration.RuntimeExists == true;
     public string ProviderEmptyText =>
         _snapshot is not null && !_snapshot.Enabled
@@ -426,6 +427,7 @@ public partial class AccountApiPage : UserControl, INotifyPropertyChanged, IDisp
         {
             "启用账号 API" => succeeded ? "账号 API 已启用" : "账号 API 启用失败",
             "停用账号 API" => succeeded ? "账号 API 已停用" : "账号 API 停用失败",
+            "修改监听端口" => succeeded ? "监听端口已更新" : "监听端口修改失败",
             _ => operationLabel + (succeeded ? "已完成" : "失败")
         };
     }
@@ -434,6 +436,34 @@ public partial class AccountApiPage : UserControl, INotifyPropertyChanged, IDisp
     {
         _manualErrorText = string.Empty;
         await RefreshPageAsync();
+    }
+
+
+    private async void EditEndpoint_Click(object sender, RoutedEventArgs e)
+    {
+        if (IsBusy || _snapshot?.Configuration.ConfigExists != true)
+        {
+            return;
+        }
+
+        var currentPort = _snapshot.Configuration.Port;
+        var dialog = PanelInputDialog.CreateAccountApiPortEditor(currentPort);
+        var owner = Window.GetWindow(this);
+        if (owner is not null)
+        {
+            dialog.Owner = owner;
+        }
+
+        if (dialog.ShowDialog() != true ||
+            !int.TryParse(dialog.ResultText, out var port) ||
+            port == currentPort)
+        {
+            return;
+        }
+
+        await RunOperationAsync(
+            "正在修改监听端口…",
+            () => _service.SetPortAsync(port));
     }
 
     private async void Enabled_Click(object sender, RoutedEventArgs e)

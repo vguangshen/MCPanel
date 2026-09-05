@@ -39,8 +39,26 @@ public partial class PanelInputDialog : PanelModalWindow
         dialog.TitleText.Text = "修改 MySQL 端口";
         dialog.SubtitleText.Text = "更新 MySQL 服务监听端口，并同步面板连接配置。";
         dialog.IconText.Text = "\uE8D7";
+        dialog.ContextBadgeText.Text = "MySQL";
         dialog.InputLabel.Text = "MySQL 端口";
         dialog.TextInput.Text = currentPort.ToString(CultureInfo.InvariantCulture);
+        dialog.TextHint.Text = "修改后会同步更新 MySQL 配置与面板连接信息。";
+        dialog.TextPanel.Visibility = Visibility.Visible;
+        dialog.PasswordPanel.Visibility = Visibility.Collapsed;
+        return dialog;
+    }
+
+
+    public static PanelInputDialog CreateAccountApiPortEditor(int currentPort)
+    {
+        var dialog = new PanelInputDialog(PanelInputDialogMode.Port);
+        dialog.TitleText.Text = "修改 Account API 监听端口";
+        dialog.SubtitleText.Text = "修改内置 Account API 的监听端口，用于避开其他软件的端口占用。";
+        dialog.IconText.Text = "\uE8D7";
+        dialog.ContextBadgeText.Text = "Account API";
+        dialog.InputLabel.Text = "监听端口";
+        dialog.TextInput.Text = currentPort.ToString(CultureInfo.InvariantCulture);
+        dialog.TextHint.Text = "端口范围 1–65535；API 已启用时确认后会立即切换，失败会自动恢复原端口。";
         dialog.TextPanel.Visibility = Visibility.Visible;
         dialog.PasswordPanel.Visibility = Visibility.Collapsed;
         return dialog;

@@ -283,6 +283,103 @@ public sealed class AccountApiManagerService : IDisposable
         }
     }
 
+
+    public async Task SetPortAsync(int port, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        if (port is < 1 or > 65535)
+        {
+            throw new ArgumentOutOfRangeException(nameof(port), "Account API 监听端口必须在 1 到 65535 之间。");
+        }
+
+        await LifecycleGate.WaitAsync(cancellationToken);
+        try
+        {
+            _enabled = LoadSettings().Enabled;
+            var configuration = RequireConfiguration();
+            var previousPort = configuration.Port;
+            if (port == previousPort)
+            {
+                return;
+            }
+
+            var wasRunning = EmbeddedAccountApiRuntime.IsRunning;
+            if (wasRunning)
+            {
+                EmbeddedAccountApiRuntime.Stop();
+            }
+
+            try
+            {
+                SetIniValue(
+                    configuration.ConfigPath,
+                    "AccountApi:Server",
+                    "Port",
+                    port.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+                if (_enabled)
+                {
+                    var updatedConfiguration = LoadConfiguration();
+                    if (!updatedConfiguration.HasSigningSecret)
+                    {
+                        GenerateSigningSecret(updatedConfiguration);
+                    }
+
+                    updatedConfiguration = RequireRunnableConfiguration();
+                    EmbeddedAccountApiRuntime.Start(updatedConfiguration.ConfigPath);
+                    if (!EmbeddedAccountApiRuntime.IsRunning)
+                    {
+                        throw new InvalidOperationException(
+                            $"内置 Account API 修改到端口 {port} 后未进入监听状态。");
+                    }
+                }
+            }
+            catch (Exception applyError)
+            {
+                EmbeddedAccountApiRuntime.Stop();
+                Exception? restoreError = null;
+                try
+                {
+                    SetIniValue(
+                        configuration.ConfigPath,
+                        "AccountApi:Server",
+                        "Port",
+                        previousPort.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                    if (wasRunning)
+                    {
+                        EmbeddedAccountApiRuntime.Start(configuration.ConfigPath);
+                    }
+                }
+                catch (Exception error)
+                {
+                    restoreError = error;
+                }
+
+                if (restoreError is not null)
+                {
+                    throw new InvalidOperationException(
+                        $"监听端口 {port} 应用失败，并且恢复原端口 {previousPort} 时也失败。请检查 Account API 日志。",
+                        new AggregateException(applyError, restoreError));
+                }
+
+                if (applyError is HttpListenerException)
+                {
+                    throw new InvalidOperationException(
+                        $"内置 Account API 无法监听端口 {port}。该端口可能已被其他软件占用，已恢复原端口 {previousPort}。",
+                        applyError);
+                }
+
+                throw new InvalidOperationException(
+                    $"修改 Account API 监听端口失败，已恢复原端口 {previousPort}。",
+                    applyError);
+            }
+        }
+        finally
+        {
+            LifecycleGate.Release();
+        }
+    }
+
     public string GenerateSigningSecret()
     {
         ThrowIfDisposed();

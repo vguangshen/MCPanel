@@ -28,7 +28,7 @@
                     <TextBlock x:Name="SubtitleText" Style="{StaticResource PanelModalSubtitle}" />
                 </StackPanel>
                 <Border Grid.Column="2" Style="{StaticResource PanelModalBadge}">
-                    <TextBlock Text="MySQL" Foreground="{DynamicResource DialogTonalTextBrush}" FontWeight="SemiBold" FontSize="12" />
+                    <TextBlock x:Name="ContextBadgeText" Text="MySQL" Foreground="{DynamicResource DialogTonalTextBrush}" FontWeight="SemiBold" FontSize="12" />
                 </Border>
             </Grid>
 
@@ -37,7 +37,7 @@
                     <StackPanel x:Name="TextPanel" Width="520" HorizontalAlignment="Center">
                         <TextBlock x:Name="InputLabel" Text="端口" Foreground="{DynamicResource DialogMutedBrush}" FontSize="13" Margin="0,0,0,7" />
                         <TextBox x:Name="TextInput" FontSize="15" />
-                        <TextBlock Text="修改后会同步更新 MySQL 配置与面板连接信息。" Foreground="{DynamicResource DialogMutedBrush}" FontSize="12" Margin="0,10,0,0" />
+                        <TextBlock x:Name="TextHint" Text="修改后会同步更新 MySQL 配置与面板连接信息。" Foreground="{DynamicResource DialogMutedBrush}" FontSize="12" Margin="0,10,0,0" />
                     </StackPanel>
                     <StackPanel x:Name="PasswordPanel" Width="520" HorizontalAlignment="Center" Visibility="Collapsed">
                         <TextBlock Text="新密码" Foreground="{DynamicResource DialogMutedBrush}" FontSize="13" Margin="0,0,0,7" />

@@ -239,7 +239,23 @@
             </Border>
             <Border Grid.Column="1" Style="{DynamicResource Card}" Padding="12,8" Margin="0,0,6,0">
                 <StackPanel>
-                    <TextBlock Text="监听地址" Style="{StaticResource AccountCaption}" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="监听地址" Style="{StaticResource AccountCaption}" VerticalAlignment="Center" />
+                        <Button Grid.Column="1"
+                                Content="编辑"
+                                Style="{StaticResource AccountLinkButton}"
+                                Height="22"
+                                Padding="7,0"
+                                Margin="6,-3,0,-3"
+                                Click="EditEndpoint_Click"
+                                IsEnabled="{Binding CanEditEndpoint}"
+                                ToolTip="修改 Account API 监听端口"
+                                AutomationProperties.Name="修改 Account API 监听端口" />
+                    </Grid>
                     <TextBlock Text="{Binding EndpointText}" Style="{StaticResource AccountMetricValue}" Margin="0,3,0,0" TextTrimming="CharacterEllipsis" />
                     <TextBlock Text="{Binding AuthModeText}" FontSize="11" Foreground="{DynamicResource MutedBrush}" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
