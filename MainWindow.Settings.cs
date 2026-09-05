@@ -487,6 +487,7 @@ private void StartupToggle_Click(object sender, RoutedEventArgs e)
                 }
 
                 if (!ConfirmOnlineUpdate(update.Manifest)) return null;
+                if (!RequestApplicationUpdateAuthorizationAfterConfirmation()) return null;
                 return await _applicationUpdateService.PrepareGitHubReleaseAsync(update, progress, status, cancellationToken);
             });
             return;
@@ -511,6 +512,7 @@ private void StartupToggle_Click(object sender, RoutedEventArgs e)
             }
 
             if (!ConfirmOnlineUpdate(manifest)) return null;
+            if (!RequestApplicationUpdateAuthorizationAfterConfirmation()) return null;
             return await _applicationUpdateService.PrepareOnlineAsync(manifest, progress, status, cancellationToken);
         });
     }
@@ -776,36 +778,84 @@ private void StartupToggle_Click(object sender, RoutedEventArgs e)
                 return null;
             }
 
+            if (!RequestApplicationUpdateAuthorizationAfterConfirmation())
+            {
+                _applicationUpdateService.DiscardPreparedUpdate(prepared);
+                return null;
+            }
+
             return prepared;
         });
     }
 
     private bool CanStartApplicationUpdate()
     {
-        if (_model.IsUpdateBusy)
-        {
-            return false;
-        }
+        return !_model.IsUpdateBusy;
+    }
 
-        if (!_productInstallQueue.HasActiveItems)
+    private bool RequestApplicationUpdateAuthorizationAfterConfirmation()
+    {
+        try
         {
+            var authorization = _applicationUpdateService.RequestUpdateAuthorization();
+            if (authorization is null)
+            {
+                return true;
+            }
+
+            var previous = Interlocked.Exchange(ref _applicationUpdateAuthorization, authorization);
+            _applicationUpdateService.CancelUpdateAuthorization(previous);
+            _model.UpdateStatus = "已获得管理员授权，正在准备 MCPanel 更新包...";
             return true;
         }
+        catch (OperationCanceledException)
+        {
+            _model.UpdateStatus = "已取消管理员授权，更新未开始。";
+            return false;
+        }
+        catch (Exception error)
+        {
+            _model.UpdateStatus = $"请求管理员权限失败：{error.GetBaseException().Message}";
+            MessageBox.Show(_model.UpdateStatus, "软件更新", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+    }
 
-        const string message = "当前仍有产品正在下载、安装或部署。请先等待安装队列完成，或取消全部任务后再更新 MCPanel。";
-        _model.UpdateStatus = message;
-        MessageBox.Show(message, "软件更新", MessageBoxButton.OK, MessageBoxImage.Information);
-        return false;
+    private void CancelPendingUpdateAuthorization()
+    {
+        var authorization = Interlocked.Exchange(ref _applicationUpdateAuthorization, null);
+        _applicationUpdateService.CancelUpdateAuthorization(authorization);
+    }
+
+    private async Task WaitForProductInstallQueueBeforeApplyingUpdateAsync(
+        IProgress<string> status,
+        CancellationToken cancellationToken)
+    {
+        if (!_productInstallQueue.HasActiveItems)
+        {
+            return;
+        }
+
+        status.Report("MCPanel 更新包已准备完成；当前产品下载/安装继续运行，队列完成后会自动应用面板更新...");
+        while (_productInstallQueue.HasActiveItems)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await Task.Delay(500, cancellationToken);
+        }
+
+        status.Report("产品下载/安装队列已完成，正在应用 MCPanel 更新...");
     }
 
     private void CancelApplicationUpdate_Click(object sender, RoutedEventArgs e)
     {
         _applicationUpdateCancellation?.Cancel();
+        CancelPendingUpdateAuthorization();
     }
 
     private async Task RunUpdatePreparationAsync(
         Func<IProgress<double>, IProgress<string>, CancellationToken, Task<PreparedApplicationUpdate?>> prepare)
     {
+        CancelPendingUpdateAuthorization();
         var cancellation = new CancellationTokenSource();
         var previous = Interlocked.Exchange(ref _applicationUpdateCancellation, cancellation);
         previous?.Cancel();
@@ -827,9 +877,16 @@ private void StartupToggle_Click(object sender, RoutedEventArgs e)
             }
 
             cancellation.Token.ThrowIfCancellationRequested();
+            await WaitForProductInstallQueueBeforeApplyingUpdateAsync(status, cancellation.Token);
+            cancellation.Token.ThrowIfCancellationRequested();
             _model.UpdateStatus = "正在启动安全更新器，软件即将重启...";
-            _applicationUpdateService.LaunchUpdater(preparedForCleanup);
+            var authorization = _applicationUpdateAuthorization;
+            _applicationUpdateService.LaunchUpdater(preparedForCleanup, authorization);
             updaterLaunched = true;
+            if (authorization is not null)
+            {
+                Interlocked.CompareExchange(ref _applicationUpdateAuthorization, null, authorization);
+            }
             if (Application.Current is App app)
             {
                 app.ExitApplication();
@@ -858,9 +915,13 @@ private void StartupToggle_Click(object sender, RoutedEventArgs e)
         }
         finally
         {
-            if (!updaterLaunched && preparedForCleanup is not null)
+            if (!updaterLaunched)
             {
-                _applicationUpdateService.DiscardPreparedUpdate(preparedForCleanup);
+                CancelPendingUpdateAuthorization();
+                if (preparedForCleanup is not null)
+                {
+                    _applicationUpdateService.DiscardPreparedUpdate(preparedForCleanup);
+                }
             }
 
             if (ReferenceEquals(_applicationUpdateCancellation, cancellation))

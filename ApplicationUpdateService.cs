@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.ComponentModel;
 using System.Configuration;
 using System.IO;
 using System.IO.Compression;
@@ -30,6 +31,17 @@ public sealed class PreparedApplicationUpdate
     public string PackageFile { get; set; } = string.Empty;
     public string ReleaseNotes { get; set; } = string.Empty;
     public bool DeletePackageFileAfterApply { get; set; }
+}
+
+internal sealed class ApplicationUpdateAuthorization
+{
+    public string HelperRoot { get; init; } = string.Empty;
+    public string PlanFile { get; init; } = string.Empty;
+    public string CancelFile { get; init; } = string.Empty;
+    public string InstallDirectory { get; init; } = string.Empty;
+    public int ParentProcessId { get; init; }
+    public Process? HelperProcess { get; set; }
+    public bool PlanSubmitted { get; set; }
 }
 
 internal sealed class GitHubReleaseUpdate
@@ -523,13 +535,105 @@ public sealed class ApplicationUpdateService
             deletePackageFileAfterApply: false);
     }
 
-    public void LaunchUpdater(PreparedApplicationUpdate update)
+    internal static bool ShouldRequestPreauthorizedUpdater(bool isAdministrator) => !isAdministrator;
+
+    internal ApplicationUpdateAuthorization? RequestUpdateAuthorization()
     {
+        if (!ShouldRequestPreauthorizedUpdater(ProcessRunner.IsAdministrator()))
+        {
+            return null;
+        }
+
         var helperRoot = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "MCPanel", "Updater", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(helperRoot);
-        CopyUpdaterRuntime(AppContext.BaseDirectory, helperRoot);
+        try
+        {
+            CopyUpdaterRuntime(AppContext.BaseDirectory, helperRoot);
+            var installDirectory = Path.GetFullPath(AppContext.BaseDirectory);
+            var planFile = Path.Combine(helperRoot, "update-plan.json");
+            var cancelFile = Path.Combine(helperRoot, "cancel.flag");
+            var parentProcessId = Process.GetCurrentProcess().Id;
+            var helperExe = Path.Combine(helperRoot, "MCPanel.exe");
+            Process helperProcess;
+            try
+            {
+                helperProcess = ProcessRunner.Start(
+                    helperExe,
+                    string.Join(
+                        " ",
+                        "--wait-update-plan",
+                        Compat.QuoteCommandLineArgument(planFile),
+                        Compat.QuoteCommandLineArgument(cancelFile),
+                        Compat.QuoteCommandLineArgument(installDirectory),
+                        parentProcessId.ToString()),
+                    helperRoot,
+                    elevated: true);
+            }
+            catch (Win32Exception error) when (error.NativeErrorCode == 1223)
+            {
+                throw new OperationCanceledException("已取消管理员授权，更新未开始。", error);
+            }
+
+            return new ApplicationUpdateAuthorization
+            {
+                HelperRoot = helperRoot,
+                PlanFile = planFile,
+                CancelFile = cancelFile,
+                InstallDirectory = installDirectory,
+                ParentProcessId = parentProcessId,
+                HelperProcess = helperProcess
+            };
+        }
+        catch
+        {
+            TryDeleteDirectory(helperRoot);
+            throw;
+        }
+    }
+
+    internal void CancelUpdateAuthorization(ApplicationUpdateAuthorization? authorization)
+    {
+        if (authorization is null || authorization.PlanSubmitted)
+        {
+            return;
+        }
+
+        try
+        {
+            AtomicFile.WriteAllText(authorization.CancelFile, "cancel");
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            if (authorization.HelperProcess is { HasExited: false })
+            {
+                authorization.HelperProcess.WaitForExit(3000);
+            }
+        }
+        catch
+        {
+        }
+        finally
+        {
+            try { authorization.HelperProcess?.Dispose(); } catch { }
+            authorization.HelperProcess = null;
+        }
+
+        TryDeleteDirectory(authorization.HelperRoot);
+    }
+
+    public void LaunchUpdater(PreparedApplicationUpdate update) =>
+    LaunchUpdater(update, authorization: null);
+
+internal void LaunchUpdater(
+    PreparedApplicationUpdate update,
+    ApplicationUpdateAuthorization? authorization)
+{
         var installDirectory = Path.GetFullPath(AppContext.BaseDirectory);
         var stagingRoot = ResolvePreparedStagingRoot(
             update.PayloadDirectory,
@@ -544,6 +648,45 @@ public sealed class ApplicationUpdateService
             PackageFile = update.PackageFile,
             DeletePackageFileAfterApply = update.DeletePackageFileAfterApply
         };
+
+        if (authorization is not null)
+        {
+            if (authorization.PlanSubmitted ||
+                !PathsEqual(authorization.InstallDirectory, installDirectory) ||
+                authorization.ParentProcessId != plan.ParentProcessId ||
+                !Directory.Exists(authorization.HelperRoot))
+            {
+                throw new InvalidOperationException("管理员更新授权会话已经失效，请重新点击检测并更新。 ");
+            }
+
+            try
+            {
+                if (authorization.HelperProcess is null || authorization.HelperProcess.HasExited)
+                {
+                    throw new InvalidOperationException("管理员更新授权进程已退出，请重新点击检测并更新。 ");
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                throw;
+            }
+            catch (Exception error)
+            {
+                throw new InvalidOperationException("无法确认管理员更新授权进程状态，请重新点击检测并更新。", error);
+            }
+
+            AtomicFile.WriteAllText(authorization.PlanFile, JsonSerializer.Serialize(plan, JsonOptions));
+            authorization.PlanSubmitted = true;
+            try { authorization.HelperProcess.Dispose(); } catch { }
+            authorization.HelperProcess = null;
+            return;
+        }
+
+        var helperRoot = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "MCPanel", "Updater", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(helperRoot);
+        CopyUpdaterRuntime(AppContext.BaseDirectory, helperRoot);
         var planFile = Path.Combine(helperRoot, "update-plan.json");
         AtomicFile.WriteAllText(planFile, JsonSerializer.Serialize(plan, JsonOptions));
         var helperExe = Path.Combine(helperRoot, "MCPanel.exe");
@@ -551,7 +694,7 @@ public sealed class ApplicationUpdateService
             helperExe,
             $"--apply-update {Compat.QuoteCommandLineArgument(planFile)}",
             helperRoot,
-            elevated: RequiresElevation(installDirectory));
+            elevated: !ProcessRunner.IsAdministrator() || RequiresElevation(installDirectory));
     }
 
     public void DiscardPreparedUpdate(PreparedApplicationUpdate? update)
@@ -574,7 +717,71 @@ public sealed class ApplicationUpdateService
         }
     }
 
-    public static async Task<int> ApplyUpdatePlanAsync(string planFile)
+    public static Task<int> ApplyUpdatePlanAsync(string planFile) =>
+        ApplyUpdatePlanAsync(planFile, expectedInstallDirectory: null, expectedParentProcessId: null);
+
+    internal static async Task<int> WaitForAuthorizedUpdatePlanAsync(
+        string planFile,
+        string cancelFile,
+        string expectedInstallDirectory,
+        int expectedParentProcessId)
+    {
+        var validatedPlanFile = ValidatePlanFileLocation(planFile, requireExistingFile: false);
+        var helperRoot = Path.GetDirectoryName(validatedPlanFile)!;
+        var validatedCancelFile = Path.GetFullPath(cancelFile);
+        if (!PathsEqual(Path.GetDirectoryName(validatedCancelFile) ?? string.Empty, helperRoot) ||
+            !string.Equals(Path.GetFileName(validatedCancelFile), "cancel.flag", StringComparison.OrdinalIgnoreCase))
+        {
+            return 2;
+        }
+
+        var installDirectory = NormalizeDirectoryPath(expectedInstallDirectory, "安装目录");
+        if (expectedParentProcessId <= 0 ||
+            !Directory.Exists(installDirectory) ||
+            !File.Exists(Path.Combine(installDirectory, "MCPanel.exe")))
+        {
+            return 2;
+        }
+
+        var deadline = DateTime.UtcNow.AddHours(6);
+        while (!File.Exists(validatedPlanFile))
+        {
+            if (File.Exists(validatedCancelFile))
+            {
+                return 0;
+            }
+
+            if (DateTime.UtcNow >= deadline)
+            {
+                return 3;
+            }
+
+            try
+            {
+                using var parent = Process.GetProcessById(expectedParentProcessId);
+                if (parent.HasExited)
+                {
+                    return 0;
+                }
+            }
+            catch (ArgumentException)
+            {
+                return 0;
+            }
+
+            await Task.Delay(250);
+        }
+
+        return await ApplyUpdatePlanAsync(
+            validatedPlanFile,
+            installDirectory,
+            expectedParentProcessId);
+    }
+
+    private static async Task<int> ApplyUpdatePlanAsync(
+        string planFile,
+        string? expectedInstallDirectory,
+        int? expectedParentProcessId)
     {
         ApplicationUpdatePlan? plan = null;
         var planValidated = false;
@@ -584,6 +791,16 @@ public sealed class ApplicationUpdateService
             plan = JsonSerializer.Deserialize<ApplicationUpdatePlan>(File.ReadAllText(validatedPlanFile), JsonOptions)
                 ?? throw new InvalidDataException("更新计划无效。");
             ValidateApplyPlan(plan);
+            if (!string.IsNullOrWhiteSpace(expectedInstallDirectory) &&
+                !PathsEqual(plan.InstallDirectory, expectedInstallDirectory))
+            {
+                throw new InvalidDataException("管理员更新授权与当前 MCPanel 安装目录不一致。");
+            }
+            if (expectedParentProcessId.HasValue &&
+                plan.ParentProcessId != expectedParentProcessId.Value)
+            {
+                throw new InvalidDataException("管理员更新授权与当前 MCPanel 进程不一致。");
+            }
             planValidated = true;
             await WaitForParentAndStopInstalledProcessesAsync(plan);
             ApplyTransaction(plan);
@@ -878,7 +1095,7 @@ public sealed class ApplicationUpdateService
         plan.PackageFile = packageFile;
     }
 
-    private static string ValidatePlanFileLocation(string planFile)
+    private static string ValidatePlanFileLocation(string planFile, bool requireExistingFile = true)
     {
         if (string.IsNullOrWhiteSpace(planFile))
         {
@@ -901,7 +1118,7 @@ public sealed class ApplicationUpdateService
             helperParent is null ||
             !PathsEqual(helperParent.FullName, updaterRoot) ||
             !Guid.TryParseExact(Path.GetFileName(helperRoot), "N", out _) ||
-            !File.Exists(fullPlanFile))
+            (requireExistingFile && !File.Exists(fullPlanFile)))
         {
             throw new InvalidDataException("更新计划文件不在受控的独立更新器目录中。");
         }

@@ -101,6 +101,25 @@ public partial class App : Application
                 return;
             }
 
+            var waitUpdatePlanIndex = Array.FindIndex(e.Args, argument =>
+                string.Equals(argument, "--wait-update-plan", StringComparison.OrdinalIgnoreCase));
+            if (waitUpdatePlanIndex >= 0)
+            {
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                var planFile = waitUpdatePlanIndex + 1 < e.Args.Length ? e.Args[waitUpdatePlanIndex + 1] : string.Empty;
+                var cancelFile = waitUpdatePlanIndex + 2 < e.Args.Length ? e.Args[waitUpdatePlanIndex + 2] : string.Empty;
+                var installDirectory = waitUpdatePlanIndex + 3 < e.Args.Length ? e.Args[waitUpdatePlanIndex + 3] : string.Empty;
+                var processIdText = waitUpdatePlanIndex + 4 < e.Args.Length ? e.Args[waitUpdatePlanIndex + 4] : string.Empty;
+                var parentProcessId = int.TryParse(processIdText, out var parsedProcessId) ? parsedProcessId : 0;
+                var exitCode = await ApplicationUpdateService.WaitForAuthorizedUpdatePlanAsync(
+                    planFile,
+                    cancelFile,
+                    installDirectory,
+                    parentProcessId);
+                Shutdown(exitCode);
+                return;
+            }
+
             var applyUpdateIndex = Array.FindIndex(e.Args, argument =>
                 string.Equals(argument, "--apply-update", StringComparison.OrdinalIgnoreCase));
             if (applyUpdateIndex >= 0)

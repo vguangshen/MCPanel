@@ -57,6 +57,7 @@ public partial class MainWindow : Window
     private bool _productUninstallInProgress;
     private CancellationTokenSource? _productUninstallCancellation;
     private CancellationTokenSource? _applicationUpdateCancellation;
+    private ApplicationUpdateAuthorization? _applicationUpdateAuthorization;
     private CancellationTokenSource? _databaseToolCancellation;
     private bool _downloadQueuePopupPlacementRefreshPending;
 
@@ -112,6 +113,8 @@ public partial class MainWindow : Window
             _productUninstallCancellation?.Dispose();
             _applicationUpdateCancellation?.Cancel();
             _applicationUpdateCancellation?.Dispose();
+            var updateAuthorization = Interlocked.Exchange(ref _applicationUpdateAuthorization, null);
+            _applicationUpdateService.CancelUpdateAuthorization(updateAuthorization);
             _databaseToolCancellation?.Cancel();
             _databaseToolCancellation?.Dispose();
             AccountApiPageControl.Dispose();
