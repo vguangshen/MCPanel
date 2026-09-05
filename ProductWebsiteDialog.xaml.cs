@@ -5,14 +5,13 @@ using System.Windows;
 
 namespace MCPanel;
 
-public partial class ProductWebsiteDialog : Window
+public partial class ProductWebsiteDialog : PanelModalWindow
 {
     private readonly bool _hadExistingConfiguration;
 
     internal ProductWebsiteDialog(ProductWebsiteSettings settings)
     {
         InitializeComponent();
-        SourceInitialized += (_, _) => ResponsiveWindowSizing.FitToCurrentMonitor(this, 720, 650, 0.94, 1.15);
         _hadExistingConfiguration = settings.Enabled;
         EnabledBox.IsChecked = settings.Enabled;
         DomainsBox.Text = settings.Domains;
@@ -149,3 +148,4 @@ public partial class ProductWebsiteDialog : Window
     }
 
 }
+

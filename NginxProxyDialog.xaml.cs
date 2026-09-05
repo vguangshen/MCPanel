@@ -5,7 +5,7 @@ using System.Windows.Controls;
 
 namespace MCPanel;
 
-public partial class NginxProxyDialog : Window
+public partial class NginxProxyDialog : PanelModalWindow
 {
     private readonly EnvironmentRuntimeService _runtimeService;
     private readonly ObservableCollection<NginxProxyRuleRow> _rules = [];
@@ -14,7 +14,6 @@ public partial class NginxProxyDialog : Window
     {
         InitializeComponent();
         _runtimeService = runtimeService;
-        SourceInitialized += (_, _) => ResponsiveWindowSizing.FitToCurrentMonitor(this, 980, 640, 0.92, 1.2);
 
         var options = NginxRuntimeManager.NormalizeOptions(runtimeService.GetNginxOptions());
         foreach (var rule in options.Rules)
@@ -232,3 +231,4 @@ public partial class NginxProxyDialog : Window
         }
     }
 }
+

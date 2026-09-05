@@ -1,17 +1,8 @@
-<Window x:Class="MCPanel.NginxProxyDialog"
+<local:PanelModalWindow x:Class="MCPanel.NginxProxyDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Nginx 反向代理管理"
-        Width="980"
-        Height="640"
-        MinWidth="490"
-        MinHeight="320"
-        MaxHeight="760"
-        WindowStartupLocation="CenterOwner"
-        ResizeMode="CanResize"
-        FontFamily="Segoe UI, Microsoft YaHei UI"
-        Background="{DynamicResource PageBrush}">
-    <Window.Resources>
+        xmlns:local="clr-namespace:MCPanel">
+    <local:PanelModalWindow.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="Resources/PanelDialogControls.xaml" />
@@ -19,50 +10,31 @@
             <Style TargetType="DataGrid">
                 <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
                 <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-                <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource DialogLineBrush}" />
                 <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="GridLinesVisibility" Value="None" />
                 <Setter Property="HeadersVisibility" Value="Column" />
-                <Setter Property="RowHeight" Value="42" />
-                <Setter Property="ColumnHeaderHeight" Value="40" />
-                <Setter Property="FontSize" Value="13" />
+                <Setter Property="RowHeight" Value="38" />
+                <Setter Property="ColumnHeaderHeight" Value="38" />
+                <Setter Property="FontSize" Value="12" />
             </Style>
-
             <Style TargetType="DataGridColumnHeader">
                 <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
-                <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
-                <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
-                <Setter Property="Padding" Value="10,0" />
+                <Setter Property="Foreground" Value="{DynamicResource DialogMutedBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource DialogLineBrush}" />
+                <Setter Property="Padding" Value="9,0" />
                 <Setter Property="FontWeight" Value="SemiBold" />
             </Style>
-
             <Style TargetType="DataGridCell">
-                <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource DialogTextBrush}" />
                 <Setter Property="BorderBrush" Value="Transparent" />
-                <Setter Property="Padding" Value="8,0" />
+                <Setter Property="Padding" Value="7,0" />
                 <Setter Property="VerticalContentAlignment" Value="Center" />
-                <Setter Property="Template">
-                    <Setter.Value>
-                        <ControlTemplate TargetType="DataGridCell">
-                            <Border x:Name="Root" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}">
-                                <ContentPresenter VerticalAlignment="Center" />
-                            </Border>
-                            <ControlTemplate.Triggers>
-                                <Trigger Property="IsSelected" Value="True">
-                                    <Setter TargetName="Root" Property="Background" Value="{DynamicResource TonalBrush}" />
-                                    <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-                                </Trigger>
-                            </ControlTemplate.Triggers>
-                        </ControlTemplate>
-                    </Setter.Value>
-                </Setter>
             </Style>
         </ResourceDictionary>
-    </Window.Resources>
+    </local:PanelModalWindow.Resources>
 
-    <Grid Background="{DynamicResource PageBrush}" ClipToBounds="True">
-    <Viewbox Stretch="Uniform" StretchDirection="Both">
-    <Border Width="980" Height="640" Margin="0" Padding="22" CornerRadius="12" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1">
+    <Border Style="{StaticResource PanelModalSurface}">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -70,60 +42,60 @@
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-
             <Grid>
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="58" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <StackPanel>
-                    <TextBlock Text="Nginx 反向代理管理" FontSize="24" FontWeight="SemiBold" />
-                    <TextBlock Text="批量管理监听端口、域名、路径、代理目标和 WebSocket 转发。" FontSize="13" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Margin="0,8,0,0" />
+                <Border Style="{StaticResource PanelModalIconBadge}">
+                    <TextBlock Text="&#xE968;" FontFamily="Segoe MDL2 Assets" FontSize="21"
+                               Foreground="{DynamicResource DialogPrimaryBrush}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <StackPanel Grid.Column="1" Margin="12,1,16,0" VerticalAlignment="Center">
+                    <TextBlock Text="Nginx 反向代理管理" Style="{StaticResource PanelModalTitle}" />
+                    <TextBlock Text="批量管理监听端口、域名、路径、代理目标和 WebSocket 转发。"
+                               Style="{StaticResource PanelModalSubtitle}" />
                 </StackPanel>
-                <Border Grid.Column="1" Padding="14,8" CornerRadius="18" Background="{DynamicResource TonalBrush}" VerticalAlignment="Center">
-                    <TextBlock x:Name="RuleCountText" Foreground="{DynamicResource TonalTextBrush}" FontWeight="SemiBold" />
+                <Border Grid.Column="2" Style="{StaticResource PanelModalBadge}">
+                    <TextBlock x:Name="RuleCountText" Foreground="{DynamicResource DialogTonalTextBrush}" FontWeight="SemiBold" FontSize="12" />
                 </Border>
             </Grid>
 
-            <Grid Grid.Row="1" Margin="0,20,0,12">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <TextBlock Text="规则列表" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
-                <StackPanel Grid.Column="1" Orientation="Horizontal">
+            <Grid Grid.Row="1" Margin="0,18,0,12">
+                <TextBlock Text="规则列表" Style="{StaticResource PanelModalSectionTitle}" VerticalAlignment="Center" />
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button Content="新增规则" Style="{StaticResource PrimaryDialogButton}" Click="AddRule_Click" />
                     <Button Content="复制选中" Style="{StaticResource DialogButton}" Margin="10,0,0,0" Click="DuplicateRule_Click" />
                     <Button Content="删除选中" Style="{StaticResource GhostDialogButton}" Margin="10,0,0,0" Click="DeleteRule_Click" />
                 </StackPanel>
             </Grid>
 
-            <DataGrid x:Name="RulesGrid"
-                      Grid.Row="2"
-                      AutoGenerateColumns="False"
-                      CanUserAddRows="False"
-                      CanUserDeleteRows="False"
-                      SelectionMode="Single"
-                      SelectionUnit="FullRow"
-                      HorizontalScrollBarVisibility="Auto"
-                      VerticalScrollBarVisibility="Auto">
-                <DataGrid.Columns>
-                    <DataGridCheckBoxColumn Header="启用" Binding="{Binding Enabled}" Width="64" />
-                    <DataGridTextColumn Header="名称" Binding="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Width="140" />
-                    <DataGridTextColumn Header="监听端口" Binding="{Binding ListenPort, UpdateSourceTrigger=PropertyChanged}" Width="92" />
-                    <DataGridTextColumn Header="域名/主机" Binding="{Binding ServerName, UpdateSourceTrigger=PropertyChanged}" Width="140" />
-                    <DataGridTextColumn Header="路径" Binding="{Binding LocationPath, UpdateSourceTrigger=PropertyChanged}" Width="92" />
-                    <DataGridTextColumn Header="代理目标" Binding="{Binding ProxyTarget, UpdateSourceTrigger=PropertyChanged}" Width="*" MinWidth="220" />
-                    <DataGridCheckBoxColumn Header="WebSocket" Binding="{Binding WebSocket}" Width="96" />
-                </DataGrid.Columns>
-            </DataGrid>
+            <Border Grid.Row="2" Style="{StaticResource PanelModalContentCard}" Padding="0">
+                <DataGrid x:Name="RulesGrid"
+                          AutoGenerateColumns="False"
+                          CanUserAddRows="False"
+                          CanUserDeleteRows="False"
+                          SelectionMode="Single"
+                          SelectionUnit="FullRow"
+                          HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Auto">
+                    <DataGrid.Columns>
+                        <DataGridCheckBoxColumn Header="启用" Binding="{Binding Enabled}" Width="58" />
+                        <DataGridTextColumn Header="名称" Binding="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Width="120" />
+                        <DataGridTextColumn Header="端口" Binding="{Binding ListenPort, UpdateSourceTrigger=PropertyChanged}" Width="76" />
+                        <DataGridTextColumn Header="域名/主机" Binding="{Binding ServerName, UpdateSourceTrigger=PropertyChanged}" Width="120" />
+                        <DataGridTextColumn Header="路径" Binding="{Binding LocationPath, UpdateSourceTrigger=PropertyChanged}" Width="82" />
+                        <DataGridTextColumn Header="代理目标" Binding="{Binding ProxyTarget, UpdateSourceTrigger=PropertyChanged}" Width="*" MinWidth="180" />
+                        <DataGridCheckBoxColumn Header="WebSocket" Binding="{Binding WebSocket}" Width="86" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Border>
 
             <Grid Grid.Row="3" Margin="0,16,0,0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <TextBlock x:Name="StatusText" Foreground="{DynamicResource MutedBrush}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <TextBlock x:Name="StatusText" Foreground="{DynamicResource DialogMutedBrush}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
                     <Button Content="取消" Style="{StaticResource DialogButton}" Margin="0,0,10,0" Click="Cancel_Click" />
                     <Button Content="保存并应用" Style="{StaticResource PrimaryDialogButton}" Click="Save_Click" />
@@ -131,6 +103,4 @@
             </Grid>
         </Grid>
     </Border>
-    </Viewbox>
-    </Grid>
-</Window>
+</local:PanelModalWindow>

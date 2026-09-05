@@ -1,0 +1,60 @@
+<local:PanelModalWindow x:Class="MCPanel.PanelInputDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:MCPanel">
+    <local:PanelModalWindow.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Resources/PanelDialogControls.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </local:PanelModalWindow.Resources>
+
+    <Border Style="{StaticResource PanelModalSurface}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="58"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <Border Style="{StaticResource PanelModalIconBadge}">
+                    <TextBlock x:Name="IconText" Text="&#xE8D7;" FontFamily="Segoe MDL2 Assets" FontSize="21"
+                               Foreground="{DynamicResource DialogPrimaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <StackPanel Grid.Column="1" Margin="12,1,16,0" VerticalAlignment="Center">
+                    <TextBlock x:Name="TitleText" Style="{StaticResource PanelModalTitle}" />
+                    <TextBlock x:Name="SubtitleText" Style="{StaticResource PanelModalSubtitle}" />
+                </StackPanel>
+                <Border Grid.Column="2" Style="{StaticResource PanelModalBadge}">
+                    <TextBlock Text="MySQL" Foreground="{DynamicResource DialogTonalTextBrush}" FontWeight="SemiBold" FontSize="12" />
+                </Border>
+            </Grid>
+
+            <Border Grid.Row="1" Style="{StaticResource PanelModalContentCard}" Margin="0,22,0,22" Padding="24">
+                <Grid VerticalAlignment="Center">
+                    <StackPanel x:Name="TextPanel" Width="520" HorizontalAlignment="Center">
+                        <TextBlock x:Name="InputLabel" Text="端口" Foreground="{DynamicResource DialogMutedBrush}" FontSize="13" Margin="0,0,0,7" />
+                        <TextBox x:Name="TextInput" FontSize="15" />
+                        <TextBlock Text="修改后会同步更新 MySQL 配置与面板连接信息。" Foreground="{DynamicResource DialogMutedBrush}" FontSize="12" Margin="0,10,0,0" />
+                    </StackPanel>
+                    <StackPanel x:Name="PasswordPanel" Width="520" HorizontalAlignment="Center" Visibility="Collapsed">
+                        <TextBlock Text="新密码" Foreground="{DynamicResource DialogMutedBrush}" FontSize="13" Margin="0,0,0,7" />
+                        <PasswordBox x:Name="PasswordInput" FontSize="15" />
+                        <TextBlock Text="再次输入" Foreground="{DynamicResource DialogMutedBrush}" FontSize="13" Margin="0,14,0,7" />
+                        <PasswordBox x:Name="PasswordConfirmation" FontSize="15" />
+                        <TextBlock Text="1–64 个字符；允许纯数字，不允许换行或制表符。" Foreground="{DynamicResource DialogMutedBrush}" FontSize="12" Margin="0,10,0,0" />
+                    </StackPanel>
+                    <TextBlock x:Name="StatusText" VerticalAlignment="Bottom" HorizontalAlignment="Center" TextWrapping="Wrap"
+                               Foreground="{DynamicResource DialogDangerBrush}" FontSize="12" Margin="0,16,0,0" />
+                </Grid>
+            </Border>
+
+            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="取消" IsCancel="True" Click="Cancel_Click" />
+                <Button x:Name="ConfirmButton" Content="确认修改" IsDefault="True" Style="{StaticResource PrimaryDialogButton}" Click="Confirm_Click" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</local:PanelModalWindow>

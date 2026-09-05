@@ -6,14 +6,13 @@ using System.Windows.Controls;
 
 namespace MCPanel;
 
-public partial class CustomWebsiteDialog : Window
+public partial class CustomWebsiteDialog : PanelModalWindow
 {
     private readonly CustomWebsiteDefinition _original;
 
     public CustomWebsiteDialog(CustomWebsiteDefinition? definition = null)
     {
         InitializeComponent();
-        SourceInitialized += (_, _) => ResponsiveWindowSizing.FitToCurrentMonitor(this, 780, 750, 0.95, 1.1);
         _original = definition ?? new CustomWebsiteDefinition
         {
             Name = string.Empty,
@@ -131,3 +130,4 @@ public partial class CustomWebsiteDialog : Window
     }
 
 }
+

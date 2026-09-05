@@ -5,7 +5,7 @@ using System.Windows.Media;
 
 namespace MCPanel;
 
-public sealed partial class PanelMessageDialog : Window
+public sealed partial class PanelMessageDialog : PanelModalWindow
 {
     private readonly MessageBoxButton _buttons;
 
@@ -22,6 +22,13 @@ public sealed partial class PanelMessageDialog : Window
         _buttons = buttons;
         Title = caption;
         TitleText.Text = string.IsNullOrWhiteSpace(caption) ? "MCPanel" : caption;
+        SubtitleText.Text = image switch
+        {
+            MessageBoxImage.Warning => "请确认风险后继续",
+            MessageBoxImage.Error => "操作未能完成",
+            MessageBoxImage.Question => "请选择后续操作",
+            _ => "操作提示"
+        };
         MessageText.Text = message;
         IconText.Text = image switch
         {
@@ -126,3 +133,4 @@ public sealed partial class PanelMessageDialog : Window
     }
 
 }
+
