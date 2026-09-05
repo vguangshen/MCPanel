@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - '.github/workflows/one-time-inwindow-download-queue.yml'
-      - '.github/scripts/apply-inwindow-download-queue-v4.py'
+      - '.github/scripts/apply-inwindow-download-queue-v5.py'
 
 permissions:
   contents: write
@@ -21,15 +21,17 @@ jobs:
 
       - name: Apply in-window queue flyout refactor
         shell: pwsh
-        run: python .github/scripts/apply-inwindow-download-queue-v4.py
+        run: python .github/scripts/apply-inwindow-download-queue-v5.py
 
       - name: Validate diff
         shell: pwsh
         run: |
           git diff --check
           if ($LASTEXITCODE -ne 0) { throw 'git diff --check failed.' }
-          git grep -n "DownloadQueuePopup\|CalculateDownloadQueuePopupLeft" -- MainWindow.xaml MainWindow.xaml.cs MainWindow.Products.cs MainWindow.DownloadQueueFix.cs MainWindowTemplates.xaml.cs MCPanel.Tests/ReliabilityTests.DownloadQueueUiFix.cs MCPanel.Tests/ReliabilityTests.Ui.cs
-          if ($LASTEXITCODE -eq 0) { throw 'Native queue popup references remain.' }
+          git grep -n "DownloadQueuePopup\|CalculateDownloadQueuePopupLeft" -- MainWindow.xaml MainWindow.xaml.cs MainWindow.Products.cs MainWindow.DownloadQueueFix.cs MainWindowTemplates.xaml.cs
+          if ($LASTEXITCODE -eq 0) { throw 'Native queue popup references remain in production code.' }
+          git grep -n "CalculateDownloadQueuePopupLeft" -- MCPanel.Tests
+          if ($LASTEXITCODE -eq 0) { throw 'Obsolete popup placement test remains.' }
           exit 0
 
       - name: Setup .NET SDK
