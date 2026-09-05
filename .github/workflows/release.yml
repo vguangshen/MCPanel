@@ -60,7 +60,7 @@ jobs:
             -PublishDirectory $env:MCPANEL_PUBLISH_DIR `
             -OutputDirectory $updatesDir `
             -GitHubRelease `
-            -ReleaseNotes 'Java/Tomcat 产品级“单独启动”和“以 Catalina 方式启动”统一使用前台可见控制台；共享 Tomcat Server 继续后台 Windows Service 隐藏启动。'
+            -ReleaseNotes '将统一业务弹窗压缩为 780×482 横向近黄金比例卡片，并优化产品域名与 SSL 布局及浏览按钮样式。'
           "MCPANEL_UPDATES_DIR=$updatesDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Create GitHub Release
@@ -74,15 +74,14 @@ jobs:
           $hash = "$zip.sha256"
           $manifest = Join-Path $env:MCPANEL_UPDATES_DIR 'update-manifest.json'
           $notes = @"
-          本版本调整 Java/Tomcat 产品级启动体验，使其更接近原版 ITMCStore 的前台启动方式。
+          本版本进一步优化 MCPanel 统一模态弹窗的尺寸比例与表单密度。
 
-          - 产品管理中的“单独启动”改为前台可见控制台启动，不再隐藏 Java 控制台并重定向 stdout/stderr。
-          - “以 Catalina 方式启动”继续保持前台可见控制台，两种产品级启动都能直接观察启动日志。
-          - 保留 MCPanel 的独立 CATALINA_BASE 隔离机制，仍直接构造 Java/Tomcat 启动参数，避免供应商 catalina.bat 重置到共享 Tomcat 配置。
-          - 共享 Tomcat Server 仍通过 MCPanelTomcat Windows Service 后台隐藏启动，不受产品级前台窗口改动影响。
-          - 产品级启动后的端口等待、稳定性检查、PID 识别和停止/卸载内部生命周期逻辑保持不变。
-          - 移除仅服务于隐藏启动的 console.log stdout/stderr 捕获链路，避免遗留死代码。
-          - 清理 1.3.11/1.3.12 已完成的一次性 Actions 工作流，后续发版只保留正式 release.yml。
+          - 统一业务弹窗由 820×600 调整为 780×482，采用约 1.618:1 的横向近黄金比例卡片。
+          - 收紧外层 Padding、标题区、内容区间距和阴影，减少弹窗对主界面的遮挡。
+          - 产品域名与 SSL 弹窗重新排列表单：HTTP/HTTPS 端口、证书、私钥、限速和 301 跳转在更紧凑的高度内保持清晰。
+          - 证书与私钥的“浏览”按钮改为 72×36 的 Windows 风格方形圆角按钮，不再使用大号胶囊按钮。
+          - 保留统一黑色聚焦遮罩、无系统标题栏、圆角卡片和现有业务逻辑。
+          - 更新回归检查，固定新的 780×482 统一尺寸并校验浏览按钮样式。
           - 发布前执行完整可靠性测试与 Win-x64 publish。
           "@
           gh release create $tag $zip $hash $manifest `
