@@ -317,8 +317,20 @@ internal static class TomcatWindowsServiceManager
 
     public static bool IsInstalled() => ManagedWindowsServiceController.IsInstalled(ServiceName);
     public static bool IsRunning() => ManagedWindowsServiceController.IsRunning(ServiceName);
-    public static bool IsRunningForRoot(string tomcatRoot) =>
-        IsRunning() && ManagedWindowsServiceController.IsRegisteredForRoot(ServiceName, TomcatWindowsServiceHost.ServiceArgument, tomcatRoot);
+    public static bool IsRunningForRoot(
+        string tomcatRoot,
+        [System.Runtime.CompilerServices.CallerMemberName] string callerMemberName = "") =>
+        ShouldTreatAsRunningForRoot(callerMemberName) &&
+        IsRunning() &&
+        ManagedWindowsServiceController.IsRegisteredForRoot(ServiceName, TomcatWindowsServiceHost.ServiceArgument, tomcatRoot);
+
+    // DeployToTomcatAsync writes the new product Service into server.xml. If the
+    // shared Tomcat service is already running, restarting it here would make the
+    // freshly installed Java product start immediately. Product deployment is
+    // intentionally configuration-only: the user starts the product (or the
+    // shared all-applications mode) explicitly afterwards.
+    internal static bool ShouldTreatAsRunningForRoot(string callerMemberName) =>
+        !string.Equals(callerMemberName, "DeployToTomcatAsync", StringComparison.Ordinal);
     public static bool IsRegisteredForRoot(string tomcatRoot) =>
         ManagedWindowsServiceController.IsRegisteredForRoot(ServiceName, TomcatWindowsServiceHost.ServiceArgument, tomcatRoot);
 
