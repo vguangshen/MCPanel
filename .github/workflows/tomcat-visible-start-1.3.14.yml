@@ -1,0 +1,73 @@
+name: One-time Tomcat product visible-start validation
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-commit:
+    if: contains(github.event.head_commit.message, '[tomcat-visible-1.3.14]')
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install SharpSvn native runtime dependencies
+        shell: pwsh
+        run: |
+          choco install vcredist-all -y --no-progress
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Failed to install the VC++ runtime bundle required by the vendored SharpSvn build.'
+          }
+
+      - name: Apply visible product-start migration
+        shell: pwsh
+        run: .\tools\Make-TomcatProductStartsVisible-1.3.14.ps1
+
+      - name: Run full regression suite
+        shell: pwsh
+        run: |
+          dotnet test .\MCPanel.Tests\MCPanel.Tests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) {
+            throw "Regression tests failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Validate Win-x64 publish
+        shell: pwsh
+        run: |
+          $publishDir = Join-Path $env:RUNNER_TEMP 'MCPanelPublish114Validation'
+          & .\Publish-WinX64.ps1 -OutputDirectory $publishDir
+          if (-not (Test-Path -LiteralPath (Join-Path $publishDir 'MCPanel.exe'))) {
+            throw 'Win-x64 publish did not produce MCPanel.exe.'
+          }
+
+      - name: Commit validated 1.3.14 source
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath '.github/workflows/tomcat-visible-start-1.3.14.yml' -Force
+          Remove-Item -LiteralPath 'tools/Make-TomcatProductStartsVisible-1.3.14.ps1' -Force
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m "Release MCPanel 1.3.14`n`nMake both per-product Tomcat start modes open a visible foreground console like the original Store while keeping shared Tomcat Server startup hidden behind the Windows service. Preserve isolated CATALINA_BASE, port validation, stability checks, PID discovery, and lifecycle safety."
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Unable to commit validated MCPanel 1.3.14 source.'
+          }
+          git push origin HEAD:main
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Unable to push MCPanel 1.3.14 to main.'
+          }
