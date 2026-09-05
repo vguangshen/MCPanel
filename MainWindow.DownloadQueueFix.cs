@@ -24,8 +24,10 @@ public partial class MainWindow
         PreviewMouseLeftButtonDown -= MainWindow_PreviewMouseLeftButtonDown;
         PreviewMouseLeftButtonDown += DownloadQueueSafePreviewMouseLeftButtonDown;
 
+        // Named child controls are guaranteed to be available when Loaded fires.
+        // The normalized dimensions remain local values, so later layout passes
+        // cannot collapse the ring back into the old 40 px host.
         Loaded += (_, _) => NormalizeDownloadQueueToolbarVisuals();
-        ProductsHeader.SizeChanged += (_, _) => NormalizeDownloadQueueToolbarVisuals();
     }
 
     private void DownloadQueueSafePreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
