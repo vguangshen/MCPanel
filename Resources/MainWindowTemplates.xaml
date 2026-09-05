@@ -441,19 +441,9 @@
                                     Tag="Catalina" Click="InstalledProductTomcatAction_Click"
                                     IsEnabled="{Binding CanStartTomcatProduct}"
                                     Visibility="{Binding IsTomcatDeployment, Converter={StaticResource BooleanToVisibility}}" />
-                            <Button Content="停止应用" Style="{DynamicResource WebsiteActionButton}" Margin="0,0,8,0"
-                                    VerticalAlignment="Center"
-                                    Tag="Stop" Click="InstalledProductTomcatAction_Click"
-                                    IsEnabled="{Binding CanStopTomcatProduct}"
-                                    Visibility="{Binding IsTomcatDeployment, Converter={StaticResource BooleanToVisibility}}" />
                             <Button Content="查看日志" Style="{DynamicResource WebsiteActionButton}" Margin="0,0,8,0"
                                     VerticalAlignment="Center"
                                     Tag="OpenLogs" Click="InstalledProductTomcatAction_Click"
-                                    Visibility="{Binding IsTomcatDeployment, Converter={StaticResource BooleanToVisibility}}" />
-                            <Button Content="清理缓存并重启" Style="{DynamicResource WebsiteActionButton}" Margin="0,0,8,0"
-                                    VerticalAlignment="Center"
-                                    Tag="ClearCacheRestart" Click="InstalledProductTomcatAction_Click"
-                                    IsEnabled="{Binding CanRestartTomcatProduct}"
                                     Visibility="{Binding IsTomcatDeployment, Converter={StaticResource BooleanToVisibility}}" />
                             <Button Content="IIS 管理" Style="{DynamicResource WebsiteActionButton}" MinWidth="98" Margin="0,0,8,0"
                                     VerticalAlignment="Center"

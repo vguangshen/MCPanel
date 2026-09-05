@@ -532,8 +532,6 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
             {
                 "Start" => "正在独立启动",
                 "Catalina" => "正在以 Catalina 方式启动",
-                "Stop" => "正在停止",
-                "ClearCacheRestart" => "正在清理缓存并重启",
                 _ => "正在处理"
             });
 
@@ -541,8 +539,6 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
             {
                 "Start" => await _tomcatInstanceManager.StartAsync(item.ProductId, catalinaMode: false),
                 "Catalina" => await _tomcatInstanceManager.StartAsync(item.ProductId, catalinaMode: true),
-                "Stop" => await _tomcatInstanceManager.StopAsync(item.ProductId),
-                "ClearCacheRestart" => await _tomcatInstanceManager.ClearCacheAndRestartAsync(item.ProductId),
                 _ => throw new NotSupportedException("未知 Tomcat 应用操作。")
             };
 

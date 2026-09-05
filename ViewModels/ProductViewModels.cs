@@ -97,9 +97,6 @@ public sealed class InstalledProductItem : ObservableObject
             if (SetProperty(ref _canBrowse, value))
             {
                 OnPropertyChanged(nameof(CanStartTomcatProduct));
-                OnPropertyChanged(nameof(CanStopTomcatProduct));
-                OnPropertyChanged(nameof(CanRestartTomcatProduct));
-                OnPropertyChanged(nameof(CanClearTomcatCache));
             }
         }
     }
@@ -118,9 +115,6 @@ public sealed class InstalledProductItem : ObservableObject
                 OnPropertyChanged(nameof(IsIisDeployment));
                 OnPropertyChanged(nameof(DeploymentLabel));
                 OnPropertyChanged(nameof(CanStartTomcatProduct));
-                OnPropertyChanged(nameof(CanStopTomcatProduct));
-                OnPropertyChanged(nameof(CanRestartTomcatProduct));
-                OnPropertyChanged(nameof(CanClearTomcatCache));
             }
         }
     }
@@ -133,16 +127,10 @@ public sealed class InstalledProductItem : ObservableObject
             if (SetProperty(ref _tomcatRuntimeMode, value))
             {
                 OnPropertyChanged(nameof(CanStartTomcatProduct));
-                OnPropertyChanged(nameof(CanStopTomcatProduct));
-                OnPropertyChanged(nameof(CanRestartTomcatProduct));
-                OnPropertyChanged(nameof(CanClearTomcatCache));
             }
         }
     }
     public bool CanStartTomcatProduct => IsTomcatDeployment && TomcatRuntimeMode is TomcatProductRuntimeMode.Stopped or TomcatProductRuntimeMode.Shared;
-    public bool CanStopTomcatProduct => IsTomcatDeployment && TomcatRuntimeMode is TomcatProductRuntimeMode.Independent or TomcatProductRuntimeMode.Catalina;
-    public bool CanRestartTomcatProduct => CanStopTomcatProduct;
-    public bool CanClearTomcatCache => IsTomcatDeployment && TomcatRuntimeMode is TomcatProductRuntimeMode.Stopped or TomcatProductRuntimeMode.Independent or TomcatProductRuntimeMode.Catalina;
     public string DeploymentLabel
     {
         get

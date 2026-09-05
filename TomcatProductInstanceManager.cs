@@ -181,43 +181,6 @@ public sealed class TomcatProductInstanceManager
         return await PrepareInstanceAsync(tomcatHome, info, cancellationToken);
     }
 
-    public async Task<string> ClearCacheAndRestartAsync(string productId, CancellationToken cancellationToken = default)
-    {
-        var runtime = GetRuntimeInfo(productId);
-        if (runtime.Mode == TomcatProductRuntimeMode.Shared)
-        {
-            throw new InvalidOperationException($"{productId} 当前由总 Tomcat Server 运行。为避免影响其他应用，请先切换到独立模式后再清理独立实例缓存。");
-        }
-        if (runtime.Mode == TomcatProductRuntimeMode.PortConflict)
-        {
-            throw new InvalidOperationException($"端口 {runtime.Port} 被其他进程占用，无法安全清理 {productId} 的调试实例。");
-        }
-
-        var wasRunning = runtime.Mode is TomcatProductRuntimeMode.Independent or TomcatProductRuntimeMode.Catalina;
-        var catalinaMode = runtime.Mode == TomcatProductRuntimeMode.Catalina;
-        if (wasRunning)
-        {
-            await StopAsync(productId, cancellationToken);
-        }
-
-        var instanceRoot = await PrepareProductInstanceAsync(productId, cancellationToken);
-        foreach (var name in new[] { "work", "temp" })
-        {
-            var directory = Path.Combine(instanceRoot, name);
-            DeleteDirectory(directory);
-            Directory.CreateDirectory(directory);
-        }
-        WriteOperationLog(productId, "已清理独立实例 work/temp 缓存。");
-
-        if (!wasRunning)
-        {
-            return $"{productId} 的 work/temp 已清理；该应用原本未运行，因此未自动启动。";
-        }
-
-        var startMessage = await StartAsync(productId, catalinaMode, cancellationToken);
-        return $"{productId} 的 work/temp 已清理并按原运行模式重新启动。{Environment.NewLine}{startMessage}";
-    }
-
     public async Task<string> StartAsync(string productId, bool catalinaMode, CancellationToken cancellationToken = default)
     {
         var info = ProductDeploymentService.LoadTomcatDeploymentInfo(productId)

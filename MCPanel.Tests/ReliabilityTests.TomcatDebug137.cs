@@ -38,34 +38,37 @@ public partial class ReliabilityTests
     }
 
     [TestMethod]
-    public void TomcatDebug_ProductManagement_RemovesRetiredActionsAndBackends()
+    public void TomcatDebug_ProductManagement_KeepsOnlyCoreStartAndLogActions()
     {
         var xaml = ReadRepositoryFile(Path.Combine("Resources", "MainWindowTemplates.xaml"));
         var products = ReadRepositoryFile("MainWindow.Products.cs");
         var manager = ReadRepositoryFile("TomcatProductInstanceManager.cs");
-        var bridge = ReadRepositoryFile("MainWindowTemplates.xaml.cs");
+        var viewModel = ReadRepositoryFile(Path.Combine("ViewModels", "ProductViewModels.cs"));
 
         StringAssert.Contains(xaml, "Content=\"单独启动\"");
         StringAssert.Contains(xaml, "Content=\"以 Catalina 方式启动\"");
-        StringAssert.Contains(xaml, "Content=\"停止应用\"");
         StringAssert.Contains(xaml, "Content=\"查看日志\"");
-        StringAssert.Contains(xaml, "Content=\"清理缓存并重启\"");
+        Assert.IsFalse(xaml.Contains("Content=\"停止应用\"", StringComparison.Ordinal));
+        Assert.IsFalse(xaml.Contains("Content=\"清理缓存并重启\"", StringComparison.Ordinal));
         Assert.IsFalse(xaml.Contains("Content=\"重启应用\"", StringComparison.Ordinal));
         Assert.IsFalse(xaml.Contains("Content=\"实例目录\"", StringComparison.Ordinal));
         Assert.IsFalse(xaml.Contains("Content=\"清理 work/temp\"", StringComparison.Ordinal));
 
-        Assert.IsFalse(products.Contains("\"Restart\" =>", StringComparison.Ordinal));
-        Assert.IsFalse(products.Contains("\"ClearCache\" =>", StringComparison.Ordinal));
-        Assert.IsFalse(products.Contains("OpenInstance", StringComparison.Ordinal));
-        StringAssert.Contains(products, "ClearCacheAndRestartAsync");
+        Assert.IsFalse(products.Contains("\"Stop\" =>", StringComparison.Ordinal));
+        Assert.IsFalse(products.Contains("ClearCacheRestart", StringComparison.Ordinal));
+        Assert.IsFalse(products.Contains("ClearCacheAndRestartAsync", StringComparison.Ordinal));
+        StringAssert.Contains(products, "\"Start\" => await _tomcatInstanceManager.StartAsync");
+        StringAssert.Contains(products, "\"Catalina\" => await _tomcatInstanceManager.StartAsync");
 
-        Assert.IsFalse(manager.Contains("public async Task<string> RestartAsync(", StringComparison.Ordinal));
-        Assert.IsFalse(manager.Contains("ClearCacheAsync(", StringComparison.Ordinal));
-        Assert.IsFalse(manager.Contains("GetInstanceDirectory(", StringComparison.Ordinal));
-        StringAssert.Contains(manager, "ClearCacheAndRestartAsync(");
-        Assert.IsFalse(bridge.Contains("TomcatManagementUiPruner", StringComparison.Ordinal));
+        Assert.IsFalse(manager.Contains("ClearCacheAndRestartAsync(", StringComparison.Ordinal));
+        Assert.IsFalse(viewModel.Contains("CanRestartTomcatProduct", StringComparison.Ordinal));
+        Assert.IsFalse(viewModel.Contains("CanClearTomcatCache", StringComparison.Ordinal));
+        Assert.IsFalse(viewModel.Contains("CanClearCacheAndRestartTomcatProduct", StringComparison.Ordinal));
+
+        // StopAsync remains an internal lifecycle primitive for uninstall and
+        // global Tomcat management; it is no longer exposed as a product button.
+        StringAssert.Contains(manager, "public async Task<string> StopAsync(");
     }
-
     private static string ReadRepositoryFile(string relativePath)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
