@@ -101,14 +101,8 @@ public partial class MainWindowTemplates : ResourceDictionary
     private void InstalledProductOpen_Click(object sender, RoutedEventArgs e) =>
         GetOwner(sender)?.InstalledProductOpen_Click(sender, e);
 
-    private void InstalledProductManageToggle_Click(object sender, RoutedEventArgs e)
-    {
+    private void InstalledProductManageToggle_Click(object sender, RoutedEventArgs e) =>
         GetOwner(sender)?.InstalledProductManageToggle_Click(sender, e);
-        if (sender is DependencyObject element)
-        {
-            TomcatManagementUiPruner.RemoveRetiredActions(element);
-        }
-    }
 
     private void InstalledProductTomcatAction_Click(object sender, RoutedEventArgs e) =>
         GetOwner(sender)?.InstalledProductTomcatAction_Click(sender, e);
