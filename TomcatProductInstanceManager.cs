@@ -71,8 +71,6 @@ public sealed class TomcatProductInstanceManager
     public string GetLogDirectory(string productId) =>
         Path.Combine(GetInstanceRoot(productId), "logs");
 
-    public string GetInstanceDirectory(string productId) => GetInstanceRoot(productId);
-
     public static TomcatProductRuntimeInfo GetRuntimeInfo(string productId)
     {
         var deployment = ProductDeploymentService.LoadTomcatDeploymentInfo(productId);
@@ -171,7 +169,7 @@ public sealed class TomcatProductInstanceManager
         };
     }
 
-    public async Task<string> PrepareProductInstanceAsync(string productId, CancellationToken cancellationToken = default)
+    private async Task<string> PrepareProductInstanceAsync(string productId, CancellationToken cancellationToken = default)
     {
         var info = ProductDeploymentService.LoadTomcatDeploymentInfo(productId)
             ?? throw new InvalidOperationException($"未找到 {productId} 的 Tomcat 部署信息，请先修复绑定。");
@@ -183,28 +181,7 @@ public sealed class TomcatProductInstanceManager
         return await PrepareInstanceAsync(tomcatHome, info, cancellationToken);
     }
 
-    public async Task<string> RestartAsync(string productId, CancellationToken cancellationToken = default)
-    {
-        var runtime = GetRuntimeInfo(productId);
-        if (runtime.Mode == TomcatProductRuntimeMode.Shared)
-        {
-            throw new InvalidOperationException($"{productId} 当前由总 Tomcat Server 运行。请先使用“单独启动”切换到独立模式，再单独重启该应用。");
-        }
-        if (runtime.Mode == TomcatProductRuntimeMode.PortConflict)
-        {
-            throw new InvalidOperationException($"端口 {runtime.Port} 已被其他进程占用，无法重启 {productId}。");
-        }
-
-        var catalinaMode = runtime.Mode == TomcatProductRuntimeMode.Catalina;
-        if (runtime.Mode is TomcatProductRuntimeMode.Independent or TomcatProductRuntimeMode.Catalina)
-        {
-            await StopAsync(productId, cancellationToken);
-        }
-
-        return await StartAsync(productId, catalinaMode, cancellationToken);
-    }
-
-    public async Task<string> ClearCacheAsync(string productId, bool restart, CancellationToken cancellationToken = default)
+    public async Task<string> ClearCacheAndRestartAsync(string productId, CancellationToken cancellationToken = default)
     {
         var runtime = GetRuntimeInfo(productId);
         if (runtime.Mode == TomcatProductRuntimeMode.Shared)
@@ -232,15 +209,13 @@ public sealed class TomcatProductInstanceManager
         }
         WriteOperationLog(productId, "已清理独立实例 work/temp 缓存。");
 
-        if (restart && wasRunning)
+        if (!wasRunning)
         {
-            var startMessage = await StartAsync(productId, catalinaMode, cancellationToken);
-            return $"{productId} 的 work/temp 已清理并按原运行模式重新启动。{Environment.NewLine}{startMessage}";
+            return $"{productId} 的 work/temp 已清理；该应用原本未运行，因此未自动启动。";
         }
 
-        return restart
-            ? $"{productId} 的 work/temp 已清理；该应用原本未运行，因此未自动启动。"
-            : $"{productId} 的 work/temp 已清理。";
+        var startMessage = await StartAsync(productId, catalinaMode, cancellationToken);
+        return $"{productId} 的 work/temp 已清理并按原运行模式重新启动。{Environment.NewLine}{startMessage}";
     }
 
     public async Task<string> StartAsync(string productId, bool catalinaMode, CancellationToken cancellationToken = default)
