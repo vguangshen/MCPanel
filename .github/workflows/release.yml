@@ -60,7 +60,7 @@ jobs:
             -PublishDirectory $env:MCPANEL_PUBLISH_DIR `
             -OutputDirectory $updatesDir `
             -GitHubRelease `
-            -ReleaseNotes '更新流程现可与产品下载/安装队列并行准备；用户确认更新后，非管理员运行时会立即请求 UAC 管理员授权，并在产品队列完成后安全应用更新。'
+            -ReleaseNotes '产品下载进度改为阶段感知显示：SVN 不再展示不可信百分比，改为动态活动进度与真实下载容量、速度、扫描项；仅在总大小可信时显示确定型百分比。'
           "MCPANEL_UPDATES_DIR=$updatesDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Create GitHub Release
@@ -74,16 +74,15 @@ jobs:
           $hash = "$zip.sha256"
           $manifest = Join-Path $env:MCPANEL_UPDATES_DIR 'update-manifest.json'
           $notes = @"
-          本版本优化 MCPanel 自更新的并发与管理员授权流程。
+          本版本重新设计产品下载与部署进度显示，避免对 SVN 产品展示不准确的百分比。
 
-          - 产品正在下载或安装时，仍允许正常检测 MCPanel 新版本，并可并行下载、校验和准备 MCPanel 更新包。
-          - 不再因为产品下载/安装队列处于活动状态而直接阻止“检测并更新”。
-          - 保留原有“发现新版本，是否下载并安装？”确认框；用户点击确认后，如果当前 MCPanel 不是管理员权限，立即弹出 Windows UAC 管理员授权提示。
-          - 如果 MCPanel 已经以管理员身份运行，则不会重复弹出 UAC。
-          - 如果用户拒绝 UAC，更新立即取消，不继续下载安装。
-          - 确认后获得的管理员权限由独立更新助手保持，真正应用更新时复用该授权，避免再次弹出第二次 UAC。
-          - 如果 MCPanel 更新包先准备完成而产品队列仍在运行，产品任务继续执行；待产品队列完成后自动安全应用 MCPanel 更新并重启，避免中断产品下载或安装。
-          - 新增管理员授权等待模式及对应回归检查，确保更新助手不会被主界面单实例逻辑拦截。
+          - SVN Checkout / Update 下载过程中不再把 SharpSvn 临时 TotalProgress 当作产品最终总大小，因此不再出现“已下载数 GB 但仍显示 0.x%”或结束瞬间跳到 100% 的误导进度。
+          - SVN 产品改为阶段式状态：准备中、正在下载、正在部署、完成；总大小未知时使用不确定型动态进度动画。
+          - 下载过程中继续显示真实遥测信息，包括已下载容量、实时速度、已扫描文件项数和扫描容量，让用户可以确认任务仍在持续工作。
+          - 只有 HTTP/WebDAV 等能够获得可信总大小的下载才显示确定型百分比以及“已下载 / 总大小”。
+          - 产品卡片、安装队列和顶部下载活动指示统一采用可靠总量语义，顶部环形进度在无法确定百分比时仅表示任务正在活动。
+          - 下载进入部署阶段后明确显示“正在部署”，不再用伪造的 90%→100% 比例表达安装耗时。
+          - 修复不确定型环形进度动画的绘制变量冲突，并更新相关回归测试。
           - 发布前执行完整可靠性测试与 Win-x64 publish。
           "@
           gh release create $tag $zip $hash $manifest `
