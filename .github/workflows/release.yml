@@ -59,7 +59,7 @@ jobs:
             -PublishDirectory $env:MCPANEL_PUBLISH_DIR `
             -OutputDirectory $updatesDir `
             -GitHubRelease `
-            -ReleaseNotes '提升 SQL Server 与 IIS 安装可靠性：按微软兼容矩阵限制可选 SQL Server 版本、优化 4KB/NVMe 与损坏实例恢复、修复 IIS ASP.NET/重启续装链路；保留原版 Store PendingFileRenameOperations 行为与产品下载链路。'
+            -ReleaseNotes '修复 1.3.8 环境页面黑屏：重构 SQL Server 版本下拉框的 WPF 样式资源引用，保留按 Windows 兼容矩阵灰显禁用逻辑，并新增真实环境页渲染回归测试。'
           "MCPANEL_UPDATES_DIR=$updatesDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Create GitHub Release
@@ -73,20 +73,16 @@ jobs:
           $hash = "$zip.sha256"
           $manifest = Join-Path $env:MCPANEL_UPDATES_DIR 'update-manifest.json'
           $notes = @"
-          本版本重点提升 SQL Server 与 IIS 安装、恢复和系统兼容性判断的可靠性，不改变原有产品下载链路。
+          本版本为 1.3.8 的环境页面渲染热修复，不改变 SQL Server / IIS 安装链路及原有产品下载链路。
 
-          - SQL Server 版本选择按 Microsoft 官方 Windows / SQL Server 兼容矩阵判断；不受支持的版本继续显示但禁用并给出原因。
-          - 如果无法可靠识别当前 Windows 版本，则不猜测系统代际，所有 SQL Server 版本选项保持开放。
-          - 保留原版 ITMC Store 在 SQL Server 安装前直接删除 PendingFileRenameOperations 的兼容行为。
-          - SQL Server 2012 Express 改为仅请求数据库引擎，避免 SQLEXPR 安装包与 Tools 功能参数不匹配。
-          - 现代 SQL Server 安装不再强制关闭 Setup 更新行为。
-          - 4KB/NVMe 兼容处理改为先检测实际物理扇区，仅在大于 4KB 时写入 Microsoft 官方 ForcedPhysicalSectorSizeInBytes 兼容项并要求重启。
-          - SQL Server 损坏默认实例恢复改为实例级清理，避免默认删除其他实例和共享 SQL Server 组件。
-          - IIS 使用 Windows Optional Features 安装 ASP.NET，不再在现代 Windows 上调用 aspnet_regiis -i。
-          - IIS 与 URL Rewrite 的重启需求支持续装，并在完成前验证 RewriteModule、WAS 与 W3SVC。
-          - 旧版 .NET / IIS 兼容组件采用尽力安装策略，缺少旧 payload 时不阻断现代 IIS 主安装链路。
-          - 稳定设置页 WPF 渲染测试在繁忙 CI Runner 上的等待时间，避免偶发 20 秒超时阻断正式发布。
-          - 发布前执行完整可靠性测试，136 项测试全部通过。
+          - 修复点击“环境”后内容区黑屏/空白的问题。根因是 SQL Server 版本下拉框的 ComboBoxItem 派生样式在 DataTemplate 内跨资源字典解析失败。
+          - 将 SQL Server 专用版本选项样式放入 PanelTheme.xaml，与基础 EnvironmentVersionComboBoxItem 位于同一资源字典，并使用 StaticResource 安全继承。
+          - Environment 页面模板仅通过 DynamicResource 引用完整的 SQL Server 专用 ItemContainerStyle，避免模板实例化阶段的 WPF XAML 资源异常。
+          - 保留 1.3.8 的 Windows / SQL Server 官方兼容矩阵判断；不支持版本仍会灰显、禁止选择并显示原因。
+          - 新增真实环境页面渲染回归测试：启动 MainWindow、切换 EnvironmentPage、生成并展开 SQL Server 版本下拉框、验证每个版本容器状态并捕获 Dispatcher 渲染异常。
+          - 将已有“产品安装完成图标”WPF 渲染测试等待上限从 20 秒调整为 60 秒，降低繁忙 GitHub Runner 的偶发超时误报；不改变产品 UI 行为。
+          - 原版 Store 产品下载核心链路未修改。
+          - 发布前执行完整可靠性测试，137 项测试全部通过。
           "@
           gh release create $tag $zip $hash $manifest `
             --target '${{ github.sha }}' `
