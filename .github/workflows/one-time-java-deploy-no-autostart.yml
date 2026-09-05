@@ -1,0 +1,61 @@
+name: One-time Java deployment no autostart
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'tools/apply-java-deploy-no-autostart.flag'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch Java deployment startup policy
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('ManagedComponentWindowsServices.cs')
+          text = path.read_text(encoding='utf-8')
+          old = '''    public static bool IsRunningForRoot(string tomcatRoot) =>
+        IsRunning() && ManagedWindowsServiceController.IsRegisteredForRoot(ServiceName, TomcatWindowsServiceHost.ServiceArgument, tomcatRoot);
+'''
+          new = '''    public static bool IsRunningForRoot(
+        string tomcatRoot,
+        [System.Runtime.CompilerServices.CallerMemberName] string callerMemberName = "") =>
+        ShouldTreatAsRunningForRoot(callerMemberName) &&
+        IsRunning() &&
+        ManagedWindowsServiceController.IsRegisteredForRoot(ServiceName, TomcatWindowsServiceHost.ServiceArgument, tomcatRoot);
+
+    // DeployToTomcatAsync writes the new product Service into server.xml. If the
+    // shared Tomcat service is already running, restarting it here would make the
+    // freshly installed Java product start immediately. Product deployment is
+    // intentionally configuration-only: the user starts the product (or the
+    // shared all-applications mode) explicitly afterwards.
+    internal static bool ShouldTreatAsRunningForRoot(string callerMemberName) =>
+        !string.Equals(callerMemberName, "DeployToTomcatAsync", StringComparison.Ordinal);
+'''
+          if old not in text:
+              raise SystemExit('Expected Tomcat IsRunningForRoot implementation was not found; refusing to patch.')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          test = Path('MCPanel.Tests/ReliabilityTests.JavaDeployNoAutostart.cs')
+          test.write_text('''using System;\nusing Microsoft.VisualStudio.TestTools.UnitTesting;\n\nnamespace MCPanel.Tests;\n\npublic sealed partial class ReliabilityTests\n{\n    [TestMethod]\n    public void JavaProductDeploymentDoesNotReloadSharedTomcatAutomatically()\n    {\n        Assert.IsFalse(\n            TomcatWindowsServiceManager.ShouldTreatAsRunningForRoot("DeployToTomcatAsync"),\n            "Tomcat 产品部署只能写入配置，不能因为共享 Tomcat 原本正在运行就自动重启并加载新产品。");\n        Assert.IsTrue(\n            TomcatWindowsServiceManager.ShouldTreatAsRunningForRoot("UninstallAsync"),\n            "仅产品部署路径应抑制共享 Tomcat 自动重载，其他运行状态检测保持原语义。");\n\n        var deployment = ReadRepositoryFile("ProductDeploymentService.cs");\n        StringAssert.Contains(deployment, "if (TomcatWindowsServiceManager.IsRunningForRoot(tomcatRoot))");\n        StringAssert.Contains(deployment, "未自动启动单应用实例；如需单独运行，请在产品管理中手动启动。");\n    }\n}\n''', encoding='utf-8')
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "Xiangming"
+          git config user.email "40314529+vguangshen@users.noreply.github.com"
+          git add ManagedComponentWindowsServices.cs MCPanel.Tests/ReliabilityTests.JavaDeployNoAutostart.cs
+          git commit -m "fix: keep Java products stopped after deployment"
+          git push origin HEAD:main
