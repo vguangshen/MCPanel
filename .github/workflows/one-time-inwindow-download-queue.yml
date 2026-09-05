@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - '.github/workflows/one-time-inwindow-download-queue.yml'
-      - '.github/scripts/apply-inwindow-download-queue-v2.py'
+      - '.github/scripts/apply-inwindow-download-queue-v3.py'
 
 permissions:
   contents: write
@@ -21,14 +21,14 @@ jobs:
 
       - name: Apply in-window queue flyout refactor
         shell: pwsh
-        run: python .github/scripts/apply-inwindow-download-queue-v2.py
+        run: python .github/scripts/apply-inwindow-download-queue-v3.py
 
       - name: Validate diff
         shell: pwsh
         run: |
           git diff --check
           if ($LASTEXITCODE -ne 0) { throw 'git diff --check failed.' }
-          git grep -n "DownloadQueuePopup" -- MainWindow.xaml MainWindow.xaml.cs MainWindow.Products.cs MainWindow.DownloadQueueFix.cs
+          git grep -n "DownloadQueuePopup" -- MainWindow.xaml MainWindow.xaml.cs MainWindow.Products.cs MainWindow.DownloadQueueFix.cs MainWindowTemplates.xaml.cs
           if ($LASTEXITCODE -eq 0) { throw 'Native queue popup references remain.' }
           exit 0
 
@@ -52,6 +52,6 @@ jobs:
         run: |
           git config user.name "Xiangming"
           git config user.email "40314529+vguangshen@users.noreply.github.com"
-          git add MainWindow.xaml MainWindow.xaml.cs MainWindow.Products.cs MainWindow.DownloadQueueFix.cs MCPanel.Tests/ReliabilityTests.DownloadQueueUiFix.cs
+          git add MainWindow.xaml MainWindow.xaml.cs MainWindow.Products.cs MainWindow.DownloadQueueFix.cs MainWindowTemplates.xaml.cs MCPanel.Tests/ReliabilityTests.DownloadQueueUiFix.cs
           git commit -m "ui: keep download queue flyout inside main window"
           git push origin main
