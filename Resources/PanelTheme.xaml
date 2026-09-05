@@ -805,6 +805,18 @@
         </Setter>
     </Style>
 
+    <Style x:Key="SqlServerEnvironmentVersionComboBoxItem"
+           TargetType="ComboBoxItem"
+           BasedOn="{StaticResource EnvironmentVersionComboBoxItem}">
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding IsSupported}" Value="False">
+                <Setter Property="IsEnabled" Value="False" />
+                <Setter Property="ToolTip" Value="{Binding SupportNote}" />
+                <Setter Property="Opacity" Value="0.55" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
     <Style x:Key="ProductUpdateButton" TargetType="Button" BasedOn="{StaticResource EnvironmentWarningButton}">
         <Setter Property="Width" Value="84" />
         <Setter Property="Height" Value="32" />

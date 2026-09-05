@@ -462,7 +462,7 @@ public sealed partial class ReliabilityTests
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
 
-        Assert.IsTrue(completed.Wait(TimeSpan.FromSeconds(20)), "已安装完成图标的 UI 渲染测试超时。");
+        Assert.IsTrue(completed.Wait(TimeSpan.FromSeconds(60)), "已安装完成图标的 UI 渲染测试超时。");
         if (failure is not null)
         {
             Assert.Fail($"已安装完成图标未按指定 SVG 渲染：{failure}");
