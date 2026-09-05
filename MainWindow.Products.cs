@@ -519,14 +519,11 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
         {
             TomcatProductInstanceManager.WriteOperationLog(item.ProductId, $"界面按钮：{action}。");
 
-            if (action is "OpenLogs" or "OpenInstance")
+            if (action == "OpenLogs")
             {
-                var instanceRoot = await _tomcatInstanceManager.PrepareProductInstanceAsync(item.ProductId);
-                var target = action == "OpenLogs"
-                    ? Path.Combine(instanceRoot, "logs")
-                    : instanceRoot;
-                Directory.CreateDirectory(target);
-                Process.Start(new ProcessStartInfo("explorer.exe", $"\"{target}\"") { UseShellExecute = true });
+                var logDirectory = _tomcatInstanceManager.GetLogDirectory(item.ProductId);
+                Directory.CreateDirectory(logDirectory);
+                Process.Start(new ProcessStartInfo("explorer.exe", $"\"{logDirectory}\"") { UseShellExecute = true });
                 item.RefreshRuntime();
                 return;
             }
@@ -536,8 +533,6 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
                 "Start" => "正在独立启动",
                 "Catalina" => "正在以 Catalina 方式启动",
                 "Stop" => "正在停止",
-                "Restart" => "正在重启独立实例",
-                "ClearCache" => "正在清理 work/temp",
                 "ClearCacheRestart" => "正在清理缓存并重启",
                 _ => "正在处理"
             });
@@ -547,9 +542,7 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
                 "Start" => await _tomcatInstanceManager.StartAsync(item.ProductId, catalinaMode: false),
                 "Catalina" => await _tomcatInstanceManager.StartAsync(item.ProductId, catalinaMode: true),
                 "Stop" => await _tomcatInstanceManager.StopAsync(item.ProductId),
-                "Restart" => await _tomcatInstanceManager.RestartAsync(item.ProductId),
-                "ClearCache" => await _tomcatInstanceManager.ClearCacheAsync(item.ProductId, restart: false),
-                "ClearCacheRestart" => await _tomcatInstanceManager.ClearCacheAsync(item.ProductId, restart: true),
+                "ClearCacheRestart" => await _tomcatInstanceManager.ClearCacheAndRestartAsync(item.ProductId),
                 _ => throw new NotSupportedException("未知 Tomcat 应用操作。")
             };
 
