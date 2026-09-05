@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - '.github/workflows/one-time-download-queue-tabs-time.yml'
+      - '.github/scripts/apply-download-queue-tabs-time.py'
 
 permissions:
   contents: write
@@ -13,41 +14,22 @@ permissions:
 jobs:
   patch:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
-
-      - name: Install SharpSvn runtime
-        shell: pwsh
-        run: choco install vcredist-all -y --no-progress
-
-      - name: Apply queue tabs redesign with completion time
-        shell: pwsh
-        run: python .github/scripts/apply-download-queue-tabs-time.py
-
-      - name: Validate diff
-        shell: pwsh
-        run: git diff --check
-
-      - name: Test download queue regressions
-        shell: pwsh
-        run: dotnet test MCPanel.Tests/MCPanel.Tests.csproj -c Release --filter "FullyQualifiedName~DownloadQueue"
-
-      - name: Test regression suite
-        shell: pwsh
-        run: dotnet test MCPanel.Tests/MCPanel.Tests.csproj -c Release --no-restore --filter "FullyQualifiedName!~ComponentStorageMigrationMovesLegacyDirectoriesWithoutOverwritingCache"
-
-      - name: Commit feature
+      - name: Diagnose base patch line
         shell: pwsh
         run: |
-          git config user.name "Xiangming"
-          git config user.email "40314529+vguangshen@users.noreply.github.com"
-          git add MainWindow.xaml MainWindow.Products.cs ViewModels/ProductViewModels.cs Resources/MainWindowTemplates.xaml ProductInstallQueue.cs MCPanel.Tests/ReliabilityTests.DownloadQueueTabs.cs MCPanel.Tests/ReliabilityTests.Ui.cs MCPanel.Tests/ReliabilityTests.DownloadQueueUiFix.cs
-          git commit -m "feat: split download queue and show completion times"
-          git push origin main
+          @'
+          from pathlib import Path
+          workflow = Path('.github/workflows/one-time-download-queue-tabs.yml').read_text(encoding='utf-8-sig').splitlines()
+          start = next(i for i, line in enumerate(workflow) if line.strip() == "@'")
+          end = next(i for i, line in enumerate(workflow[start + 1:], start + 1) if line.strip() == "'@ | python -")
+          lines = [line[10:] if line.startswith('          ') else line for line in workflow[start + 1:end]]
+          for number in range(186, 202):
+              if number <= len(lines):
+                  print(f'{number}: {lines[number - 1]}')
+          raise SystemExit(1)
+          '@ | python -
