@@ -1,0 +1,62 @@
+name: One-time download queue tabs redesign retry
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/one-time-download-queue-tabs-retry.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install SharpSvn runtime
+        shell: pwsh
+        run: choco install vcredist-all -y --no-progress
+
+      - name: Apply corrected redesign
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/one-time-download-queue-tabs.yml').read_text(encoding='utf-8-sig').splitlines()
+          start = next(i for i, line in enumerate(workflow) if line.strip() == "@'")
+          end = next(i for i, line in enumerate(workflow[start + 1:], start + 1) if line.strip() == "'@ | python -")
+          lines = []
+          for line in workflow[start + 1:end]:
+              lines.append(line[10:] if line.startswith('          ') else line)
+          script = '\n'.join(lines) + '\n'
+          script = script.replace("test = dedent(r'''\\\n", "test = dedent(r'''\n")
+          exec(compile(script, 'download-queue-tabs-patch.py', 'exec'))
+          '@ | python -
+
+      - name: Validate diff
+        shell: pwsh
+        run: git diff --check
+
+      - name: Test redesign
+        shell: pwsh
+        run: dotnet test MCPanel.Tests/MCPanel.Tests.csproj -c Release
+
+      - name: Commit feature
+        shell: pwsh
+        run: |
+          git config user.name "Xiangming"
+          git config user.email "40314529+vguangshen@users.noreply.github.com"
+          git add MainWindow.xaml MainWindow.Products.cs ViewModels/ProductViewModels.cs Resources/MainWindowTemplates.xaml MCPanel.Tests/ReliabilityTests.DownloadQueueTabs.cs
+          git commit -m "feat: split download queue into active and completed tabs"
+          git push origin main
