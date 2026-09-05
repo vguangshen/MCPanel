@@ -112,6 +112,21 @@ elseif (-not $environment.Contains('var dialog = PanelInputDialog.CreatePassword
 }
 Write-RepoText $environmentPath $environment
 
+# The generated regression test targets net462. Path.GetRelativePath was added
+# to later .NET implementations and is unavailable here; every enumerated XAML
+# path is already below root, so use a simple root-relative substring instead.
+$testPath = 'MCPanel.Tests/ReliabilityTests.DialogUi115.cs'
+$test = Read-RepoText $testPath
+$unsupportedRelativePath = '.Select(path => Path.GetRelativePath(root, path))'
+$net462RelativePath = '.Select(path => path.Substring(root.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))'
+if ($test.Contains($unsupportedRelativePath)) {
+    $test = $test.Replace($unsupportedRelativePath, $net462RelativePath)
+    Write-RepoText $testPath $test
+}
+elseif (-not $test.Contains($net462RelativePath)) {
+    throw 'Unable to make generated modal regression path handling net462 compatible.'
+}
+
 # Give the destructive product-domain removal action its own visual hierarchy.
 $controls = Read-RepoText $controlsPath
 if (-not $controls.Contains('x:Key="DangerDialogButton"')) {
@@ -167,4 +182,4 @@ foreach ($relativePath in @(
     Assert-Xml $relativePath
 }
 
-Write-Host 'Repaired generated XAML and dialog owner syntax, sanitized, styled, and validated unified modal UI.'
+Write-Host 'Repaired generated XAML, dialog owner syntax, and net462 regression compatibility; sanitized and validated unified modal UI.'
