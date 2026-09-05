@@ -59,7 +59,7 @@ jobs:
             -PublishDirectory $env:MCPANEL_PUBLISH_DIR `
             -OutputDirectory $updatesDir `
             -GitHubRelease `
-            -ReleaseNotes '修复 1.3.8 环境页面黑屏：重构 SQL Server 版本下拉框的 WPF 样式资源引用，保留按 Windows 兼容矩阵灰显禁用逻辑，并新增真实环境页渲染回归测试。'
+            -ReleaseNotes '精简 Java/Tomcat 产品管理操作：移除“重启应用”“实例目录”“清理 work/temp”三个冗余按钮，保留独立启动、Catalina 启动、停止、日志和清理缓存并重启。'
           "MCPANEL_UPDATES_DIR=$updatesDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Create GitHub Release
@@ -73,16 +73,14 @@ jobs:
           $hash = "$zip.sha256"
           $manifest = Join-Path $env:MCPANEL_UPDATES_DIR 'update-manifest.json'
           $notes = @"
-          本版本为 1.3.8 的环境页面渲染热修复，不改变 SQL Server / IIS 安装链路及原有产品下载链路。
+          本版本精简 Java/Tomcat 产品管理区域，减少低频和重复操作按钮，保持现有运行链路不变。
 
-          - 修复点击“环境”后内容区黑屏/空白的问题。根因是 SQL Server 版本下拉框的 ComboBoxItem 派生样式在 DataTemplate 内跨资源字典解析失败。
-          - 将 SQL Server 专用版本选项样式放入 PanelTheme.xaml，与基础 EnvironmentVersionComboBoxItem 位于同一资源字典，并使用 StaticResource 安全继承。
-          - Environment 页面模板仅通过 DynamicResource 引用完整的 SQL Server 专用 ItemContainerStyle，避免模板实例化阶段的 WPF XAML 资源异常。
-          - 保留 1.3.8 的 Windows / SQL Server 官方兼容矩阵判断；不支持版本仍会灰显、禁止选择并显示原因。
-          - 新增真实环境页面渲染回归测试：启动 MainWindow、切换 EnvironmentPage、生成并展开 SQL Server 版本下拉框、验证每个版本容器状态并捕获 Dispatcher 渲染异常。
-          - 将已有“产品安装完成图标”WPF 渲染测试等待上限从 20 秒调整为 60 秒，降低繁忙 GitHub Runner 的偶发超时误报；不改变产品 UI 行为。
-          - 原版 Store 产品下载核心链路未修改。
-          - 发布前执行完整可靠性测试，137 项测试全部通过。
+          - 移除“重启应用”按钮；需要重新加载时继续使用“清理缓存并重启”。
+          - 移除“实例目录”按钮；产品安装目录仍可通过卡片左侧路径入口直接打开。
+          - 移除“清理 work/temp”按钮；保留更完整的“清理缓存并重启”维护动作。
+          - 保留“单独启动”“以 Catalina 方式启动”“停止应用”“查看日志”“清理缓存并重启”。
+          - Tomcat 后端启动、停止、缓存维护和实例管理逻辑未删除，仅精简产品管理界面入口。
+          - 更新回归覆盖，确保三个退役操作不会重新出现在管理区。
           "@
           gh release create $tag $zip $hash $manifest `
             --target '${{ github.sha }}' `
