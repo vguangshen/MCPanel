@@ -172,10 +172,6 @@ Write-Host '3/6 Adding the Tomcat-specific runtime progress view-model state...'
 $viewModelPath = 'ViewModels/EnvironmentViewModels.cs'
 $viewModel = Read-RepoText $viewModelPath
 if (-not $viewModel.Contains('public void ApplyTomcatStartupProgress(TomcatStartupProgress update)')) {
-    $applyRuntimeMarker = '    public void ApplyRuntimeState(EnvironmentRuntimeState state)'
-    if (-not $viewModel.Contains($applyRuntimeMarker)) {
-        throw 'Unable to locate EnvironmentItem.ApplyRuntimeState.'
-    }
     $progressMethod = @'
     public void ApplyTomcatStartupProgress(TomcatStartupProgress update)
     {
@@ -199,7 +195,8 @@ if (-not $viewModel.Contains('public void ApplyTomcatStartupProgress(TomcatStart
     }
 
 '@
-    $viewModel = $viewModel.Replace($applyRuntimeMarker, $progressMethod + $applyRuntimeMarker)
+    $environmentApplyPattern = '(?ms)(    public void ApplyInstallProgress\(InstallProgress update\)\r?\n    \{.*?\r?\n    \}\r?\n\r?\n)(    public void ApplyRuntimeState\(EnvironmentRuntimeState state\))'
+    $viewModel = Replace-RegexOnce $viewModel $environmentApplyPattern ('$1' + $progressMethod + '$2') 'placing Tomcat startup progress on EnvironmentItem'
 }
 Write-RepoText $viewModelPath $viewModel
 
