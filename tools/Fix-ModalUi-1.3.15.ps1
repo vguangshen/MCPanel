@@ -182,4 +182,21 @@ foreach ($relativePath in @(
     Assert-Xml $relativePath
 }
 
-Write-Host 'Repaired generated XAML, dialog owner syntax, and net462 regression compatibility; sanitized and validated unified modal UI.'
+# The Actions checkout credential is a GitHub App token with contents:write but
+# no workflows permission. The migration intentionally updates release.yml and
+# the release commit originally tried to delete this one-time workflow, causing
+# GitHub to reject the otherwise valid source push. Preserve both workflow files
+# in the runner-only commit; they can be cleaned up externally after the release.
+$hookPath = Join-Path $repoRoot '.git\hooks\pre-commit'
+$hookDirectory = Split-Path -Parent $hookPath
+if (-not (Test-Path -LiteralPath $hookDirectory)) {
+    New-Item -ItemType Directory -Path $hookDirectory -Force | Out-Null
+}
+$preCommitHook = @'
+#!/bin/sh
+set -e
+git restore --source=HEAD --staged --worktree -- .github/workflows/release.yml .github/workflows/modal-ui-1.3.15.yml
+'@
+[System.IO.File]::WriteAllText($hookPath, $preCommitHook.TrimStart("`r", "`n") + "`n", $utf8NoBom)
+
+Write-Host 'Repaired generated XAML, dialog owner syntax, and net462 regression compatibility; sanitized and validated unified modal UI; protected workflow files from the validated source commit.'
