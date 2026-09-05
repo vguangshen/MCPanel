@@ -81,7 +81,7 @@ jobs:
           - 将保留的“清理缓存并重启”收敛为专用 ClearCacheAndRestartAsync 路径，不再暴露“不重启”的缓存清理模式。
           - 删除 1.3.10 使用的 TomcatManagementUiPruner 临时隐藏实现，恢复为纯静态管理布局。
           - 保留“单独启动”“以 Catalina 方式启动”“停止应用”“查看日志”“清理缓存并重启”，以及环境页的 Tomcat Server 启停/重启功能。
-          - 新增回归检查，确保退役按钮、分发分支和后端 API 不会重新出现。
+          - 新增回归检查，区分已删除的独立“重启应用”API与保留的 ClearCacheAndRestartAsync 维护链路。
           - 发布前执行完整可靠性测试与 Win-x64 publish。
           "@
           gh release create $tag $zip $hash $manifest `
