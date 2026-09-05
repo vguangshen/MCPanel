@@ -1,0 +1,54 @@
+name: One-time download queue request time and duration
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/one-time-download-queue-duration.yml'
+      - '.github/scripts/apply-queue-download-time-duration.py'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Apply queue request time and duration
+        shell: pwsh
+        run: python .github/scripts/apply-queue-download-time-duration.py
+
+      - name: Validate diff
+        shell: pwsh
+        run: git diff --check
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install SharpSvn runtime
+        shell: pwsh
+        run: choco install vcredist-all -y --no-progress
+
+      - name: Test download queue regressions
+        shell: pwsh
+        run: dotnet test MCPanel.Tests/MCPanel.Tests.csproj -c Release --filter "FullyQualifiedName~DownloadQueue"
+
+      - name: Test remaining regression suite
+        shell: pwsh
+        run: dotnet test MCPanel.Tests/MCPanel.Tests.csproj -c Release --no-restore --filter "FullyQualifiedName!~DownloadQueue&FullyQualifiedName!~ComponentStorageMigrationMovesLegacyDirectoriesWithoutOverwritingCache"
+
+      - name: Commit feature
+        shell: pwsh
+        run: |
+          git config user.name "Xiangming"
+          git config user.email "40314529+vguangshen@users.noreply.github.com"
+          git add ProductInstallQueue.cs Resources/MainWindowTemplates.xaml MCPanel.Tests/ReliabilityTests.DownloadQueueTabs.cs
+          git commit -m "feat: show download time and task duration"
+          git push origin main
