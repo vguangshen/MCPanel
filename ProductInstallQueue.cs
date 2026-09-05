@@ -101,7 +101,8 @@ internal sealed class ProductInstallQueueService : IDisposable
             request,
             ProductInstallQueueStatus.Pending,
             0,
-            $"已加入安装队列，等待第 {sequence} 项处理。");
+            $"已加入安装队列，等待第 {sequence} 项处理。",
+            requestedAtUtc: DateTime.UtcNow);
 
         CreateSessionFiles(item);
         Items.Add(item);
@@ -459,9 +460,10 @@ internal sealed class ProductInstallQueueService : IDisposable
                 state,
                 restoredProgress,
                 message,
-                isTerminal
+                completedAtUtc: isTerminal
                     ? persisted.CompletedAtUtc ?? TryGetCompletionTimeUtc(persisted.ProgressPath)
-                    : null);
+                    : null,
+                requestedAtUtc: persisted.RequestedAtUtc ?? TryGetRequestedTimeUtc(persisted.ProgressPath));
 
             if (isTerminal)
             {
@@ -497,6 +499,23 @@ internal sealed class ProductInstallQueueService : IDisposable
         try
         {
             return File.Exists(progressPath) ? File.GetLastWriteTimeUtc(progressPath) : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static DateTime? TryGetRequestedTimeUtc(string? progressPath)
+    {
+        if (string.IsNullOrWhiteSpace(progressPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            return File.Exists(progressPath) ? File.GetCreationTimeUtc(progressPath) : null;
         }
         catch
         {
@@ -801,7 +820,8 @@ internal sealed class ProductInstallQueueService : IDisposable
                         item.LogPath)
                     {
                         IsRemovalRequested = item.IsRemovalRequested,
-                        CompletedAtUtc = item.CompletedAtUtc
+                        CompletedAtUtc = item.CompletedAtUtc,
+                        RequestedAtUtc = item.RequestedAtUtc
                     })
                     .ToList());
             AtomicFile.WriteAllText(
@@ -946,6 +966,7 @@ public sealed class ProductInstallQueueItemViewModel : ObservableObject
     private string? _speedText;
     private int _scannedFiles;
     private DateTime? _completedAtUtc;
+    private DateTime? _requestedAtUtc;
 
     internal ProductInstallQueueItemViewModel(
         string queueId,
@@ -954,7 +975,8 @@ public sealed class ProductInstallQueueItemViewModel : ObservableObject
         ProductInstallQueueStatus state,
         double progress,
         string message,
-        DateTime? completedAtUtc = null)
+        DateTime? completedAtUtc = null,
+        DateTime? requestedAtUtc = null)
     {
         QueueId = queueId;
         Sequence = sequence;
@@ -963,6 +985,7 @@ public sealed class ProductInstallQueueItemViewModel : ObservableObject
         _progress = Compat.Clamp(progress, 0, 100);
         _message = message;
         _completedAtUtc = ProductInstallQueueService.IsTerminal(state) ? completedAtUtc : null;
+        _requestedAtUtc = requestedAtUtc;
     }
 
     public string QueueId { get; }
@@ -1071,6 +1094,10 @@ public sealed class ProductInstallQueueItemViewModel : ObservableObject
     }
     public string Message { get => _message; private set => SetProperty(ref _message, value); }
     public DateTime? CompletedAtUtc => _completedAtUtc;
+    public DateTime? RequestedAtUtc => _requestedAtUtc;
+    public string DownloadTimeText => RequestedAtUtc is DateTime requestedAtUtc
+        ? $"下载时间 · {requestedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm}"
+        : "下载时间未记录";
     public string CompletionTimeText
     {
         get
@@ -1081,9 +1108,15 @@ public sealed class ProductInstallQueueItemViewModel : ObservableObject
             }
 
             var label = State == ProductInstallQueueStatus.Completed ? "部署完成" : "任务结束";
-            return CompletedAtUtc is DateTime completedAtUtc
-                ? $"{label} · {completedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm}"
-                : $"{label}时间未记录";
+            if (CompletedAtUtc is not DateTime completedAtUtc)
+            {
+                return $"{label}时间未记录";
+            }
+
+            var durationPrefix = RequestedAtUtc is DateTime requestedAtUtc && completedAtUtc >= requestedAtUtc
+                ? $"用时 {FormatElapsedDuration(completedAtUtc - requestedAtUtc)} · "
+                : string.Empty;
+            return $"{durationPrefix}{label} · {completedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm}";
         }
     }
     public int QueuePosition
@@ -1265,6 +1298,31 @@ public sealed class ProductInstallQueueItemViewModel : ObservableObject
         }
     }
 
+    private static string FormatElapsedDuration(TimeSpan elapsed)
+    {
+        if (elapsed < TimeSpan.Zero)
+        {
+            elapsed = TimeSpan.Zero;
+        }
+
+        if (elapsed.TotalDays >= 1)
+        {
+            return $"{(int)elapsed.TotalDays}天{elapsed.Hours:D2}小时{elapsed.Minutes:D2}分";
+        }
+
+        if (elapsed.TotalHours >= 1)
+        {
+            return $"{(int)elapsed.TotalHours}小时{elapsed.Minutes:D2}分";
+        }
+
+        if (elapsed.TotalMinutes >= 1)
+        {
+            return $"{(int)elapsed.TotalMinutes}分{elapsed.Seconds:D2}秒";
+        }
+
+        return $"{Math.Max(0, (int)elapsed.TotalSeconds)}秒";
+    }
+
     private static string ResolveProductName(ProductInstallWorkerRequest request)
     {
         if (request.Source == ProductSource.Online &&
@@ -1305,4 +1363,5 @@ internal sealed record ProductInstallQueuePersistedItem(
 {
     public bool IsRemovalRequested { get; init; }
     public DateTime? CompletedAtUtc { get; init; }
+    public DateTime? RequestedAtUtc { get; init; }
 }

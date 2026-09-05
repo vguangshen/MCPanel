@@ -725,6 +725,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="52" />
@@ -808,6 +809,15 @@
                            ToolTip="{Binding TransferText}"
                            Foreground="{DynamicResource PrimaryBrush}"
                            FontSize="10"
+                           Margin="62,4,0,0"
+                           TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Row="4"
+                           Grid.ColumnSpan="5"
+                           Text="{Binding DownloadTimeText}"
+                           ToolTip="{Binding DownloadTimeText}"
+                           Foreground="{DynamicResource MutedBrush}"
+                           FontSize="9.5"
+                           HorizontalAlignment="Right"
                            Margin="62,4,0,0"
                            TextTrimming="CharacterEllipsis" />
             </Grid>
