@@ -23,8 +23,37 @@ function Assert-Xml([string]$RelativePath) {
     Write-Host "Validated generated XML: $RelativePath"
 }
 
-# Two interpolated replacement strings in the migration can leave literal
-# backslashes immediately before XML quotes. Normalize only those known files.
+# Apply-ModalUi-1.3.15.ps1 has two legacy interpolated replacement strings that
+# use C/JSON-style \" escaping inside PowerShell double-quoted arguments.
+# PowerShell does not use backslash to escape a double quote, so the replacement
+# argument is truncated at Source=\ and the original resource line is lost.
+# Repair those two deterministic generated fragments before generic cleanup.
+$mainXamlPath = 'MainWindow.xaml'
+$mainXaml = Read-RepoText $mainXamlPath
+$brokenMainMerge = '                <ResourceDictionary Source=\'
+if ($mainXaml.Contains($brokenMainMerge)) {
+    $mainMerge = @'
+                <ResourceDictionary Source="Resources/PanelTheme.xaml" />
+                <ResourceDictionary Source="Resources/PanelModalChrome.xaml" />
+'@
+    $mainXaml = $mainXaml.Replace($brokenMainMerge, $mainMerge.TrimEnd("`r", "`n"))
+    Write-RepoText $mainXamlPath $mainXaml
+}
+
+$controlsPath = 'Resources/PanelDialogControls.xaml'
+$controls = Read-RepoText $controlsPath
+$brokenControlsMerge = '        <ResourceDictionary Source=\'
+if ($controls.Contains($brokenControlsMerge)) {
+    $controlsMerge = @'
+        <ResourceDictionary Source="PanelModalChrome.xaml" />
+        <ResourceDictionary Source="PanelScrollbars.xaml" />
+'@
+    $controls = $controls.Replace($brokenControlsMerge, $controlsMerge.TrimEnd("`r", "`n"))
+    Write-RepoText $controlsPath $controls
+}
+
+# Normalize any remaining literal backslashes immediately before XML quotes in
+# the two files touched by interpolated migration replacements.
 foreach ($relativePath in @('MainWindow.xaml', 'Resources/PanelDialogControls.xaml')) {
     $fixed = Read-RepoText $relativePath
     while ($fixed.Contains('\"')) {
@@ -40,7 +69,6 @@ foreach ($relativePath in @('MainWindow.xaml', 'Resources/PanelDialogControls.xa
 }
 
 # Give the destructive product-domain removal action its own visual hierarchy.
-$controlsPath = 'Resources/PanelDialogControls.xaml'
 $controls = Read-RepoText $controlsPath
 if (-not $controls.Contains('x:Key="DangerDialogButton"')) {
     $anchor = @'
@@ -95,4 +123,4 @@ foreach ($relativePath in @(
     Assert-Xml $relativePath
 }
 
-Write-Host 'Normalized, sanitized, styled, and validated unified modal UI XAML.'
+Write-Host 'Repaired truncated resource merges, normalized, sanitized, styled, and validated unified modal UI XAML.'
