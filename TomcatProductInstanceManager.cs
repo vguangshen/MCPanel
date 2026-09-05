@@ -226,7 +226,7 @@ public sealed class TomcatProductInstanceManager
                 return $"已打开 {productId} 的 Catalina 诊断窗口，仅加载该应用，端口 {info.Port}。";
             }
 
-            await StartTomcatAsync(tomcatHome, instanceRoot, cancellationToken);
+            await StartTomcatAsync(tomcatHome, instanceRoot, productId, cancellationToken);
             try
             {
                 await WaitForPortAsync(info.Port, listening: true, ProductStartupTimeout, cancellationToken);
@@ -628,39 +628,32 @@ public sealed class TomcatProductInstanceManager
         return candidate;
     }
 
-    private static async Task StartTomcatAsync(string tomcatHome, string catalinaBase, CancellationToken cancellationToken)
+    private static async Task StartTomcatAsync(
+        string tomcatHome,
+        string catalinaBase,
+        string productId,
+        CancellationToken cancellationToken)
     {
-        var consoleLog = Path.Combine(catalinaBase, "logs", "console.log");
         EnvironmentInstaller.NormalizeTomcatJvmPropertiesFile(
             catalinaBase,
             useInstanceLocalErrorFile: true);
-        Directory.CreateDirectory(Path.GetDirectoryName(consoleLog)!);
-        var startInfo = BuildTomcatJavaStartInfo(tomcatHome, catalinaBase, redirectOutput: true);
-        var launcher = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("无法执行 Tomcat 单应用启动命令。");
-        var captureTask = CaptureTomcatOutputAsync(launcher, consoleLog);
 
-        // Starting Java directly is intentional. Some supplier catalina.bat
-        // variants reset CATALINA_BASE to CATALINA_HOME while recursively
-        // invoking themselves. That silently loads the shared server.xml and
-        // defeats per-product isolation. Explicit -D properties cannot be
-        // overwritten by those scripts and keep every product on its own base.
-        try
+        // Product-level starts intentionally use a visible console, matching the
+        // original Store workflow where operators can watch Tomcat load in real time.
+        // We still launch Java directly instead of supplier catalina.bat because some
+        // supplier scripts overwrite CATALINA_BASE and accidentally load shared config.
+        var startInfo = BuildTomcatJavaStartInfo(tomcatHome, catalinaBase, redirectOutput: false);
+        using var launcher = Process.Start(startInfo)
+            ?? throw new InvalidOperationException($"无法打开 {SafeName(productId)} 的 Tomcat 单应用启动窗口。");
+
+        await Task.Delay(300, cancellationToken);
+        if (launcher.HasExited)
         {
-            await Task.Delay(300, cancellationToken);
-            if (launcher.HasExited)
-            {
-                var exitCode = launcher.ExitCode;
-                await captureTask;
-                var log = ReadRecentTomcatLog(catalinaBase);
-                throw new InvalidOperationException(string.IsNullOrWhiteSpace(log)
-                    ? $"Tomcat 启动进程提前退出，退出码：{exitCode}。"
-                    : $"Tomcat 启动进程提前退出，退出码：{exitCode}。最近日志：{Environment.NewLine}{log}");
-            }
-        }
-        finally
-        {
-            _ = DisposeProcessAfterCaptureAsync(launcher, captureTask);
+            var exitCode = launcher.ExitCode;
+            var log = ReadRecentTomcatLog(catalinaBase);
+            throw new InvalidOperationException(string.IsNullOrWhiteSpace(log)
+                ? $"Tomcat 启动进程提前退出，退出码：{exitCode}。"
+                : $"Tomcat 启动进程提前退出，退出码：{exitCode}。最近日志：{Environment.NewLine}{log}");
         }
     }
 
@@ -771,60 +764,6 @@ public sealed class TomcatProductInstanceManager
         return File.ReadLines(path, new UTF8Encoding(false))
             .Select(line => line.TrimStart('\uFEFF').Trim())
             .FirstOrDefault(line => line.Length > 0 && !line.StartsWith("#", StringComparison.Ordinal));
-    }
-
-    private static async Task CaptureTomcatOutputAsync(Process process, string consoleLog)
-    {
-        try
-        {
-            using var stream = new FileStream(
-                consoleLog,
-                FileMode.Append,
-                FileAccess.Write,
-                FileShare.ReadWrite);
-            using var writer = new StreamWriter(stream, new UTF8Encoding(false)) { AutoFlush = true };
-            var gate = new object();
-            lock (gate)
-            {
-                writer.WriteLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] MCPanel 启动独立 Tomcat 实例。");
-            }
-
-            await Task.WhenAll(
-                PumpTomcatReaderAsync(process.StandardOutput, writer, gate),
-                PumpTomcatReaderAsync(process.StandardError, writer, gate));
-        }
-        catch (Exception ex)
-        {
-            WriteOperationLog(Path.GetFileName(Path.GetDirectoryName(Path.GetDirectoryName(consoleLog))!),
-                "记录 Tomcat 控制台输出失败：" + ex.Message);
-        }
-    }
-
-    private static async Task PumpTomcatReaderAsync(StreamReader reader, StreamWriter writer, object gate)
-    {
-        string? line;
-        while ((line = await reader.ReadLineAsync()) is not null)
-        {
-            lock (gate)
-            {
-                writer.WriteLine(line);
-            }
-        }
-    }
-
-    private static async Task DisposeProcessAfterCaptureAsync(Process process, Task captureTask)
-    {
-        try
-        {
-            await captureTask;
-        }
-        catch
-        {
-        }
-        finally
-        {
-            process.Dispose();
-        }
     }
 
     private static async Task StopInstanceAsync(
