@@ -1,3 +1,4 @@
+# Standard MCPanel release pipeline
 name: Release MCPanel
 
 on:
