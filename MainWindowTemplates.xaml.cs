@@ -18,11 +18,8 @@ public partial class MainWindowTemplates : ResourceDictionary
             return null;
         }
 
-        // Normal DataTemplate content is attached to the main window, but a
-        // Popup is hosted in a separate PopupRoot window. Window.GetWindow()
-        // therefore returns null for queue-row buttons in the download popup.
-        // Fall back to the visible MCPanel window so popup actions still reach
-        // the queue service.
+        // Queue rows now live in the MainWindow visual tree. Keep a visible-window
+        // fallback for templates that are temporarily detached during layout changes.
         if (Window.GetWindow(element) is MainWindow owner)
         {
             return owner;
@@ -30,7 +27,7 @@ public partial class MainWindowTemplates : ResourceDictionary
 
         return Application.Current?.Windows
             .OfType<MainWindow>()
-            .Where(window => window.IsVisible || window.DownloadQueuePopup.IsOpen)
+            .Where(window => window.IsVisible)
             .OrderByDescending(window => window.IsActive)
             .FirstOrDefault();
     }

@@ -30,20 +30,14 @@ namespace MCPanel.Tests;
 public sealed partial class ReliabilityTests
 {
     [TestMethod]
-    public void DownloadQueuePopupRightEdgeRemainsAlignedAfterViewboxScaling()
+    public void DownloadQueueFlyoutIsHostedInsideProductsPage()
     {
-        const double targetWidth = 1060d;
-        const double popupWidth = 460d;
-        const double scaleX = 0.8d;
-
-        var left = MainWindow.CalculateDownloadQueuePopupLeft(
-            targetWidth,
-            popupWidth,
-            scaleX);
-
-        var popupRightOnScreen = left * scaleX + popupWidth;
-        var targetRightOnScreen = targetWidth * scaleX;
-        Assert.AreEqual(targetRightOnScreen, popupRightOnScreen, 0.001d);
+        var xaml = ReadRepositoryFile("MainWindow.xaml");
+        StringAssert.Contains(xaml, "x:Name=\"DownloadQueueFlyoutLayer\"");
+        StringAssert.Contains(xaml, "Grid.RowSpan=\"3\"");
+        StringAssert.Contains(xaml, "HorizontalAlignment=\"Right\"");
+        StringAssert.Contains(xaml, "ClipToBounds=\"True\"");
+        Assert.IsFalse(xaml.Contains("<Popup x:Name=\"DownloadQueuePopup\""));
     }
 
     [TestMethod]
@@ -77,14 +71,14 @@ public sealed partial class ReliabilityTests
     }
 
     [TestMethod]
-    public void DownloadQueuePopupTemplateRendersReadOnlyQueueRows()
+    public void DownloadQueueFlyoutTemplateRendersReadOnlyQueueRows()
     {
         Exception? failure = null;
         var completed = new ManualResetEventSlim();
         var thread = new Thread(() =>
         {
             MainWindow? window = null;
-            Popup? popup = null;
+            FrameworkElement? flyout = null;
             try
             {
                 window = new MainWindow();
@@ -161,19 +155,19 @@ public sealed partial class ReliabilityTests
                 window.UpdateLayout();
 
                 var button = (Button)window.FindName("DownloadQueueButton");
-                popup = (Popup)window.FindName("DownloadQueuePopup");
+                flyout = (FrameworkElement)window.FindName("DownloadQueueFlyoutLayer");
                 button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
 
-                Assert.IsTrue(popup.IsOpen, "下载队列按钮必须打开弹窗。");
-                var host = (FrameworkElement)window.FindName("DownloadQueuePopupHost");
+                Assert.AreEqual(Visibility.Visible, flyout.Visibility, "下载队列按钮必须打开窗口内浮层。");
+                var host = (FrameworkElement)window.FindName("DownloadQueueFlyoutHost");
                 host.Measure(new Size(460d, 560d));
                 host.Arrange(new Rect(host.DesiredSize));
                 host.UpdateLayout();
 
                 var activeTab = (RadioButton)window.FindName("DownloadQueueActiveTab");
                 var completedTab = (RadioButton)window.FindName("DownloadQueueCompletedTab");
-                Assert.AreEqual(true, activeTab.IsChecked, "弹窗每次打开必须默认停留在“下载中”。");
+                Assert.AreEqual(true, activeTab.IsChecked, "队列浮层每次打开必须默认停留在“下载中”。");
 
                 var activeControl = (ItemsControl)window.FindName("DownloadQueueItemsControl");
                 activeControl.UpdateLayout();
@@ -213,7 +207,7 @@ public sealed partial class ReliabilityTests
                 }
 
                 button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                Assert.IsFalse(popup.IsOpen, "再次点击下载队列按钮必须关闭弹窗。");
+                Assert.AreEqual(Visibility.Collapsed, flyout.Visibility, "再次点击下载队列按钮必须关闭窗口内浮层。");
             }
             catch (Exception ex)
             {
@@ -221,9 +215,9 @@ public sealed partial class ReliabilityTests
             }
             finally
             {
-                if (popup is not null)
+                if (flyout is not null)
                 {
-                    popup.IsOpen = false;
+                    flyout.Visibility = Visibility.Collapsed;
                 }
                 window?.Close();
                 completed.Set();
@@ -232,22 +226,22 @@ public sealed partial class ReliabilityTests
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
 
-        Assert.IsTrue(completed.Wait(TimeSpan.FromSeconds(20)), "弹窗渲染测试超时。");
+        Assert.IsTrue(completed.Wait(TimeSpan.FromSeconds(20)), "队列浮层渲染测试超时。");
         if (failure is not null)
         {
-            Assert.Fail($"下载队列弹窗无法渲染：{failure}");
+            Assert.Fail($"下载队列浮层无法渲染：{failure}");
         }
     }
 
     [TestMethod]
-    public void DownloadQueuePopupDeleteActionReachesMainWindowQueueService()
+    public void DownloadQueueFlyoutDeleteActionReachesMainWindowQueueService()
     {
         Exception? failure = null;
         var completed = new ManualResetEventSlim();
         var thread = new Thread(() =>
         {
             MainWindow? window = null;
-            Popup? popup = null;
+            FrameworkElement? flyout = null;
             try
             {
                 window = new MainWindow();
@@ -283,9 +277,10 @@ public sealed partial class ReliabilityTests
                 window.UpdateLayout();
 
                 var button = (Button)window.FindName("DownloadQueueButton");
-                popup = (Popup)window.FindName("DownloadQueuePopup");
+                flyout = (FrameworkElement)window.FindName("DownloadQueueFlyoutLayer");
                 button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+                Assert.AreEqual(Visibility.Visible, flyout.Visibility);
 
                 var completedTab = (RadioButton)window.FindName("DownloadQueueCompletedTab");
                 completedTab.IsChecked = true;
@@ -311,9 +306,9 @@ public sealed partial class ReliabilityTests
             }
             finally
             {
-                if (popup is not null)
+                if (flyout is not null)
                 {
-                    popup.IsOpen = false;
+                    flyout.Visibility = Visibility.Collapsed;
                 }
                 window?.Close();
                 completed.Set();
@@ -322,10 +317,10 @@ public sealed partial class ReliabilityTests
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
 
-        Assert.IsTrue(completed.Wait(TimeSpan.FromSeconds(20)), "弹窗删除路由测试超时。");
+        Assert.IsTrue(completed.Wait(TimeSpan.FromSeconds(20)), "队列浮层删除路由测试超时。");
         if (failure is not null)
         {
-            Assert.Fail($"弹窗删除按钮未能到达队列服务：{failure}");
+            Assert.Fail($"队列浮层删除按钮未能到达队列服务：{failure}");
         }
     }
 

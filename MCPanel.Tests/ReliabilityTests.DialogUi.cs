@@ -41,7 +41,9 @@ public partial class ReliabilityTests
             StringAssert.Contains(xaml, "Style=\"{StaticResource PanelModalSurface}\"");
         }
 
-        StringAssert.Contains(main, "<Popup x:Name=\"DownloadQueuePopup\"");
+        StringAssert.Contains(main, "x:Name=\"DownloadQueueFlyoutLayer\"");
+        Assert.IsFalse(main.Contains("<Popup x:Name=\"DownloadQueuePopup\"", StringComparison.Ordinal),
+            "下载队列已改为主窗口内浮层，不应再创建独立 Popup HWND。");
         StringAssert.Contains(main, "Background=\"#78000000\"");
         StringAssert.Contains(main, "Visibility=\"{Binding InstallationProgress.IsVisible, Converter={StaticResource BooleanToVisibility}}\"");
         StringAssert.Contains(main, "Style=\"{StaticResource PanelModalSurface}\"");

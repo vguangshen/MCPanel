@@ -165,20 +165,19 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
         _model.Products.FirstOrDefault(product =>
             string.Equals(product.ProductId, productId, StringComparison.OrdinalIgnoreCase));
 
+    private bool IsDownloadQueueFlyoutOpen =>
+        DownloadQueueFlyoutLayer.Visibility == Visibility.Visible;
+
     private void DownloadQueueButton_Click(object sender, RoutedEventArgs e)
     {
-        if (DownloadQueuePopup.IsOpen)
+        if (IsDownloadQueueFlyoutOpen)
         {
-            DownloadQueuePopup.IsOpen = false;
+            CloseDownloadQueueFlyout();
             return;
         }
 
         _model.InstallationProgress.ShowCompletedQueue = false;
-        ProductsHeader.UpdateLayout();
-        UpdateDownloadQueuePopupWidth();
-        UpdateDownloadQueuePopupTransformOrigin();
-        DownloadQueuePopup.IsOpen = true;
-        RequestDownloadQueuePopupPlacementRefresh();
+        OpenDownloadQueueFlyout();
     }
 
     private void DownloadQueueButton_PreviewMouseLeftButtonDown(
@@ -196,155 +195,93 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
 
     private void MainWindow_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (DownloadQueuePopup.IsOpen && !DownloadQueueButton.IsMouseOver)
+        if (ShouldCloseDownloadQueueFlyout(
+                IsDownloadQueueFlyoutOpen,
+                DownloadQueueButton.IsMouseOver,
+                DownloadQueueFlyoutCard.IsMouseOver))
         {
-            DownloadQueuePopup.IsOpen = false;
+            CloseDownloadQueueFlyout();
         }
     }
 
-    private void RefreshDownloadQueuePopupPlacement()
+    private void ProductsPage_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
-        if (!DownloadQueuePopup.IsOpen)
+        if (!ProductsPage.IsVisible)
         {
-            return;
-        }
-
-        ProductsHeader.UpdateLayout();
-        UpdateDownloadQueuePopupWidth();
-        UpdateDownloadQueuePopupTransformOrigin();
-
-        // Popup has no public reposition method. A tiny offset round trip
-        // invalidates the initial placement after the first layout pass.
-        var horizontalOffset = DownloadQueuePopup.HorizontalOffset;
-        DownloadQueuePopup.HorizontalOffset = horizontalOffset + 0.01d;
-        DownloadQueuePopup.HorizontalOffset = horizontalOffset;
-    }
-
-    private void RequestDownloadQueuePopupPlacementRefresh()
-    {
-        if (_isClosed || !DownloadQueuePopup.IsOpen || _downloadQueuePopupPlacementRefreshPending)
-        {
-            return;
-        }
-
-        _downloadQueuePopupPlacementRefreshPending = true;
-        Dispatcher.BeginInvoke(
-            new Action(() =>
-            {
-                _downloadQueuePopupPlacementRefreshPending = false;
-                RefreshDownloadQueuePopupPlacement();
-            }),
-            DispatcherPriority.Render);
-    }
-
-    private void ProductsHeader_SizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        if (DownloadQueuePopup.IsOpen)
-        {
-            UpdateDownloadQueuePopupWidth();
-            UpdateDownloadQueuePopupTransformOrigin();
-            RequestDownloadQueuePopupPlacementRefresh();
+            CloseDownloadQueueFlyout();
         }
     }
 
-    private void UpdateDownloadQueuePopupWidth()
+    private void ProductsPage_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        const double maximumWidth = 460d;
-        const double minimumWidth = 340d;
-
-        if (ProductsHeader.ActualWidth <= 0 || DownloadQueueButton.ActualWidth <= 0)
+        if (e.Key == Key.Escape && IsDownloadQueueFlyoutOpen)
         {
-            return;
+            CloseDownloadQueueFlyout();
+            e.Handled = true;
         }
+    }
 
-        try
+    private void OpenDownloadQueueFlyout()
+    {
+        DownloadQueueFlyoutLayer.Visibility = Visibility.Visible;
+        DownloadQueueFlyoutCard.BeginAnimation(UIElement.OpacityProperty, null);
+        DownloadQueueFlyoutCard.Opacity = 0d;
+
+        if (DownloadQueueFlyoutCard.RenderTransform is ScaleTransform scale)
         {
-            var availableWidth = Math.Max(0, ProductsHeader.ActualWidth);
-            var width = Math.Min(maximumWidth, availableWidth);
-            if (width < minimumWidth && availableWidth >= minimumWidth)
-            {
-                width = minimumWidth;
-            }
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            scale.ScaleX = 0.94d;
+            scale.ScaleY = 0.94d;
 
-            if (availableWidth > 0)
-            {
-                width = Math.Min(width, availableWidth);
-                if (Math.Abs(DownloadQueuePopupHost.Width - width) > 0.5)
+            var duration = TimeSpan.FromMilliseconds(170);
+            var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
+            scale.BeginAnimation(
+                ScaleTransform.ScaleXProperty,
+                new DoubleAnimation(0.94d, 1d, duration)
                 {
-                    DownloadQueuePopupHost.Width = width;
-                }
-                if (Math.Abs(DownloadQueuePopupCard.Width - width) > 0.5)
+                    EasingFunction = easing,
+                    FillBehavior = FillBehavior.HoldEnd
+                });
+            scale.BeginAnimation(
+                ScaleTransform.ScaleYProperty,
+                new DoubleAnimation(0.94d, 1d, duration)
                 {
-                    DownloadQueuePopupCard.Width = width;
-                }
-            }
+                    EasingFunction = easing,
+                    FillBehavior = FillBehavior.HoldEnd
+                });
+            DownloadQueueFlyoutCard.BeginAnimation(
+                UIElement.OpacityProperty,
+                new DoubleAnimation(0d, 1d, TimeSpan.FromMilliseconds(130))
+                {
+                    EasingFunction = easing,
+                    FillBehavior = FillBehavior.HoldEnd
+                });
         }
-        catch (InvalidOperationException)
+        else
         {
-            // The popup can be opened while WPF is still connecting the visual tree.
+            DownloadQueueFlyoutCard.Opacity = 1d;
         }
     }
 
-    private void UpdateDownloadQueuePopupTransformOrigin()
+    private void CloseDownloadQueueFlyout()
     {
-        if (ProductsHeader.ActualWidth <= 0 ||
-            DownloadQueueButton.ActualWidth <= 0 ||
-            DownloadQueuePopupCard.Width <= 0)
+        if (DownloadQueueFlyoutLayer.Visibility != Visibility.Visible)
         {
             return;
         }
 
-        try
+        DownloadQueueFlyoutCard.BeginAnimation(UIElement.OpacityProperty, null);
+        DownloadQueueFlyoutCard.Opacity = 1d;
+        if (DownloadQueueFlyoutCard.RenderTransform is ScaleTransform scale)
         {
-            var buttonLeftInHeader = DownloadQueueButton
-                .TranslatePoint(new Point(0, 0), ProductsHeader)
-                .X;
-            var buttonCenterInHeader = buttonLeftInHeader + DownloadQueueButton.ActualWidth / 2d;
-            var (scaleX, _) = GetProductsHeaderScale();
-            var popupLeftInHeader = Math.Max(
-                0d,
-                ProductsHeader.ActualWidth - DownloadQueuePopupCard.Width / scaleX);
-            var originX = (buttonCenterInHeader - popupLeftInHeader) * scaleX /
-                          DownloadQueuePopupCard.Width;
-            DownloadQueuePopupCard.RenderTransformOrigin = new Point(
-                Math.Min(1d, Math.Max(0d, originX)),
-                0d);
-        }
-        catch (InvalidOperationException)
-        {
-            // The visual tree may not be connected during the first layout pass.
-        }
-    }
-
-    private void DownloadQueuePopup_Opened(object? sender, EventArgs e)
-    {
-        UpdateDownloadQueuePopupWidth();
-        UpdateDownloadQueuePopupTransformOrigin();
-        if (DownloadQueuePopupCard.RenderTransform is not ScaleTransform scale)
-        {
-            return;
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            scale.ScaleX = 1d;
+            scale.ScaleY = 1d;
         }
 
-        scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-        scale.ScaleX = 0.92;
-        scale.ScaleY = 0.92;
-
-        var duration = TimeSpan.FromMilliseconds(180);
-        scale.BeginAnimation(
-            ScaleTransform.ScaleXProperty,
-            new DoubleAnimation(0.92, 1, duration)
-            {
-                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
-                FillBehavior = FillBehavior.HoldEnd
-            });
-        scale.BeginAnimation(
-            ScaleTransform.ScaleYProperty,
-            new DoubleAnimation(0.92, 1, duration)
-            {
-                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
-                FillBehavior = FillBehavior.HoldEnd
-            });
+        DownloadQueueFlyoutLayer.Visibility = Visibility.Collapsed;
     }
 
     private void HideInstallationProgress_Click(object sender, RoutedEventArgs e) =>

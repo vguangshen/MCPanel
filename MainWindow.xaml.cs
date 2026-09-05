@@ -59,14 +59,12 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _applicationUpdateCancellation;
     private ApplicationUpdateAuthorization? _applicationUpdateAuthorization;
     private CancellationTokenSource? _databaseToolCancellation;
-    private bool _downloadQueuePopupPlacementRefreshPending;
 
     internal bool IsDarkThemeActive => _isDarkThemeActive;
 
     public MainWindow()
     {
         InitializeComponent();
-        DownloadQueuePopup.CustomPopupPlacementCallback = PlaceDownloadQueuePopup;
         _productWebsiteService = new ProductWebsiteService(_runtimeService);
         _productInstallQueue = new ProductInstallQueueService(_model.InstallationProgress);
         _productInstallQueue.ItemChanged += ProductInstallQueue_ItemChanged;
@@ -81,13 +79,7 @@ public partial class MainWindow : Window
             FitWindowToMonitor();
             ApplyWindowCornerPreference();
         };
-        StateChanged += (_, _) =>
-        {
-            UpdateWindowStateChrome();
-            RequestDownloadQueuePopupPlacementRefresh();
-        };
-        SizeChanged += (_, _) => RequestDownloadQueuePopupPlacementRefresh();
-        LocationChanged += (_, _) => RequestDownloadQueuePopupPlacementRefresh();
+        StateChanged += (_, _) => UpdateWindowStateChrome();
         Closing += MainWindow_Closing;
         ContentRendered += (_, _) =>
         {
@@ -107,7 +99,7 @@ public partial class MainWindow : Window
             SystemEvents.UserPreferenceChanged -= SystemEvents_UserPreferenceChanged;
             SystemEvents.DisplaySettingsChanged -= SystemEvents_DisplaySettingsChanged;
             _timer.Stop();
-            DownloadQueuePopup.IsOpen = false;
+            CloseDownloadQueueFlyout();
             _productInstallQueue.Dispose();
             _productUninstallCancellation?.Cancel();
             _productUninstallCancellation?.Dispose();
@@ -192,87 +184,6 @@ public partial class MainWindow : Window
                 _runtimeRefreshInFlight = false;
             }
         };
-    }
-
-    private CustomPopupPlacement[] PlaceDownloadQueuePopup(
-        Size popupSize,
-        Size targetSize,
-        Point offset)
-    {
-        const double popupGap = 32d;
-        var (scaleX, scaleY) = GetProductsHeaderScale();
-        // The placement point is expressed in the header's pre-Viewbox
-        // coordinate space, while popupSize is already in screen DIPs. Convert
-        // the popup width back through the horizontal scale before subtracting
-        // it. Without this conversion the popup is shifted to the right (and
-        // can be entirely off-screen) on compact/RDP window sizes.
-        var popupLeft = CalculateDownloadQueuePopupLeft(
-            targetSize.Width,
-            popupSize.Width,
-            scaleX);
-        var scaledGapY = popupGap / scaleY;
-        var popupTop = targetSize.Height + scaledGapY;
-        var buttonTopInHeader = 0d;
-
-        try
-        {
-            buttonTopInHeader = DownloadQueueButton
-                .TranslatePoint(new Point(0, 0), ProductsHeader)
-                .Y;
-            popupTop = buttonTopInHeader + DownloadQueueButton.ActualHeight + scaledGapY;
-        }
-        catch (InvalidOperationException)
-        {
-            // Use the header-bottom fallback until the visual tree is connected.
-        }
-
-        return
-        [
-            new CustomPopupPlacement(
-                new Point(popupLeft, popupTop),
-                PopupPrimaryAxis.Horizontal),
-            new CustomPopupPlacement(
-                new Point(popupLeft, buttonTopInHeader - popupSize.Height / scaleY - scaledGapY),
-                PopupPrimaryAxis.Horizontal)
-        ];
-    }
-
-    internal static double CalculateDownloadQueuePopupLeft(
-        double targetWidth,
-        double popupWidth,
-        double scaleX)
-    {
-        var safeScaleX = !double.IsNaN(scaleX) &&
-                         !double.IsInfinity(scaleX) &&
-                         scaleX > 0.001d
-            ? scaleX
-            : 1d;
-        return Math.Max(0d, targetWidth - popupWidth / safeScaleX);
-    }
-
-    private (double ScaleX, double ScaleY) GetProductsHeaderScale()
-    {
-        try
-        {
-            if (ProductsHeader.ActualWidth <= 0 || ProductsHeader.ActualHeight <= 0)
-            {
-                return (1d, 1d);
-            }
-
-            var transform = ProductsHeader.TransformToAncestor(MainViewbox);
-            var origin = transform.Transform(new Point(0, 0));
-            var right = transform.Transform(new Point(ProductsHeader.ActualWidth, 0));
-            var bottom = transform.Transform(new Point(0, ProductsHeader.ActualHeight));
-            var scaleX = Math.Abs(right.X - origin.X) / ProductsHeader.ActualWidth;
-            var scaleY = Math.Abs(bottom.Y - origin.Y) / ProductsHeader.ActualHeight;
-            return (
-                scaleX > 0.001d ? scaleX : 1d,
-                scaleY > 0.001d ? scaleY : 1d);
-        }
-        catch (InvalidOperationException)
-        {
-            return (1d, 1d);
-        }
     }
 
     private static void WriteRuntimeRefreshError(Exception exception)
@@ -524,7 +435,7 @@ public partial class MainWindow : Window
         // queue worker and durable state alive; the tray icon can restore the
         // window and the queue button can reopen the progress panel later.
         _model.InstallationProgress.Hide();
-        DownloadQueuePopup.IsOpen = false;
+        CloseDownloadQueueFlyout();
         Hide();
     }
 
@@ -543,7 +454,7 @@ public partial class MainWindow : Window
         // "退出 MCPanel" path is allowed to close this window.
         e.Cancel = true;
         _model.InstallationProgress.Hide();
-        DownloadQueuePopup.IsOpen = false;
+        CloseDownloadQueueFlyout();
         Hide();
     }
 
@@ -579,7 +490,7 @@ public partial class MainWindow : Window
         SearchBox.Visibility = page == "Products" ? Visibility.Visible : Visibility.Collapsed;
         if (page != "Products")
         {
-            DownloadQueuePopup.IsOpen = false;
+            CloseDownloadQueueFlyout();
         }
         FocusNavigationItem(button);
         Dispatcher.BeginInvoke(

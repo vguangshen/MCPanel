@@ -7,24 +7,24 @@ namespace MCPanel.Tests;
 public sealed partial class ReliabilityTests
 {
     [TestMethod]
-    public void DownloadQueuePopupClosePolicyKeepsToolbarAndPopupClicksInside()
+    public void DownloadQueueFlyoutClosePolicyKeepsToolbarAndFlyoutClicksInside()
     {
-        Assert.IsFalse(MainWindow.ShouldCloseDownloadQueuePopup(
+        Assert.IsFalse(MainWindow.ShouldCloseDownloadQueueFlyout(
             isOpen: false,
             toolbarButtonHovered: false,
-            popupHovered: false));
-        Assert.IsFalse(MainWindow.ShouldCloseDownloadQueuePopup(
+            flyoutHovered: false));
+        Assert.IsFalse(MainWindow.ShouldCloseDownloadQueueFlyout(
             isOpen: true,
             toolbarButtonHovered: true,
-            popupHovered: false));
-        Assert.IsFalse(MainWindow.ShouldCloseDownloadQueuePopup(
+            flyoutHovered: false));
+        Assert.IsFalse(MainWindow.ShouldCloseDownloadQueueFlyout(
             isOpen: true,
             toolbarButtonHovered: false,
-            popupHovered: true));
-        Assert.IsTrue(MainWindow.ShouldCloseDownloadQueuePopup(
+            flyoutHovered: true));
+        Assert.IsTrue(MainWindow.ShouldCloseDownloadQueueFlyout(
             isOpen: true,
             toolbarButtonHovered: false,
-            popupHovered: false));
+            flyoutHovered: false));
     }
 
     [TestMethod]
@@ -41,8 +41,8 @@ public sealed partial class ReliabilityTests
             "进度环必须明显大于 40px 下载按钮，才能保持独立的视觉层级。");
 
         var source = ReadRepositoryFile("MainWindow.DownloadQueueFix.cs");
-        StringAssert.Contains(source, "PreviewMouseLeftButtonDown -= MainWindow_PreviewMouseLeftButtonDown;");
-        StringAssert.Contains(source, "popupChild.IsMouseOver");
+        Assert.IsFalse(source.Contains("DownloadQueuePopup"), "工具栏修复层不应再依赖独立 WPF Popup。");
+        StringAssert.Contains(source, "ShouldCloseDownloadQueueFlyout");
         StringAssert.Contains(source, "new FontFamily(\"Segoe UI, Microsoft YaHei UI\")");
         StringAssert.Contains(source, "ring.StrokeThickness = DownloadQueueProgressRingStroke;");
     }
@@ -87,4 +87,26 @@ Assert.AreEqual(Visibility.Collapsed, progress.ActiveQueueItemsVisibility);
             DeleteTemporaryTree(root);
         }
     }
+
+    [TestMethod]
+    public void DownloadQueueUsesInWindowFlyoutInsteadOfNativePopup()
+    {
+        var xaml = ReadRepositoryFile("MainWindow.xaml");
+        var products = ReadRepositoryFile("MainWindow.Products.cs");
+        var main = ReadRepositoryFile("MainWindow.xaml.cs");
+
+        StringAssert.Contains(xaml, "x:Name=\"DownloadQueueFlyoutLayer\"");
+        StringAssert.Contains(xaml, "x:Name=\"DownloadQueueFlyoutCard\"");
+        StringAssert.Contains(xaml, "Panel.ZIndex=\"200\"");
+        StringAssert.Contains(xaml, "ClipToBounds=\"True\"");
+        Assert.IsFalse(xaml.Contains("<Popup x:Name=\"DownloadQueuePopup\""),
+            "下载队列必须留在 MainWindow 视觉树内，不能再创建独立 HWND Popup。");
+        StringAssert.Contains(products, "DownloadQueueFlyoutLayer.Visibility = Visibility.Visible;");
+        StringAssert.Contains(products, "DownloadQueueFlyoutCard.IsMouseOver");
+        StringAssert.Contains(products, "e.Key == Key.Escape");
+        Assert.IsFalse(products.Contains("DownloadQueuePopup"));
+        Assert.IsFalse(main.Contains("CustomPopupPlacementCallback"));
+        Assert.IsFalse(main.Contains("PlaceDownloadQueuePopup"));
+    }
+
 }
