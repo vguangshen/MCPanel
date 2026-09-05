@@ -830,6 +830,37 @@
                         <DropShadowEffect BlurRadius="24" ShadowDepth="6" Opacity="0.28" Color="#000000" />
                     </Border.Effect>
                     <Grid>
+                        <Grid.Resources>
+                            <Style x:Key="DownloadQueueTabButton" TargetType="RadioButton">
+                                <Setter Property="Height" Value="34" />
+                                <Setter Property="Padding" Value="12,0" />
+                                <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+                                <Setter Property="FontSize" Value="11.5" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                                <Setter Property="Cursor" Value="Hand" />
+                                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                                <Setter Property="VerticalContentAlignment" Value="Center" />
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="RadioButton">
+                                            <Border x:Name="TabRoot" Background="Transparent" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="TabRoot" Property="Background" Value="{DynamicResource NavHoverBrush}" />
+                                                </Trigger>
+                                                <Trigger Property="IsChecked" Value="True">
+                                                    <Setter TargetName="TabRoot" Property="Background" Value="{DynamicResource TonalBrush}" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource TonalTextBrush}" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </Grid.Resources>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
@@ -838,50 +869,88 @@
                         </Grid.RowDefinitions>
 
                         <StackPanel>
-                            <TextBlock Text="下载与安装队列"
-                                       Foreground="{DynamicResource TextBrush}"
-                                       FontSize="16"
-                                       FontWeight="SemiBold" />
-                            <TextBlock Text="{Binding InstallationProgress.QueueSummaryText}"
-                                       Foreground="{DynamicResource MutedBrush}"
-                                       FontSize="11"
-                                       Margin="0,4,0,0"
-                                       TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="下载与安装队列" Foreground="{DynamicResource TextBrush}" FontSize="16" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding InstallationProgress.QueuePanelSummaryText}" Foreground="{DynamicResource MutedBrush}"
+                                       FontSize="11" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" />
                         </StackPanel>
 
-                        <Border Grid.Row="1"
-                                Height="1"
-                                Margin="0,12,0,8"
-                                Background="{DynamicResource LineBrush}" />
+                        <Border Grid.Row="1" Margin="0,12,0,8" Padding="3" CornerRadius="8"
+                                Background="{DynamicResource SurfaceAltBrush}" BorderBrush="{DynamicResource CardLineBrush}" BorderThickness="1">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <RadioButton x:Name="DownloadQueueActiveTab" Grid.Column="0" GroupName="DownloadQueueTabs" Style="{StaticResource DownloadQueueTabButton}"
+                                             IsChecked="{Binding InstallationProgress.ShowActiveQueue, Mode=TwoWay}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="下载中" VerticalAlignment="Center" />
+                                        <Border MinWidth="22" Height="18" Margin="7,0,0,0" Padding="6,0" Background="{DynamicResource InputBrush}" CornerRadius="9">
+                                            <TextBlock Text="{Binding InstallationProgress.ActiveQueueCount}" FontSize="9.5"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Border>
+                                    </StackPanel>
+                                </RadioButton>
+                                <RadioButton x:Name="DownloadQueueCompletedTab" Grid.Column="1" GroupName="DownloadQueueTabs" Style="{StaticResource DownloadQueueTabButton}"
+                                             IsChecked="{Binding InstallationProgress.ShowCompletedQueue, Mode=TwoWay}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="已完成" VerticalAlignment="Center" />
+                                        <Border MinWidth="22" Height="18" Margin="7,0,0,0" Padding="6,0" Background="{DynamicResource InputBrush}" CornerRadius="9">
+                                            <TextBlock Text="{Binding InstallationProgress.CompletedQueueCount}" FontSize="9.5"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Border>
+                                    </StackPanel>
+                                </RadioButton>
+                            </Grid>
+                        </Border>
 
                         <Grid Grid.Row="2">
-                            <TextBlock Text="暂无下载或安装任务"
-                                       Foreground="{DynamicResource MutedBrush}"
-                                       FontSize="12"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       Margin="0,18"
-                                       Visibility="{Binding InstallationProgress.QueueEmptyVisibility}" />
-                            <ScrollViewer MaxHeight="390"
-                                          VerticalScrollBarVisibility="Auto"
-                                          HorizontalScrollBarVisibility="Disabled"
-                                          Visibility="{Binding InstallationProgress.QueueItemsVisibility}">
-                                <ScrollViewer.Resources>
-                                    <Style TargetType="ScrollBar" BasedOn="{StaticResource ModernVerticalScrollBar}" />
-                                </ScrollViewer.Resources>
-                                <ItemsControl x:Name="DownloadQueueItemsControl"
-                                              ItemsSource="{Binding InstallationProgress.QueueItems}"
-                                              ItemTemplate="{StaticResource InstallationQueueItemTemplate}">
-                                </ItemsControl>
-                            </ScrollViewer>
+                            <Grid Visibility="{Binding InstallationProgress.ShowActiveQueue, Converter={StaticResource BooleanToVisibility}}">
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,46"
+                                            Visibility="{Binding InstallationProgress.ActiveQueueEmptyVisibility}">
+                                    <TextBlock Text="当前没有下载或安装任务" Foreground="{DynamicResource TextBrush}" FontSize="12.5"
+                                               FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                    <TextBlock Text="新任务加入后会自动显示在这里" Foreground="{DynamicResource MutedBrush}" FontSize="10.5"
+                                               Margin="0,5,0,0" HorizontalAlignment="Center" />
+                                </StackPanel>
+                                <ScrollViewer MaxHeight="390" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                              Visibility="{Binding InstallationProgress.ActiveQueueItemsVisibility}">
+                                    <ScrollViewer.Resources>
+                                        <Style TargetType="ScrollBar" BasedOn="{StaticResource ModernVerticalScrollBar}" />
+                                    </ScrollViewer.Resources>
+                                    <ItemsControl x:Name="DownloadQueueItemsControl"
+                                                  ItemsSource="{Binding InstallationProgress.ActiveQueueItems}"
+                                                  ItemTemplate="{StaticResource InstallationQueueItemTemplate}" />
+                                </ScrollViewer>
+                            </Grid>
+
+                            <Grid Visibility="{Binding InstallationProgress.ShowCompletedQueue, Converter={StaticResource BooleanToVisibility}}">
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,46"
+                                            Visibility="{Binding InstallationProgress.CompletedQueueEmptyVisibility}">
+                                    <TextBlock Text="还没有已完成的任务记录" Foreground="{DynamicResource TextBrush}" FontSize="12.5"
+                                               FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                    <TextBlock Text="任务结束后会自动移动到这里" Foreground="{DynamicResource MutedBrush}" FontSize="10.5"
+                                               Margin="0,5,0,0" HorizontalAlignment="Center" />
+                                </StackPanel>
+                                <ScrollViewer MaxHeight="390" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                              Visibility="{Binding InstallationProgress.CompletedQueueItemsVisibility}">
+                                    <ScrollViewer.Resources>
+                                        <Style TargetType="ScrollBar" BasedOn="{StaticResource ModernVerticalScrollBar}" />
+                                    </ScrollViewer.Resources>
+                                    <ItemsControl x:Name="CompletedDownloadQueueItemsControl" ItemsSource="{Binding InstallationProgress.CompletedQueueItems}"
+                                                  ItemTemplate="{StaticResource InstallationQueueHistoryItemTemplate}" />
+                                </ScrollViewer>
+                            </Grid>
                         </Grid>
 
-                        <TextBlock Grid.Row="3"
-                                   Text="任务按加入时间逐项处理；SVN 下载显示真实容量、速度和阶段状态，不使用不可靠的估算百分比。关闭面板或窗口到托盘不会中断后台任务。"
-                                   Foreground="{DynamicResource MutedBrush}"
-                                   FontSize="10"
-                                   Margin="0,10,0,0"
-                                   TextWrapping="Wrap" />
+                        <Grid Grid.Row="3" Margin="0,10,0,0">
+                            <TextBlock Text="任务按加入时间逐项处理；关闭面板或收起窗口不会中断后台任务。"
+                                       Foreground="{DynamicResource MutedBrush}" FontSize="10" TextWrapping="Wrap"
+                                       Visibility="{Binding InstallationProgress.ShowActiveQueue, Converter={StaticResource BooleanToVisibility}}" />
+                            <TextBlock Text="部署成功后会自动移到“已完成”；失败和取消任务也会保留在这里便于查看原因，最多保留最近 20 条记录。"
+                                       Foreground="{DynamicResource MutedBrush}" FontSize="10" TextWrapping="Wrap"
+                                       Visibility="{Binding InstallationProgress.ShowCompletedQueue, Converter={StaticResource BooleanToVisibility}}" />
+                        </Grid>
                     </Grid>
                 </Border>
             </Grid>

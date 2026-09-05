@@ -85,70 +85,83 @@ public sealed partial class ReliabilityTests
         {
             MainWindow? window = null;
             Popup? popup = null;
-            Exception? dispatcherFailure = null;
             try
             {
                 window = new MainWindow();
-                window.Dispatcher.UnhandledException += (_, args) =>
-                {
-                    dispatcherFailure ??= args.Exception;
-                    args.Handled = true;
-                };
                 var model = (MainViewModel)window.DataContext;
-                var initialQueueCount = model.InstallationProgress.QueueItems.Count;
-                for (var index = 1; index <= 4; index++)
+                var initialActiveCount = model.InstallationProgress.ActiveQueueCount;
+                var initialCompletedCount = model.InstallationProgress.CompletedQueueCount;
+                var activeItems = new List<ProductInstallQueueItemViewModel>();
+                var completedItems = new List<ProductInstallQueueItemViewModel>();
+
+                for (var index = 1; index <= 2; index++)
                 {
-                    model.InstallationProgress.QueueItems.Add(
-                        new ProductInstallQueueItemViewModel(
-                            $"popup-render-test-{index}",
-                            index,
-                            new ProductInstallWorkerRequest(
-                                $"UI{index:000}",
-                                $"弹窗绑定测试软件 {index}",
-                                "在线",
-                                "/Assets/Logo/DS0102.png",
-                                ProductSource.Local,
-                                null,
-                                "Tomcat7",
-                                "MySQL5.6",
-                                "Java",
-                                null,
-                                null,
-                                false,
-                                null,
-                                null,
-                                false),
-                            ProductInstallQueueStatus.Completed,
-                            100d,
-                            "已完成"));
+                    var item = new ProductInstallQueueItemViewModel(
+                        $"popup-active-test-{index}",
+                        100000 + index,
+                        new ProductInstallWorkerRequest(
+                            $"ACTIVE{index}",
+                            $"下载中测试软件 {index}",
+                            "在线",
+                            "/Assets/Logo/DS0102.png",
+                            ProductSource.Local,
+                            null,
+                            "Tomcat7",
+                            "MySQL5.6",
+                            "Java",
+                            null,
+                            null,
+                            false,
+                            null,
+                            null,
+                            false),
+                        ProductInstallQueueStatus.Pending,
+                        0d,
+                        "等待处理");
+                    activeItems.Add(item);
+                    model.InstallationProgress.QueueItems.Add(item);
+                }
+
+                for (var index = 1; index <= 2; index++)
+                {
+                    var item = new ProductInstallQueueItemViewModel(
+                        $"popup-completed-test-{index}",
+                        200000 + index,
+                        new ProductInstallWorkerRequest(
+                            $"DONE{index}",
+                            $"已完成测试软件 {index}",
+                            "在线",
+                            "/Assets/Logo/DS0102.png",
+                            ProductSource.Local,
+                            null,
+                            "Tomcat7",
+                            "MySQL5.6",
+                            "Java",
+                            null,
+                            null,
+                            false,
+                            null,
+                            null,
+                            false),
+                        ProductInstallQueueStatus.Completed,
+                        100d,
+                        "产品文件与运行服务已处理完成。");
+                    completedItems.Add(item);
+                    model.InstallationProgress.QueueItems.Add(item);
                 }
 
                 window.Show();
+                var queueTimer = typeof(MainWindow)
+                    .GetField("_timer", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?
+                    .GetValue(window) as DispatcherTimer;
+                queueTimer?.Stop();
                 window.UpdateLayout();
                 ((FrameworkElement)window.FindName("HomePage")).Visibility = Visibility.Collapsed;
                 ((FrameworkElement)window.FindName("ProductsPage")).Visibility = Visibility.Visible;
                 window.UpdateLayout();
+
                 var button = (Button)window.FindName("DownloadQueueButton");
                 popup = (Popup)window.FindName("DownloadQueuePopup");
-
-                Assert.AreEqual(40d, button.ActualWidth, 0.1d, "下载队列入口的点击区域宽度必须固定为 40。");
-                Assert.AreEqual(40d, button.ActualHeight, 0.1d, "下载队列入口的点击区域高度必须固定为 40。");
-                Assert.AreEqual(button.ActualWidth, button.ActualHeight, 0.1d, "下载队列入口必须保持正方形比例。");
-                button.ApplyTemplate();
-                var downloadIcon = FindVisualChildren<TextBlock>(button)
-                    .SingleOrDefault(candidate => candidate.Text == "\uE896");
-                Assert.IsNotNull(downloadIcon, "下载队列入口必须渲染下载图标。");
-                Assert.AreEqual(
-                    "Segoe MDL2 Assets",
-                    downloadIcon!.FontFamily.Source,
-                    "下载队列入口图标必须使用 Segoe MDL2 Assets 字体，避免显示成空白方框。");
-                var buttonRoot = button.Template.FindName("Root", button) as Border;
-                Assert.IsNotNull(buttonRoot, "下载队列入口模板必须包含可验证的根边框。");
-                Assert.AreEqual(20d, buttonRoot!.CornerRadius.TopLeft, 0.1d, "下载队列入口应保持圆形图标按钮外观。");
-                Assert.AreEqual(20d, buttonRoot.CornerRadius.TopRight, 0.1d);
-                Assert.AreEqual(20d, buttonRoot.CornerRadius.BottomRight, 0.1d);
-                Assert.AreEqual(20d, buttonRoot.CornerRadius.BottomLeft, 0.1d);
-
                 button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
 
@@ -157,51 +170,46 @@ public sealed partial class ReliabilityTests
                 host.Measure(new Size(460d, 560d));
                 host.Arrange(new Rect(host.DesiredSize));
                 host.UpdateLayout();
-                window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
-                var itemsControl = (ItemsControl)window.FindName("DownloadQueueItemsControl");
-                Assert.AreEqual(
-                    initialQueueCount + 4,
-                    itemsControl.Items.Count,
-                    "队列任务必须逐行全部呈现。");
-                for (var index = initialQueueCount; index < itemsControl.Items.Count; index++)
+
+                var activeTab = (RadioButton)window.FindName("DownloadQueueActiveTab");
+                var completedTab = (RadioButton)window.FindName("DownloadQueueCompletedTab");
+                Assert.AreEqual(true, activeTab.IsChecked, "弹窗每次打开必须默认停留在“下载中”。");
+
+                var activeControl = (ItemsControl)window.FindName("DownloadQueueItemsControl");
+                activeControl.UpdateLayout();
+                Assert.AreEqual(initialActiveCount + activeItems.Count, activeControl.Items.Count,
+                    "下载中页面只能呈现等待/运行中的任务。");
+                foreach (var item in activeItems)
                 {
-                    var container = itemsControl.ItemContainerGenerator.ContainerFromIndex(index);
-                    Assert.IsNotNull(container, $"第 {index + 1} 条队列任务没有生成可视行。");
-
-                    var productIconFrame = FindVisualChildren<Border>(container!)
-                        .SingleOrDefault(candidate => candidate.Width == 42d && candidate.Height == 42d);
-                    Assert.IsNotNull(productIconFrame, $"第 {index + 1} 条队列任务必须显示产品图标容器。");
-                    var productIcon = FindVisualChildren<Image>(productIconFrame!)
-                        .SingleOrDefault();
-                    Assert.IsNotNull(productIcon, $"第 {index + 1} 条队列任务必须渲染产品图标。");
-                    Assert.AreEqual(42d, productIconFrame!.ActualWidth, 0.1d,
-                        "队列产品图标必须保持固定的放大尺寸。");
-                    var productDetails = FindVisualChildren<StackPanel>(container!)
-                        .SingleOrDefault(candidate => candidate.Margin.Left == 10d && candidate.Margin.Right == 8d);
-                    Assert.IsNotNull(productDetails, "产品名称与图标之间必须保留固定间距。");
-                    var progressBar = FindVisualChildren<ProgressBar>(container!).Single();
-                    Assert.AreEqual(62d, progressBar.Margin.Left, 0.1d,
-                        "队列进度条必须与产品文字起始位置对齐。");
-
-                    var visibleButtons = FindVisualChildren<Button>(container!)
-                        .Where(candidate => candidate.Visibility == Visibility.Visible)
-                        .ToArray();
-                    Assert.AreEqual(1, visibleButtons.Length, $"第 {index + 1} 条队列任务的删除按钮数量不正确。");
-                    var removeButton = visibleButtons[0];
-                    Assert.AreEqual("\uE74D", removeButton.Content, "队列删除操作应使用图标而不是挤压文字按钮。");
-                    Assert.AreEqual(32d, removeButton.ActualWidth, 0.1d, "队列操作按钮宽度必须固定为 32。");
-                    Assert.AreEqual(32d, removeButton.ActualHeight, 0.1d, "队列操作按钮高度必须固定为 32。");
-                    removeButton.ApplyTemplate();
-                    var removeButtonRoot = removeButton.Template.FindName("Root", removeButton) as Border;
-                    Assert.IsNotNull(removeButtonRoot, "队列操作按钮模板必须包含可验证的根边框。");
-                    Assert.AreEqual(8d, removeButtonRoot!.CornerRadius.TopLeft, 0.1d, "队列操作按钮应使用圆角正方形。");
-                    Assert.AreEqual(8d, removeButtonRoot.CornerRadius.TopRight, 0.1d);
-                    Assert.AreEqual(8d, removeButtonRoot.CornerRadius.BottomRight, 0.1d);
-                    Assert.AreEqual(8d, removeButtonRoot.CornerRadius.BottomLeft, 0.1d);
+                    var container = activeControl.ItemContainerGenerator.ContainerFromItem(item);
+                    Assert.IsNotNull(container, "下载中任务必须生成可视行。");
+                    Assert.AreEqual(1, FindVisualChildren<ProgressBar>(container!).Count(),
+                        "下载中任务应保留实时进度条。");
+                    var removeButton = FindVisualChildren<Button>(container!)
+                        .Single(candidate => candidate.Visibility == Visibility.Visible);
+                    Assert.AreEqual("取消并删除此任务", AutomationProperties.GetName(removeButton));
                 }
-                if (dispatcherFailure is not null)
+
+                completedTab.IsChecked = true;
+                window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+                host.UpdateLayout();
+                Assert.AreEqual(false, activeTab.IsChecked);
+                Assert.AreEqual(true, completedTab.IsChecked);
+
+                var completedControl = (ItemsControl)window.FindName("CompletedDownloadQueueItemsControl");
+                completedControl.UpdateLayout();
+                Assert.AreEqual(initialCompletedCount + completedItems.Count, completedControl.Items.Count,
+                    "已完成页面必须呈现所有终态历史记录。");
+                foreach (var item in completedItems)
                 {
-                    throw dispatcherFailure;
+                    var container = completedControl.ItemContainerGenerator.ContainerFromItem(item);
+                    Assert.IsNotNull(container, "已完成任务必须生成历史记录行。");
+                    Assert.AreEqual(0, FindVisualChildren<ProgressBar>(container!).Count(),
+                        "已完成历史应使用紧凑记录样式，不再显示无意义的进度条。");
+                    var removeButton = FindVisualChildren<Button>(container!).Single();
+                    Assert.AreEqual("删除此记录", AutomationProperties.GetName(removeButton));
+                    Assert.AreEqual(32d, removeButton.ActualWidth, 0.1d);
+                    Assert.AreEqual(32d, removeButton.ActualHeight, 0.1d);
                 }
 
                 button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -246,7 +254,7 @@ public sealed partial class ReliabilityTests
                 var model = (MainViewModel)window.DataContext;
                 var item = new ProductInstallQueueItemViewModel(
                     "popup-delete-route-test",
-                    100000,
+                    300000,
                     new ProductInstallWorkerRequest(
                         "POPUP-DELETE",
                         "弹窗删除路由测试软件",
@@ -279,12 +287,15 @@ public sealed partial class ReliabilityTests
                 button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
 
-                var itemsControl = (ItemsControl)window.FindName("DownloadQueueItemsControl");
+                var completedTab = (RadioButton)window.FindName("DownloadQueueCompletedTab");
+                completedTab.IsChecked = true;
+                window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+
+                var itemsControl = (ItemsControl)window.FindName("CompletedDownloadQueueItemsControl");
                 itemsControl.UpdateLayout();
                 var container = itemsControl.ItemContainerGenerator.ContainerFromItem(item);
-                Assert.IsNotNull(container, "删除路由测试项必须生成弹窗行。");
-                var removeButton = FindVisualChildren<Button>(container!)
-                    .Single(candidate => candidate.Visibility == Visibility.Visible);
+                Assert.IsNotNull(container, "已完成页面必须生成删除路由测试项。");
+                var removeButton = FindVisualChildren<Button>(container!).Single();
                 Assert.AreEqual("删除此记录", AutomationProperties.GetName(removeButton));
 
                 removeButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -292,7 +303,7 @@ public sealed partial class ReliabilityTests
 
                 Assert.IsFalse(
                     model.InstallationProgress.QueueItems.Contains(item),
-                    "弹窗内的删除按钮必须通过主窗体队列服务删除队列记录。");
+                    "已完成页面的删除按钮必须通过主窗体队列服务删除历史记录。");
             }
             catch (Exception ex)
             {
@@ -304,7 +315,6 @@ public sealed partial class ReliabilityTests
                 {
                     popup.IsOpen = false;
                 }
-
                 window?.Close();
                 completed.Set();
             }

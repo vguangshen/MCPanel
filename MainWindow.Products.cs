@@ -173,6 +173,7 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
             return;
         }
 
+        _model.InstallationProgress.ShowCompletedQueue = false;
         ProductsHeader.UpdateLayout();
         UpdateDownloadQueuePopupWidth();
         UpdateDownloadQueuePopupTransformOrigin();

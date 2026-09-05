@@ -75,7 +75,12 @@ public sealed partial class ReliabilityTests
             Assert.AreEqual(0, progress.ActiveQueueCount);
             Assert.AreEqual(Visibility.Visible, progress.QueueEmptyVisibility);
             Assert.AreEqual(Visibility.Collapsed, progress.QueueItemsVisibility);
-            Assert.AreEqual("安装队列已完成", progress.QueueSummaryText);
+Assert.AreEqual("当前没有下载或安装任务", progress.QueueSummaryText);
+Assert.IsTrue(progress.ShowActiveQueue);
+Assert.IsFalse(progress.ShowCompletedQueue);
+Assert.AreEqual(0, progress.CompletedQueueCount);
+Assert.AreEqual(Visibility.Visible, progress.ActiveQueueEmptyVisibility);
+Assert.AreEqual(Visibility.Collapsed, progress.ActiveQueueItemsVisibility);
         }
         finally
         {

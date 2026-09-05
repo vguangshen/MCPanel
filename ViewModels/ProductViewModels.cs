@@ -359,6 +359,7 @@ public sealed class InstallationProgressViewModel : ObservableObject
     private string _transferText = string.Empty;
     private double _downloadProgress;
     private bool _downloadTotalKnown;
+    private bool _showCompletedQueue;
 
     public InstallationProgressViewModel()
     {
@@ -390,27 +391,68 @@ public sealed class InstallationProgressViewModel : ObservableObject
     public bool HasQueueItems => QueueItems.Count > 0;
     public bool HasActiveQueue => QueueItems.Any(item => !item.IsTerminal);
     public int ActiveQueueCount => QueueItems.Count(item => !item.IsTerminal);
+    public int CompletedQueueCount => QueueItems.Count(item => item.IsTerminal);
+    public IReadOnlyList<ProductInstallQueueItemViewModel> ActiveQueueItems => QueueItems
+        .Where(item => !item.IsTerminal)
+        .OrderBy(item => item.Sequence)
+        .ToArray();
+    public IReadOnlyList<ProductInstallQueueItemViewModel> CompletedQueueItems => QueueItems
+        .Where(item => item.IsTerminal)
+        .OrderByDescending(item => item.Sequence)
+        .ToArray();
+    public bool ShowActiveQueue
+    {
+        get => !ShowCompletedQueue;
+        set
+        {
+            if (value)
+            {
+                ShowCompletedQueue = false;
+            }
+        }
+    }
+    public bool ShowCompletedQueue
+    {
+        get => _showCompletedQueue;
+        set
+        {
+            if (!SetProperty(ref _showCompletedQueue, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(ShowActiveQueue));
+            OnPropertyChanged(nameof(QueuePanelSummaryText));
+        }
+    }
+    public Visibility ActiveQueueEmptyVisibility => ActiveQueueCount == 0 ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility ActiveQueueItemsVisibility => ActiveQueueCount == 0 ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility CompletedQueueEmptyVisibility => CompletedQueueCount == 0 ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility CompletedQueueItemsVisibility => CompletedQueueCount == 0 ? Visibility.Collapsed : Visibility.Visible;
     public Visibility QueueEmptyVisibility => HasQueueItems ? Visibility.Collapsed : Visibility.Visible;
     public Visibility QueueItemsVisibility => HasQueueItems ? Visibility.Visible : Visibility.Collapsed;
     public string QueueSummaryText
     {
         get
         {
-            var active = QueueItems
-                .Where(item => !item.IsTerminal)
-                .OrderBy(item => item.Sequence)
-                .ToArray();
-            if (active.Length == 0)
+            var active = ActiveQueueItems;
+            if (active.Count == 0)
             {
-                return "安装队列已完成";
+                return "当前没有下载或安装任务";
             }
 
             var running = active.FirstOrDefault(item => item.State == ProductInstallQueueStatus.Running);
             return running is null
-                ? $"安装队列：等待 {active.Length} 个产品"
-                : $"安装队列：正在处理第 {running.QueuePosition} 项，共 {active.Length} 项";
+                ? $"安装队列：等待 {active.Count} 个产品"
+                : $"安装队列：正在处理第 {running.QueuePosition} 项，共 {active.Count} 项";
         }
     }
+    public string QueuePanelSummaryText => ShowCompletedQueue
+        ? CompletedQueueCount == 0
+            ? "暂无已结束任务记录"
+            : $"最近保留 {CompletedQueueCount} 条任务记录"
+        : QueueSummaryText;
+
     public bool CanCancel { get => _canCancel; private set => SetProperty(ref _canCancel, value); }
     public bool CanPause
     {
@@ -866,9 +908,17 @@ public sealed class InstallationProgressViewModel : ObservableObject
         OnPropertyChanged(nameof(HasQueueItems));
         OnPropertyChanged(nameof(HasActiveQueue));
         OnPropertyChanged(nameof(ActiveQueueCount));
+        OnPropertyChanged(nameof(CompletedQueueCount));
+        OnPropertyChanged(nameof(ActiveQueueItems));
+        OnPropertyChanged(nameof(CompletedQueueItems));
+        OnPropertyChanged(nameof(ActiveQueueEmptyVisibility));
+        OnPropertyChanged(nameof(ActiveQueueItemsVisibility));
+        OnPropertyChanged(nameof(CompletedQueueEmptyVisibility));
+        OnPropertyChanged(nameof(CompletedQueueItemsVisibility));
         OnPropertyChanged(nameof(QueueEmptyVisibility));
         OnPropertyChanged(nameof(QueueItemsVisibility));
         OnPropertyChanged(nameof(QueueSummaryText));
+        OnPropertyChanged(nameof(QueuePanelSummaryText));
         OnPropertyChanged(nameof(IsDownloading));
         OnPropertyChanged(nameof(OverallDownloadProgress));
         OnPropertyChanged(nameof(IsQueueActivityAnimating));
