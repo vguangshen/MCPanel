@@ -255,11 +255,18 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
 
         try
         {
-            item.SetBusyState(RuntimeBusyBadgeText(action), $"{item.Title} 正在{RuntimeActionText(action)}...");
+            var isTomcatStartup = item.Kind == EnvironmentKind.Tomcat && action == "Start";
+            item.SetBusyState(
+                RuntimeBusyBadgeText(action),
+                $"{item.Title} 正在{RuntimeActionText(action)}...",
+                isTomcatStartup ? (double?)5 : null);
             var message = item.Kind == EnvironmentKind.FrpTunnel
                 ? await ExecuteFrpRuntimeActionAsync(action)
                 : action switch
                 {
+                    "Start" when item.Kind == EnvironmentKind.Tomcat => await _runtimeService.StartAsync(
+                        item.Kind,
+                        tomcatProgress: update => Dispatcher.Invoke(() => item.ApplyTomcatStartupProgress(update))),
                     "Start" => await _runtimeService.StartAsync(item.Kind),
                     "Stop" => await _runtimeService.StopAsync(item.Kind),
                     "Restart" => await _runtimeService.RestartAsync(item.Kind),

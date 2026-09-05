@@ -33,6 +33,12 @@ public sealed record EnvironmentRuntimeSnapshot(
     IReadOnlyDictionary<EnvironmentKind, EnvironmentRuntimeState> States,
     IReadOnlyDictionary<EnvironmentKind, string?> InstallDirectories);
 
+public sealed record TomcatStartupProgress(
+    double Percent,
+    string Message,
+    int ReadyApplications,
+    int TotalApplications);
+
 public sealed class EnvironmentRuntimeService
 {
     private static readonly SemaphoreSlim ElevatedActionLock = new(1, 1);
@@ -311,7 +317,7 @@ public sealed class EnvironmentRuntimeService
         }
     }
 
-    public async Task<string> StartAsync(EnvironmentKind kind, CancellationToken cancellationToken = default)
+    public async Task<string> StartAsync(EnvironmentKind kind, CancellationToken cancellationToken = default, Action<TomcatStartupProgress>? tomcatProgress = null)
     {
         switch (kind)
         {
@@ -323,6 +329,20 @@ public sealed class EnvironmentRuntimeService
                     throw new InvalidDataException("Tomcat server.xml 中没有可用的 HTTP 端口。请先修复产品绑定。");
                 }
 
+                var productPorts = ProductDeploymentService.LoadTomcatDeploymentInfos()
+                    .Select(info => info.Port)
+                    .Where(port => tomcatPorts.Contains(port))
+                    .Distinct()
+                    .ToArray();
+                var progressPorts = productPorts.Length > 0 ? productPorts : tomcatPorts;
+                var reportsApplications = productPorts.Length > 0;
+                tomcatProgress?.Invoke(new TomcatStartupProgress(
+                    5,
+                    "正在准备共享 Tomcat Server...",
+                    0,
+                    reportsApplications ? productPorts.Length : 0));
+                await Task.Yield();
+
                 if (!TomcatWindowsServiceManager.IsRegisteredForRoot(tomcatRoot))
                 {
                     var serviceExecutable = Path.Combine(ComponentPaths.ApplicationRoot, "MCPanel.exe");
@@ -333,9 +353,60 @@ public sealed class EnvironmentRuntimeService
                     TomcatWindowsServiceManager.EnsureRegistered(serviceExecutable, tomcatRoot);
                 }
 
+                tomcatProgress?.Invoke(new TomcatStartupProgress(
+                    10,
+                    "正在切换到后台 Tomcat Windows Service...",
+                    0,
+                    reportsApplications ? productPorts.Length : 0));
                 TomcatProductStartupManager.RemoveRegistration();
-                TomcatWindowsServiceManager.Start();
+                tomcatProgress?.Invoke(new TomcatStartupProgress(
+                    15,
+                    "正在启动 Tomcat Server Windows 服务...",
+                    0,
+                    reportsApplications ? productPorts.Length : 0));
+
+                // The Windows service intentionally starts Tomcat without a console window. Run the
+                // synchronous SCM wait on a worker thread so the WPF UI can poll the real connector
+                // ports while Tomcat loads each configured product.
+                var serviceStartTask = Task.Run(() => TomcatWindowsServiceManager.Start());
+                while (!serviceStartTask.IsCompleted)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var ready = progressPorts.Count(TomcatRuntimeProbe.IsPortListening);
+                    var total = progressPorts.Length;
+                    var ratio = total == 0 ? 0d : ready / (double)total;
+                    var percent = ready >= total && total > 0
+                        ? 92d
+                        : 15d + ratio * 75d;
+                    var message = reportsApplications
+                        ? ready >= total && total > 0
+                            ? $"应用已就绪：{ready}/{total}，正在等待 Tomcat Server 完成启动..."
+                            : $"正在加载应用：{ready}/{total}"
+                        : ready >= total && total > 0
+                            ? "Tomcat 端口已就绪，正在等待 Windows 服务完成启动..."
+                            : $"正在等待 Tomcat 端口：{ready}/{total}";
+                    tomcatProgress?.Invoke(new TomcatStartupProgress(
+                        percent,
+                        message,
+                        reportsApplications ? ready : 0,
+                        reportsApplications ? total : 0));
+                    await Task.Delay(250, cancellationToken);
+                }
+
+                await serviceStartTask;
+                tomcatProgress?.Invoke(new TomcatStartupProgress(
+                    96,
+                    "正在验证 Tomcat 端口稳定监听...",
+                    productPorts.Length,
+                    productPorts.Length));
                 await TomcatRuntimeProbe.WaitForStartupAsync(tomcatRoot, tomcatPorts, cancellationToken);
+                tomcatProgress?.Invoke(new TomcatStartupProgress(
+                    100,
+                    reportsApplications
+                        ? $"Tomcat Server 已启动，{productPorts.Length}/{productPorts.Length} 个应用已就绪。"
+                        : "Tomcat Server 已启动。",
+                    productPorts.Length,
+                    productPorts.Length));
                 return $"Tomcat Server Windows 服务已启动，{tomcatPorts.Length} 个配置端口已确认监听。日志目录：{Path.Combine(tomcatRoot, "logs")}";
             case EnvironmentKind.Nginx:
                 return await StartNginxAsync(cancellationToken);
