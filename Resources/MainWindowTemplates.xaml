@@ -98,14 +98,15 @@
                                 Visibility="{Binding UpdateButtonVisibility}" />
                     </StackPanel>
                     <Grid Grid.Column="1" Width="42" Height="42" HorizontalAlignment="Right">
-                        <local:CircularProgress Value="{Binding DownloadProgress, Mode=OneWay}"
+                        <local:CircularProgress Value="{Binding DisplayDownloadProgress, Mode=OneWay}"
+                                                 IsIndeterminate="{Binding IsDownloadProgressIndeterminate}"
                                                  ProgressBrush="{DynamicResource PrimaryBrush}"
                                                  TrackBrush="{DynamicResource DisabledBrush}"
                                                  Width="40"
                                                  Height="40"
                                                  StrokeThickness="5"
                                                  Visibility="{Binding ProgressIndicatorVisibility}" />
-                        <TextBlock Text="{Binding DownloadProgress, StringFormat={}{0:N0}%}"
+                        <TextBlock Text="{Binding DownloadProgressText}"
                                    FontSize="9"
                                    FontWeight="SemiBold"
                                    Foreground="{DynamicResource MutedBrush}"
@@ -723,6 +724,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="52" />
@@ -788,8 +790,9 @@
                 <ProgressBar Grid.Row="1"
                              Grid.ColumnSpan="5"
                              Style="{DynamicResource MetricProgress}"
-                             Value="{Binding Progress, Mode=OneWay}"
+                             Value="{Binding DisplayDownloadProgress, Mode=OneWay}"
                              Maximum="100"
+                             IsIndeterminate="{Binding IsProgressIndeterminate}"
                              Margin="62,8,0,0" />
                 <TextBlock Grid.Row="2"
                            Grid.ColumnSpan="5"
@@ -798,6 +801,14 @@
                            Foreground="{DynamicResource MutedBrush}"
                            FontSize="10"
                            Margin="62,6,0,0"
+                           TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Row="3"
+                           Grid.ColumnSpan="5"
+                           Text="{Binding TransferText}"
+                           ToolTip="{Binding TransferText}"
+                           Foreground="{DynamicResource PrimaryBrush}"
+                           FontSize="10"
+                           Margin="62,4,0,0"
                            TextTrimming="CharacterEllipsis" />
             </Grid>
         </Border>

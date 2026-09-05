@@ -53,6 +53,7 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
         if (!preflight.CanInstall)
         {
             product.DownloadProgress = 0;
+            product.IsDownloadProgressIndeterminate = false;
             product.StatusText = preflight.BuildMessage();
             MessageBox.Show(product.StatusText, "产品管理", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
@@ -63,6 +64,7 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
             var item = _productInstallQueue.Enqueue(product, product.IsInstalled);
             product.SetQueueState(item.State, item.QueuePosition);
             product.IsBusy = false;
+            product.IsDownloadProgressIndeterminate = false;
             product.StatusText = $"已加入安装队列，等待第 {item.QueuePosition} 项处理。";
         }
         catch (Exception ex)
@@ -70,6 +72,7 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
             product.SetQueueState(null, 0);
             product.IsBusy = false;
             product.DownloadProgress = 0;
+            product.IsDownloadProgressIndeterminate = false;
             product.StatusText = $"加入安装队列失败：{ex.GetBaseException().Message}";
             _model.InstallationProgress.Hide();
             if (!_isClosed)
@@ -91,11 +94,13 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
         {
             product.SetQueueState(null, 0);
             product.IsBusy = false;
+            product.IsDownloadProgressIndeterminate = false;
             return;
         }
 
         product.SetQueueState(item.State, item.QueuePosition);
         product.IsBusy = item.State == ProductInstallQueueStatus.Running;
+        product.IsDownloadProgressIndeterminate = item.IsProgressIndeterminate;
         if (item.State == ProductInstallQueueStatus.Pending)
         {
             product.DownloadProgress = 0;
@@ -119,7 +124,11 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
 
         product.SetQueueState(ProductInstallQueueStatus.Running, item.QueuePosition);
         product.IsBusy = true;
-        product.DownloadProgress = progress.Percent;
+        product.DownloadProgress = progress.Stage == InstallProgressStage.Downloading
+            ? progress.StagePercent ?? progress.Percent
+            : 0;
+        product.IsDownloadProgressIndeterminate = progress.Stage != InstallProgressStage.Completed &&
+                                                  (progress.Stage != InstallProgressStage.Downloading || !progress.HasReliableTotal);
         product.StatusText = progress.Message;
     }
 
@@ -132,6 +141,7 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
         {
             product.SetQueueState(null, 0);
             product.IsBusy = false;
+            product.IsDownloadProgressIndeterminate = false;
             if (item.State == ProductInstallQueueStatus.Completed)
             {
                 product.IsInstalled = true;

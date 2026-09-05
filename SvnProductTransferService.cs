@@ -518,7 +518,8 @@ internal sealed class SvnProductTransferService
                     totalBytes > 0 ? totalBytes : null,
                     speedText,
                     _scannedFiles,
-                    _scannedBytes);
+                    _scannedBytes,
+                    HasReliableTotal: forceTotal);
             }
         }
 

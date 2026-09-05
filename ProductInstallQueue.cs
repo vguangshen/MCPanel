@@ -919,6 +919,11 @@ public sealed class ProductInstallQueueItemViewModel : ObservableObject
     private string? _logPath;
     private bool _isPaused;
     private bool _isRemovalRequested;
+    private bool _hasReliableTotal;
+    private long _bytesReceived;
+    private long? _totalBytes;
+    private string? _speedText;
+    private int _scannedFiles;
 
     internal ProductInstallQueueItemViewModel(
         string queueId,
@@ -962,6 +967,9 @@ public sealed class ProductInstallQueueItemViewModel : ObservableObject
             OnPropertyChanged(nameof(CanTogglePause));
             OnPropertyChanged(nameof(CanRemove));
             OnPropertyChanged(nameof(RemoveToolTip));
+            OnPropertyChanged(nameof(ProgressText));
+            OnPropertyChanged(nameof(IsProgressIndeterminate));
+            OnPropertyChanged(nameof(TransferText));
         }
     }
 
@@ -980,10 +988,63 @@ public sealed class ProductInstallQueueItemViewModel : ObservableObject
     public double DownloadProgress
     {
         get => _downloadProgress;
-        private set => SetProperty(ref _downloadProgress, Compat.Clamp(value, 0, 100));
+        private set
+        {
+            if (SetProperty(ref _downloadProgress, Compat.Clamp(value, 0, 100)))
+            {
+                OnPropertyChanged(nameof(DisplayDownloadProgress));
+                OnPropertyChanged(nameof(ProgressText));
+            }
+        }
     }
 
-    public string ProgressText => $"{Progress:0.0}%";
+    public double DisplayDownloadProgress => _hasReliableTotal ? DownloadProgress : 0d;
+    public bool IsProgressIndeterminate => State == ProductInstallQueueStatus.Running &&
+                                           !IsPaused &&
+                                           (_stage != InstallProgressStage.Downloading || !_hasReliableTotal);
+    public string ProgressText => State switch
+    {
+        ProductInstallQueueStatus.Pending => string.Empty,
+        ProductInstallQueueStatus.Running when IsPaused => "已暂停",
+        ProductInstallQueueStatus.Running when _stage == InstallProgressStage.Downloading && _hasReliableTotal => $"{DownloadProgress:0}%",
+        ProductInstallQueueStatus.Running when _stage == InstallProgressStage.Downloading => "下载中",
+        ProductInstallQueueStatus.Running when _stage == InstallProgressStage.Installing => "部署中",
+        ProductInstallQueueStatus.Running => "准备中",
+        ProductInstallQueueStatus.Completed => "完成",
+        ProductInstallQueueStatus.Failed => "失败",
+        ProductInstallQueueStatus.Cancelled => "已取消",
+        _ => string.Empty
+    };
+    public string TransferText
+    {
+        get
+        {
+            if (!IsDownloading)
+            {
+                return string.Empty;
+            }
+
+            var parts = new List<string>();
+            if (_bytesReceived > 0)
+            {
+                var downloaded = $"已下载 {ProductTransferFormatting.FormatBytes(_bytesReceived)}";
+                if (_hasReliableTotal && _totalBytes is > 0)
+                {
+                    downloaded += $" / {ProductTransferFormatting.FormatBytes(_totalBytes.Value)}";
+                }
+                parts.Add(downloaded);
+            }
+            if (!string.IsNullOrWhiteSpace(_speedText))
+            {
+                parts.Add($"速度 {_speedText}");
+            }
+            if (_scannedFiles > 0)
+            {
+                parts.Add($"已扫描 {_scannedFiles:N0} 项");
+            }
+            return string.Join(" · ", parts);
+        }
+    }
     public string Message { get => _message; private set => SetProperty(ref _message, value); }
     public int QueuePosition
     {
@@ -1018,6 +1079,8 @@ public sealed class ProductInstallQueueItemViewModel : ObservableObject
             OnPropertyChanged(nameof(PauseActionToolTip));
             OnPropertyChanged(nameof(StateText));
             OnPropertyChanged(nameof(CanTogglePause));
+            OnPropertyChanged(nameof(ProgressText));
+            OnPropertyChanged(nameof(IsProgressIndeterminate));
         }
     }
     public bool IsRemovalRequested
@@ -1054,7 +1117,13 @@ public sealed class ProductInstallQueueItemViewModel : ObservableObject
             : State switch
             {
                 ProductInstallQueueStatus.Pending => $"等待中 · 第 {QueuePosition} 项",
-                ProductInstallQueueStatus.Running => IsUpdate ? "正在更新" : "正在安装",
+                ProductInstallQueueStatus.Running => _stage switch
+                {
+                    InstallProgressStage.Preparing => "准备中",
+                    InstallProgressStage.Downloading => IsUpdate ? "正在下载更新" : "正在下载",
+                    InstallProgressStage.Installing => IsUpdate ? "正在部署更新" : "正在部署",
+                    _ => IsUpdate ? "正在更新" : "正在安装"
+                },
                 ProductInstallQueueStatus.Completed => "已完成",
                 ProductInstallQueueStatus.Failed => "安装失败",
                 ProductInstallQueueStatus.Cancelled => "已取消",
@@ -1125,6 +1194,11 @@ public sealed class ProductInstallQueueItemViewModel : ObservableObject
         }
 
         _stage = update.Stage;
+        _hasReliableTotal = update.HasReliableTotal && update.TotalBytes is > 0;
+        _bytesReceived = update.BytesReceived;
+        _totalBytes = update.TotalBytes;
+        _speedText = update.SpeedText;
+        _scannedFiles = update.ScannedFiles;
         DownloadProgress = update.Stage switch
         {
             InstallProgressStage.Downloading => update.StagePercent ?? update.Percent,
@@ -1133,6 +1207,11 @@ public sealed class ProductInstallQueueItemViewModel : ObservableObject
         };
         OnPropertyChanged(nameof(IsDownloading));
         OnPropertyChanged(nameof(CanTogglePause));
+        OnPropertyChanged(nameof(StateText));
+        OnPropertyChanged(nameof(ProgressText));
+        OnPropertyChanged(nameof(DisplayDownloadProgress));
+        OnPropertyChanged(nameof(IsProgressIndeterminate));
+        OnPropertyChanged(nameof(TransferText));
         if (!IsPaused && !IsRemovalRequested)
         {
             SetMessage(update.Message);

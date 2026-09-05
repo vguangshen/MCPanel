@@ -434,7 +434,7 @@ public sealed partial class ReliabilityTests
 
             Assert.IsFalse(item.IsPaused);
             Assert.IsFalse(File.Exists(item.PausePath));
-            Assert.AreEqual("正在安装", item.StateText);
+            Assert.AreEqual("正在部署", item.StateText);
         }
         finally
         {

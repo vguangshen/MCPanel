@@ -324,7 +324,8 @@
                                       HorizontalAlignment="Left"
                                       Margin="7,0,0,0"
                                       VerticalAlignment="Center">
-                                    <local:CircularProgress Value="{Binding InstallationProgress.OverallDownloadProgress}"
+                                    <local:CircularProgress Value="0"
+                                                            IsIndeterminate="{Binding InstallationProgress.IsQueueActivityAnimating}"
                                                             Width="48"
                                                             Height="48"
                                                             StrokeThickness="3"
@@ -333,7 +334,7 @@
                                                             HorizontalAlignment="Center"
                                                             VerticalAlignment="Center"
                                                             IsHitTestVisible="False"
-                                                            Visibility="{Binding InstallationProgress.IsDownloading, Converter={StaticResource BooleanToVisibility}}" />
+                                                            Visibility="{Binding InstallationProgress.HasActiveQueue, Converter={StaticResource BooleanToVisibility}}" />
                                     <Button x:Name="DownloadQueueButton"
                                             Style="{StaticResource ProductToolbarIconButton}"
                                             Margin="0"
@@ -876,7 +877,7 @@
                         </Grid>
 
                         <TextBlock Grid.Row="3"
-                                   Text="任务按加入时间逐项处理；关闭面板或窗口到托盘不会中断后台下载、安装和部署。"
+                                   Text="任务按加入时间逐项处理；SVN 下载显示真实容量、速度和阶段状态，不使用不可靠的估算百分比。关闭面板或窗口到托盘不会中断后台任务。"
                                    Foreground="{DynamicResource MutedBrush}"
                                    FontSize="10"
                                    Margin="0,10,0,0"
@@ -952,7 +953,7 @@
                             <RowDefinition Height="18" />
                             </Grid.RowDefinitions>
                         <Grid>
-                                <TextBlock Text="总体进度" Foreground="{DynamicResource MutedBrush}" FontSize="12" />
+                                <TextBlock Text="当前阶段" Foreground="{DynamicResource MutedBrush}" FontSize="12" />
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                 <TextBlock Text="{Binding InstallationProgress.TransferText}"
                                            Foreground="{DynamicResource MutedBrush}"
@@ -970,7 +971,7 @@
                         </Grid>
                         <ProgressBar Grid.Row="1"
                                      Style="{StaticResource ProductNativeProgress}"
-                                     Value="{Binding InstallationProgress.Progress, Mode=OneWay}"
+                                     Value="{Binding InstallationProgress.DisplayDownloadProgress, Mode=OneWay}"
                                      Maximum="100"
                                      IsIndeterminate="{Binding InstallationProgress.IsProgressIndeterminate}"
                                      Margin="0,8,0,0" />

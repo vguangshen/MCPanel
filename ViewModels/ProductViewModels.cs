@@ -433,6 +433,8 @@ public sealed class InstallationProgressViewModel : ObservableObject
             if (SetProperty(ref _isPaused, value))
             {
                 OnPropertyChanged(nameof(PauseActionText));
+                OnPropertyChanged(nameof(ProgressText));
+                OnPropertyChanged(nameof(IsProgressIndeterminate));
             }
         }
     }
@@ -442,7 +444,18 @@ public sealed class InstallationProgressViewModel : ObservableObject
     public string ProductName { get => _productName; private set => SetProperty(ref _productName, value); }
     public string ProductId { get => _productId; private set => SetProperty(ref _productId, value); }
     public string IconPath { get => _iconPath; private set => SetProperty(ref _iconPath, value); }
-    public string StageText { get => _stageText; private set => SetProperty(ref _stageText, value); }
+    public string StageText
+    {
+        get => _stageText;
+        private set
+        {
+            if (SetProperty(ref _stageText, value))
+            {
+                OnPropertyChanged(nameof(ProgressText));
+                OnPropertyChanged(nameof(IsProgressIndeterminate));
+            }
+        }
+    }
     public string DetailText { get => _detailText; private set => SetProperty(ref _detailText, value); }
     public string ElapsedText { get => _elapsedText; private set => SetProperty(ref _elapsedText, value); }
     public string DownloadSpeedText { get => _downloadSpeedText; private set => SetProperty(ref _downloadSpeedText, value); }
@@ -468,6 +481,8 @@ public sealed class InstallationProgressViewModel : ObservableObject
             if (SetProperty(ref _downloadProgress, Compat.Clamp(value, 0, 100)))
             {
                 OnPropertyChanged(nameof(OverallDownloadProgress));
+                OnPropertyChanged(nameof(DisplayDownloadProgress));
+                OnPropertyChanged(nameof(ProgressText));
             }
         }
     }
@@ -510,9 +525,29 @@ public sealed class InstallationProgressViewModel : ObservableObject
         }
     }
 
-    public string ProgressText => $"{Progress:0.0}%";
+    public double DisplayDownloadProgress => _downloadTotalKnown ? DownloadProgress : 0d;
+    public string ProgressText => StageText == "处理完成"
+        ? "完成"
+        : IsPaused
+            ? "已暂停"
+            : StageText == "下载产品文件" && _downloadTotalKnown
+                ? $"{DownloadProgress:0}%"
+                : "处理中";
     public bool IsProgressIndeterminate => IsVisible &&
-        (StageText == "准备下载" || (StageText == "下载产品文件" && !_downloadTotalKnown));
+        !IsPaused &&
+        StageText != "处理完成" &&
+        (StageText != "下载产品文件" || !_downloadTotalKnown);
+    public bool IsQueueActivityAnimating
+    {
+        get
+        {
+            var firstActive = QueueItems
+                .Where(item => !item.IsTerminal)
+                .OrderBy(item => item.Sequence)
+                .FirstOrDefault();
+            return firstActive is not null && !firstActive.IsPaused;
+        }
+    }
 
     public void Begin(ProductItem product, bool isUpdate, bool show = true)
     {
@@ -672,7 +707,8 @@ public sealed class InstallationProgressViewModel : ObservableObject
         DownloadSpeedText = isDownloading
             ? $"速度 {(!string.IsNullOrWhiteSpace(update.SpeedText) ? update.SpeedText : "—")}"
             : string.Empty;
-        _downloadTotalKnown = update.TotalBytes is > 0;
+        _downloadTotalKnown = update.HasReliableTotal && update.TotalBytes is > 0;
+        OnPropertyChanged(nameof(DisplayDownloadProgress));
         TransferText = isDownloading &&
                        (update.BytesReceived > 0 || update.TotalBytes is not null ||
                         update.ScannedFiles > 0 || update.ScannedBytes > 0)
@@ -683,7 +719,8 @@ public sealed class InstallationProgressViewModel : ObservableObject
                 update.TotalBytes,
                 update.SpeedText,
                 update.ScannedFiles,
-                update.ScannedBytes).TransferText
+                update.ScannedBytes,
+                update.HasReliableTotal).TransferText
             : string.Empty;
         if (isDownloading)
         {
@@ -834,6 +871,7 @@ public sealed class InstallationProgressViewModel : ObservableObject
         OnPropertyChanged(nameof(QueueSummaryText));
         OnPropertyChanged(nameof(IsDownloading));
         OnPropertyChanged(nameof(OverallDownloadProgress));
+        OnPropertyChanged(nameof(IsQueueActivityAnimating));
     }
 
     private static string ResolveStage(string status)
@@ -896,6 +934,7 @@ public sealed class ProductItem(string productId, string name, string level, str
     private ProductInstallQueueStatus? _queueState;
     private int _queuePosition;
     private double _downloadProgress;
+    private bool _isDownloadProgressIndeterminate;
     private int _installSequence = int.MaxValue;
     private string _statusText = source == ProductSource.Local
         ? "旧包内置产品。在线刷新后如服务端返回下载地址，可自动安装。"
@@ -1023,7 +1062,32 @@ public sealed class ProductItem(string productId, string name, string level, str
         }
     }
 
-    public double DownloadProgress { get => _downloadProgress; set => SetProperty(ref _downloadProgress, value); }
+    public double DownloadProgress
+    {
+        get => _downloadProgress;
+        set
+        {
+            if (SetProperty(ref _downloadProgress, Compat.Clamp(value, 0, 100)))
+            {
+                OnPropertyChanged(nameof(DisplayDownloadProgress));
+                OnPropertyChanged(nameof(DownloadProgressText));
+            }
+        }
+    }
+    public bool IsDownloadProgressIndeterminate
+    {
+        get => _isDownloadProgressIndeterminate;
+        set
+        {
+            if (SetProperty(ref _isDownloadProgressIndeterminate, value))
+            {
+                OnPropertyChanged(nameof(DisplayDownloadProgress));
+                OnPropertyChanged(nameof(DownloadProgressText));
+            }
+        }
+    }
+    public double DisplayDownloadProgress => IsDownloadProgressIndeterminate ? 0d : DownloadProgress;
+    public string DownloadProgressText => IsDownloadProgressIndeterminate ? string.Empty : $"{DownloadProgress:0}%";
 
     internal void SetQueueState(ProductInstallQueueStatus? state, int queuePosition)
     {

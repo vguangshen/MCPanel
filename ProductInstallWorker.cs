@@ -884,6 +884,7 @@ internal static class ProductInstallWorker
         private int _scannedFiles;
         private long _scannedBytes;
         private double _downloadPercent;
+        private bool _hasReliableTotal;
 
         public ProgressReporter(string path) => _path = path;
 
@@ -891,12 +892,13 @@ internal static class ProductInstallWorker
         {
             _downloadPercent = Compat.Clamp(update.Percent, 0, 100);
             _stage = InstallProgressStage.Downloading;
-            _stagePercent = _downloadPercent;
+            _stagePercent = update.HasReliableTotal ? _downloadPercent : null;
             _speedText = update.SpeedText;
             _bytesReceived = update.BytesReceived;
             _totalBytes = update.TotalBytes;
             _scannedFiles = update.ScannedFiles;
             _scannedBytes = update.ScannedBytes;
+            _hasReliableTotal = update.HasReliableTotal;
             Write(
                 "running",
                 Compat.Clamp(_downloadPercent * 0.9, 0, 90),
@@ -907,7 +909,8 @@ internal static class ProductInstallWorker
                 bytesReceived: update.BytesReceived,
                 totalBytes: update.TotalBytes,
                 scannedFiles: update.ScannedFiles,
-                scannedBytes: update.ScannedBytes);
+                scannedBytes: update.ScannedBytes,
+                hasReliableTotal: update.HasReliableTotal);
         }
 
         public void ReportStatus(string message)
@@ -944,7 +947,8 @@ internal static class ProductInstallWorker
             string? resultPath = null,
             string? resultMessage = null,
             int scannedFiles = 0,
-            long scannedBytes = 0)
+            long scannedBytes = 0,
+            bool? hasReliableTotal = null)
         {
             lock (_sync)
             {
@@ -970,6 +974,7 @@ internal static class ProductInstallWorker
                     _scannedFiles = scannedFiles;
                     _scannedBytes = scannedBytes;
                 }
+                _hasReliableTotal = hasReliableTotal ?? _hasReliableTotal;
 
                 try
                 {
@@ -989,7 +994,8 @@ internal static class ProductInstallWorker
                                 resultPath,
                                 resultMessage,
                                 _scannedFiles,
-                                _scannedBytes),
+                                _scannedBytes,
+                                _hasReliableTotal),
                             JsonOptions));
                 }
                 catch
@@ -1045,4 +1051,5 @@ internal sealed record ProductInstallWorkerProgress(
     string? ResultPath = null,
     string? ResultMessage = null,
     int ScannedFiles = 0,
-    long ScannedBytes = 0);
+    long ScannedBytes = 0,
+    bool HasReliableTotal = false);

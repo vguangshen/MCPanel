@@ -92,8 +92,36 @@ public sealed class CircularProgress : Control
             typeof(CircularProgress),
             new FrameworkPropertyMetadata(0d, FrameworkPropertyMetadataOptions.AffectsRender));
 
+    public static readonly DependencyProperty IsIndeterminateProperty =
+        DependencyProperty.Register(
+            nameof(IsIndeterminate),
+            typeof(bool),
+            typeof(CircularProgress),
+            new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.AffectsRender, OnIsIndeterminateChanged));
+
+    private static readonly DependencyProperty IndeterminateAngleProperty =
+        DependencyProperty.Register(
+            "IndeterminateAngle",
+            typeof(double),
+            typeof(CircularProgress),
+            new FrameworkPropertyMetadata(0d, FrameworkPropertyMetadataOptions.AffectsRender));
+
     private static readonly Duration ValueAnimationDuration =
         new(TimeSpan.FromMilliseconds(700));
+    private static readonly Duration IndeterminateAnimationDuration =
+        new(TimeSpan.FromMilliseconds(1050));
+
+    public CircularProgress()
+    {
+        Loaded += (_, _) =>
+        {
+            if (IsIndeterminate)
+            {
+                StartIndeterminateAnimation();
+            }
+        };
+        Unloaded += (_, _) => StopIndeterminateAnimation();
+    }
 
     public static readonly DependencyProperty ProgressBrushProperty =
         DependencyProperty.Register(nameof(ProgressBrush), typeof(Brush), typeof(CircularProgress), new FrameworkPropertyMetadata(Brushes.DodgerBlue, FrameworkPropertyMetadataOptions.AffectsRender));
@@ -111,6 +139,14 @@ public sealed class CircularProgress : Control
     }
 
     public double AnimatedValue => (double)GetValue(AnimatedValueProperty);
+
+    public bool IsIndeterminate
+    {
+        get => (bool)GetValue(IsIndeterminateProperty);
+        set => SetValue(IsIndeterminateProperty, value);
+    }
+
+    private double IndeterminateAngle => (double)GetValue(IndeterminateAngleProperty);
 
     public Brush ProgressBrush
     {
@@ -147,6 +183,24 @@ public sealed class CircularProgress : Control
 
         drawingContext.DrawEllipse(null, trackPen, center, radius, radius);
 
+        if (IsIndeterminate)
+        {
+            var activityStartAngle = IndeterminateAngle - 90d;
+            var activityEndAngle = activityStartAngle + 96d;
+            var activityStart = PointOnCircle(center, radius, activityStartAngle);
+            var activityEnd = PointOnCircle(center, radius, activityEndAngle);
+            var activityGeometry = new StreamGeometry();
+            using (var activityContext = activityGeometry.Open())
+            {
+                activityContext.BeginFigure(activityStart, isFilled: false, isClosed: false);
+                activityContext.ArcTo(activityEnd, new Size(radius, radius), 0, false, SweepDirection.Clockwise, true, false);
+            }
+
+            activityGeometry.Freeze();
+            drawingContext.DrawGeometry(null, progressPen, activityGeometry);
+            return;
+        }
+
         var percent = Compat.Clamp(AnimatedValue, 0, 100);
         if (percent <= 0)
         {
@@ -172,6 +226,38 @@ public sealed class CircularProgress : Control
 
         geometry.Freeze();
         drawingContext.DrawGeometry(null, progressPen, geometry);
+    }
+
+    private static void OnIsIndeterminateChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs args)
+    {
+        var control = (CircularProgress)dependencyObject;
+        if ((bool)args.NewValue && control.IsLoaded)
+        {
+            control.StartIndeterminateAnimation();
+        }
+        else
+        {
+            control.StopIndeterminateAnimation();
+        }
+    }
+
+    private void StartIndeterminateAnimation()
+    {
+        var animation = new DoubleAnimation
+        {
+            From = 0d,
+            To = 360d,
+            Duration = IndeterminateAnimationDuration,
+            RepeatBehavior = RepeatBehavior.Forever,
+            FillBehavior = FillBehavior.HoldEnd
+        };
+        BeginAnimation(IndeterminateAngleProperty, animation, HandoffBehavior.SnapshotAndReplace);
+    }
+
+    private void StopIndeterminateAnimation()
+    {
+        BeginAnimation(IndeterminateAngleProperty, null);
+        SetValue(IndeterminateAngleProperty, 0d);
     }
 
     private static void OnValueChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs args)

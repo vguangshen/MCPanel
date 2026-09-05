@@ -11,22 +11,24 @@ public sealed record ProductDownloadProgress(
     long? TotalBytes = null,
     string? SpeedText = null,
     int ScannedFiles = 0,
-    long ScannedBytes = 0)
+    long ScannedBytes = 0,
+    bool HasReliableTotal = true)
 {
     public string TransferText
     {
         get
         {
             var received = ProductTransferFormatting.FormatBytes(BytesReceived);
+            var hasReliableTotal = HasReliableTotal && TotalBytes is > 0;
             if (ScannedFiles > 0 || ScannedBytes > 0)
             {
-                var downloaded = TotalBytes is > 0
+                var downloaded = hasReliableTotal
                     ? $"{received} / {ProductTransferFormatting.FormatBytes(TotalBytes.Value)}"
                     : received;
                 return $"已扫描 {ScannedFiles:N0} 项 · {ProductTransferFormatting.FormatBytes(ScannedBytes)} · 已下载 {downloaded}";
             }
 
-            return TotalBytes is > 0
+            return hasReliableTotal
                 ? $"已下载 {received} / {ProductTransferFormatting.FormatBytes(TotalBytes.Value)}"
                 : $"已下载 {received}";
         }

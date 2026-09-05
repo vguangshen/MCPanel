@@ -202,7 +202,8 @@ public sealed class McPanelStoreClient : IDisposable
                         message,
                         snapshot.BytesReceived,
                         snapshot.TotalBytes,
-                        ProductTransferFormatting.FormatRate(snapshot.BytesPerSecond)));
+                        ProductTransferFormatting.FormatRate(snapshot.BytesPerSecond),
+                        HasReliableTotal: snapshot.TotalBytes is > 0));
                     status?.Invoke(message);
                 },
                 pauseController,
@@ -227,7 +228,8 @@ public sealed class McPanelStoreClient : IDisposable
             $"{fileName} 下载完成",
             new FileInfo(target).Length,
             new FileInfo(target).Length,
-            ProductTransferFormatting.FormatRate(downloadResult?.AverageBytesPerSecond ?? 0)));
+            ProductTransferFormatting.FormatRate(downloadResult?.AverageBytesPerSecond ?? 0),
+            HasReliableTotal: true));
         return target;
     }
 
@@ -290,7 +292,8 @@ public sealed class McPanelStoreClient : IDisposable
                     : $"已准备 {files.Count} 个文件，开始下载...",
                 0,
                 allLengthsKnown ? knownTotalBytes : null,
-                null));
+                null,
+                HasReliableTotal: allLengthsKnown));
             long downloadedBytes = 0;
             var completedFiles = 0;
             var progressSync = new object();
@@ -322,7 +325,8 @@ public sealed class McPanelStoreClient : IDisposable
                         transferText,
                         bytes,
                         allLengthsKnown ? knownTotalBytes : null,
-                        ProductTransferFormatting.FormatRate(speed)));
+                        ProductTransferFormatting.FormatRate(speed),
+                        HasReliableTotal: allLengthsKnown));
                 }
             }
 
@@ -378,7 +382,8 @@ public sealed class McPanelStoreClient : IDisposable
                 "产品文件下载完成",
                 finalBytes,
                 allLengthsKnown ? knownTotalBytes : finalBytes,
-                ProductTransferFormatting.FormatRate(finalBytes / Math.Max((DateTime.UtcNow - downloadStartedAt).TotalSeconds, 0.001))));
+                ProductTransferFormatting.FormatRate(finalBytes / Math.Max((DateTime.UtcNow - downloadStartedAt).TotalSeconds, 0.001)),
+                HasReliableTotal: true));
         }
         catch
         {
