@@ -59,7 +59,7 @@ jobs:
             -PublishDirectory $env:MCPANEL_PUBLISH_DIR `
             -OutputDirectory $updatesDir `
             -GitHubRelease `
-            -ReleaseNotes 'Tomcat Server 共享启动继续后台无 CMD，并将真实应用端口就绪数量实时绑定到环境页进度条，包含准备、应用加载、稳定性验证和完成阶段。'
+            -ReleaseNotes 'Java/Tomcat 产品级“单独启动”和“以 Catalina 方式启动”统一使用前台可见控制台；共享 Tomcat Server 继续后台 Windows Service 隐藏启动。'
           "MCPANEL_UPDATES_DIR=$updatesDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Create GitHub Release
@@ -73,18 +73,16 @@ jobs:
           $hash = "$zip.sha256"
           $manifest = Join-Path $env:MCPANEL_UPDATES_DIR 'update-manifest.json'
           $notes = @"
-          本版本完善 Tomcat Server 共享启动的可视化进度，同时保持普通启动完全后台运行。
+          本版本调整 Java/Tomcat 产品级启动体验，使其更接近原版 ITMCStore 的前台启动方式。
 
-          - 普通 Tomcat Server 启动继续通过 MCPanelTomcat Windows Service 后台执行，不弹出 CMD 窗口。
-          - Catalina 方式继续作为显式前台诊断模式，仅用户主动选择时打开控制台。
-          - 启动共享 Tomcat 时，现有环境卡片进度条从准备阶段开始实时更新。
-          - 使用已配置 Java/Tomcat 产品真实监听端口计算“已就绪应用 / 总应用”，不是纯计时假进度。
-          - 进度阶段包括：准备共享服务、启动 Windows Service、逐个应用就绪、端口稳定性验证、100% 完成。
-          - 没有已部署产品时自动退化为 Tomcat 配置端口的真实就绪进度。
-          - 保留 TomcatRuntimeProbe 稳定监听验证与 Windows Service watchdog，不降低启动可靠性。
-          - 保留 1.3.12 已精简后的产品管理按钮和内部生命周期逻辑。
-          - 新增 Tomcat Server 启动进度回归覆盖。
-          - 138/138 回归测试通过，Win-x64 publish 通过。
+          - 产品管理中的“单独启动”改为前台可见控制台启动，不再隐藏 Java 控制台并重定向 stdout/stderr。
+          - “以 Catalina 方式启动”继续保持前台可见控制台，两种产品级启动都能直接观察启动日志。
+          - 保留 MCPanel 的独立 CATALINA_BASE 隔离机制，仍直接构造 Java/Tomcat 启动参数，避免供应商 catalina.bat 重置到共享 Tomcat 配置。
+          - 共享 Tomcat Server 仍通过 MCPanelTomcat Windows Service 后台隐藏启动，不受产品级前台窗口改动影响。
+          - 产品级启动后的端口等待、稳定性检查、PID 识别和停止/卸载内部生命周期逻辑保持不变。
+          - 移除仅服务于隐藏启动的 console.log stdout/stderr 捕获链路，避免遗留死代码。
+          - 清理 1.3.11/1.3.12 已完成的一次性 Actions 工作流，后续发版只保留正式 release.yml。
+          - 发布前执行完整可靠性测试与 Win-x64 publish。
           "@
           gh release create $tag $zip $hash $manifest `
             --target '${{ github.sha }}' `
