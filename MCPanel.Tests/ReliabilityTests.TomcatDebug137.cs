@@ -38,14 +38,22 @@ public partial class ReliabilityTests
     }
 
     [TestMethod]
-    public void TomcatDebug_ProductUi_KeepsCatalinaNameAndMaintenanceTools()
+    public void TomcatManagementUi_PrunesRedundantActionsAndKeepsCoreTools()
     {
         var xaml = ReadRepositoryFile(Path.Combine("Resources", "MainWindowTemplates.xaml"));
+        StringAssert.Contains(xaml, "Content=\"单独启动\"");
         StringAssert.Contains(xaml, "Content=\"以 Catalina 方式启动\"");
+        StringAssert.Contains(xaml, "Content=\"停止应用\"");
         StringAssert.Contains(xaml, "Content=\"查看日志\"");
-        StringAssert.Contains(xaml, "Content=\"实例目录\"");
-        StringAssert.Contains(xaml, "Content=\"清理 work/temp\"");
         StringAssert.Contains(xaml, "Content=\"清理缓存并重启\"");
+
+        var pruner = ReadRepositoryFile("TomcatManagementUiPruner.cs");
+        StringAssert.Contains(pruner, "\"Restart\"");
+        StringAssert.Contains(pruner, "\"OpenInstance\"");
+        StringAssert.Contains(pruner, "\"ClearCache\"");
+
+        var bridge = ReadRepositoryFile("MainWindowTemplates.xaml.cs");
+        StringAssert.Contains(bridge, "TomcatManagementUiPruner.RemoveRetiredActions(element);");
     }
 
     private static string ReadRepositoryFile(string relativePath)
