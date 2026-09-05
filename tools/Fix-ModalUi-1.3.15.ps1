@@ -7,12 +7,15 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 foreach ($relativePath in @('MainWindow.xaml', 'Resources/PanelDialogControls.xaml')) {
     $path = Join-Path $repoRoot $relativePath
     $text = [System.IO.File]::ReadAllText($path)
+    $fixed = $text
 
-    # PowerShell does not use backslash to escape quotes. The migration's two
-    # interpolated replacement strings can therefore emit one or more literal
-    # backslashes immediately before XML attribute quotes. Remove only those
-    # quote-adjacent backslashes and leave all other path/backslash content intact.
-    $fixed = [regex]::Replace($text, '\\+(?=")', '')
+    # PowerShell does not use backslash to escape a double quote. The migration
+    # originally generated literal backslashes immediately before XML quotes.
+    # Remove them one at a time until no backslash+quote pair remains. This is
+    # deterministic whether the generated text contains one, two, or more.
+    while ($fixed.Contains('\"')) {
+        $fixed = $fixed.Replace('\"', '"')
+    }
 
     try {
         [xml]$null = $fixed
