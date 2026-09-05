@@ -68,6 +68,50 @@ foreach ($relativePath in @('MainWindow.xaml', 'Resources/PanelDialogControls.xa
     Write-RepoText $relativePath $fixed
 }
 
+# Apply phase 7 also uses a C# object-initializer shape on the result of a
+# factory method. Object initializers are only valid on object-creation
+# expressions, so split Owner assignment into a normal statement.
+$environmentPath = 'MainWindow.Environment.cs'
+$environment = Read-RepoText $environmentPath
+$badPortOwner = @'
+        var dialog = PanelInputDialog.CreatePortEditor(currentPort)
+        {
+            Owner = this
+        };
+'@
+$goodPortOwner = @'
+        var dialog = PanelInputDialog.CreatePortEditor(currentPort);
+        dialog.Owner = this;
+'@
+$badPortOwner = $badPortOwner.TrimStart("`r", "`n")
+$goodPortOwner = $goodPortOwner.TrimStart("`r", "`n")
+if ($environment.Contains($badPortOwner)) {
+    $environment = $environment.Replace($badPortOwner, $goodPortOwner)
+}
+elseif (-not $environment.Contains('var dialog = PanelInputDialog.CreatePortEditor(currentPort);')) {
+    throw 'Unable to repair generated MySQL port editor owner assignment.'
+}
+
+$badPasswordOwner = @'
+        var dialog = PanelInputDialog.CreatePasswordEditor()
+        {
+            Owner = this
+        };
+'@
+$goodPasswordOwner = @'
+        var dialog = PanelInputDialog.CreatePasswordEditor();
+        dialog.Owner = this;
+'@
+$badPasswordOwner = $badPasswordOwner.TrimStart("`r", "`n")
+$goodPasswordOwner = $goodPasswordOwner.TrimStart("`r", "`n")
+if ($environment.Contains($badPasswordOwner)) {
+    $environment = $environment.Replace($badPasswordOwner, $goodPasswordOwner)
+}
+elseif (-not $environment.Contains('var dialog = PanelInputDialog.CreatePasswordEditor();')) {
+    throw 'Unable to repair generated MySQL password editor owner assignment.'
+}
+Write-RepoText $environmentPath $environment
+
 # Give the destructive product-domain removal action its own visual hierarchy.
 $controls = Read-RepoText $controlsPath
 if (-not $controls.Contains('x:Key="DangerDialogButton"')) {
@@ -123,4 +167,4 @@ foreach ($relativePath in @(
     Assert-Xml $relativePath
 }
 
-Write-Host 'Repaired truncated resource merges, normalized, sanitized, styled, and validated unified modal UI XAML.'
+Write-Host 'Repaired generated XAML and dialog owner syntax, sanitized, styled, and validated unified modal UI.'
