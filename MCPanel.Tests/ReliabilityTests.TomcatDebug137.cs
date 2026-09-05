@@ -38,22 +38,32 @@ public partial class ReliabilityTests
     }
 
     [TestMethod]
-    public void TomcatManagementUi_PrunesRedundantActionsAndKeepsCoreTools()
+    public void TomcatDebug_ProductManagement_RemovesRetiredActionsAndBackends()
     {
         var xaml = ReadRepositoryFile(Path.Combine("Resources", "MainWindowTemplates.xaml"));
+        var products = ReadRepositoryFile("MainWindow.Products.cs");
+        var manager = ReadRepositoryFile("TomcatProductInstanceManager.cs");
+        var bridge = ReadRepositoryFile("MainWindowTemplates.xaml.cs");
+
         StringAssert.Contains(xaml, "Content=\"单独启动\"");
         StringAssert.Contains(xaml, "Content=\"以 Catalina 方式启动\"");
         StringAssert.Contains(xaml, "Content=\"停止应用\"");
         StringAssert.Contains(xaml, "Content=\"查看日志\"");
         StringAssert.Contains(xaml, "Content=\"清理缓存并重启\"");
+        Assert.IsFalse(xaml.Contains("Content=\"重启应用\"", StringComparison.Ordinal));
+        Assert.IsFalse(xaml.Contains("Content=\"实例目录\"", StringComparison.Ordinal));
+        Assert.IsFalse(xaml.Contains("Content=\"清理 work/temp\"", StringComparison.Ordinal));
 
-        var pruner = ReadRepositoryFile("TomcatManagementUiPruner.cs");
-        StringAssert.Contains(pruner, "\"Restart\"");
-        StringAssert.Contains(pruner, "\"OpenInstance\"");
-        StringAssert.Contains(pruner, "\"ClearCache\"");
+        Assert.IsFalse(products.Contains("\"Restart\" =>", StringComparison.Ordinal));
+        Assert.IsFalse(products.Contains("\"ClearCache\" =>", StringComparison.Ordinal));
+        Assert.IsFalse(products.Contains("OpenInstance", StringComparison.Ordinal));
+        StringAssert.Contains(products, "ClearCacheAndRestartAsync");
 
-        var bridge = ReadRepositoryFile("MainWindowTemplates.xaml.cs");
-        StringAssert.Contains(bridge, "TomcatManagementUiPruner.RemoveRetiredActions(element);");
+        Assert.IsFalse(manager.Contains("RestartAsync(", StringComparison.Ordinal));
+        Assert.IsFalse(manager.Contains("ClearCacheAsync(", StringComparison.Ordinal));
+        Assert.IsFalse(manager.Contains("GetInstanceDirectory(", StringComparison.Ordinal));
+        StringAssert.Contains(manager, "ClearCacheAndRestartAsync(");
+        Assert.IsFalse(bridge.Contains("TomcatManagementUiPruner", StringComparison.Ordinal));
     }
 
     private static string ReadRepositoryFile(string relativePath)
