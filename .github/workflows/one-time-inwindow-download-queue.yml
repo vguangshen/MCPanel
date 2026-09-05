@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - '.github/workflows/one-time-inwindow-download-queue.yml'
-      - '.github/scripts/apply-inwindow-download-queue-v5.py'
+      - '.github/scripts/apply-inwindow-download-queue-v6.py'
 
 permissions:
   contents: write
@@ -21,7 +21,7 @@ jobs:
 
       - name: Apply in-window queue flyout refactor
         shell: pwsh
-        run: python .github/scripts/apply-inwindow-download-queue-v5.py
+        run: python .github/scripts/apply-inwindow-download-queue-v6.py
 
       - name: Validate diff
         shell: pwsh
@@ -54,6 +54,6 @@ jobs:
         run: |
           git config user.name "Xiangming"
           git config user.email "40314529+vguangshen@users.noreply.github.com"
-          git add MainWindow.xaml MainWindow.xaml.cs MainWindow.Products.cs MainWindow.DownloadQueueFix.cs MainWindowTemplates.xaml.cs MCPanel.Tests/ReliabilityTests.DownloadQueueUiFix.cs MCPanel.Tests/ReliabilityTests.Ui.cs
+          git add MainWindow.xaml MainWindow.xaml.cs MainWindow.Products.cs MainWindow.DownloadQueueFix.cs MainWindowTemplates.xaml.cs MCPanel.Tests/ReliabilityTests.DownloadQueueUiFix.cs MCPanel.Tests/ReliabilityTests.Ui.cs MCPanel.Tests/ReliabilityTests.DialogUi.cs
           git commit -m "ui: keep download queue flyout inside main window"
           git push origin main
