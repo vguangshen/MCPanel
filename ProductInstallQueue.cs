@@ -458,7 +458,10 @@ internal sealed class ProductInstallQueueService : IDisposable
                 persisted.Request,
                 state,
                 restoredProgress,
-                message);
+                message,
+                isTerminal
+                    ? persisted.CompletedAtUtc ?? TryGetCompletionTimeUtc(persisted.ProgressPath)
+                    : null);
 
             if (isTerminal)
             {
@@ -482,6 +485,23 @@ internal sealed class ProductInstallQueueService : IDisposable
 
         TrimHistory();
         Persist();
+    }
+
+    private static DateTime? TryGetCompletionTimeUtc(string? progressPath)
+    {
+        if (string.IsNullOrWhiteSpace(progressPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            return File.Exists(progressPath) ? File.GetLastWriteTimeUtc(progressPath) : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private void StopPreviousSession(string? previousSessionId)
@@ -780,7 +800,8 @@ internal sealed class ProductInstallQueueService : IDisposable
                         item.ResultPath,
                         item.LogPath)
                     {
-                        IsRemovalRequested = item.IsRemovalRequested
+                        IsRemovalRequested = item.IsRemovalRequested,
+                        CompletedAtUtc = item.CompletedAtUtc
                     })
                     .ToList());
             AtomicFile.WriteAllText(
@@ -924,6 +945,7 @@ public sealed class ProductInstallQueueItemViewModel : ObservableObject
     private long? _totalBytes;
     private string? _speedText;
     private int _scannedFiles;
+    private DateTime? _completedAtUtc;
 
     internal ProductInstallQueueItemViewModel(
         string queueId,
@@ -931,7 +953,8 @@ public sealed class ProductInstallQueueItemViewModel : ObservableObject
         ProductInstallWorkerRequest request,
         ProductInstallQueueStatus state,
         double progress,
-        string message)
+        string message,
+        DateTime? completedAtUtc = null)
     {
         QueueId = queueId;
         Sequence = sequence;
@@ -939,6 +962,7 @@ public sealed class ProductInstallQueueItemViewModel : ObservableObject
         _state = state;
         _progress = Compat.Clamp(progress, 0, 100);
         _message = message;
+        _completedAtUtc = ProductInstallQueueService.IsTerminal(state) ? completedAtUtc : null;
     }
 
     public string QueueId { get; }
@@ -1046,6 +1070,22 @@ public sealed class ProductInstallQueueItemViewModel : ObservableObject
         }
     }
     public string Message { get => _message; private set => SetProperty(ref _message, value); }
+    public DateTime? CompletedAtUtc => _completedAtUtc;
+    public string CompletionTimeText
+    {
+        get
+        {
+            if (!IsTerminal)
+            {
+                return string.Empty;
+            }
+
+            var label = State == ProductInstallQueueStatus.Completed ? "部署完成" : "任务结束";
+            return CompletedAtUtc is DateTime completedAtUtc
+                ? $"{label} · {completedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm}"
+                : $"{label}时间未记录";
+        }
+    }
     public int QueuePosition
     {
         get => _queuePosition;
@@ -1150,6 +1190,13 @@ public sealed class ProductInstallQueueItemViewModel : ObservableObject
         State = state;
         if (ProductInstallQueueService.IsTerminal(state))
         {
+            if (_completedAtUtc is null)
+            {
+                _completedAtUtc = DateTime.UtcNow;
+                OnPropertyChanged(nameof(CompletedAtUtc));
+                OnPropertyChanged(nameof(CompletionTimeText));
+            }
+
             SetPaused(false);
         }
     }
@@ -1257,4 +1304,5 @@ internal sealed record ProductInstallQueuePersistedItem(
     string? LogPath)
 {
     public bool IsRemovalRequested { get; init; }
+    public DateTime? CompletedAtUtc { get; init; }
 }

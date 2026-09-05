@@ -815,15 +815,19 @@
     </DataTemplate>
 
     <DataTemplate x:Key="InstallationQueueHistoryItemTemplate">
-        <Border Padding="8,10" Background="Transparent" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,0,1">
+        <Border Padding="8,9,8,8" Background="Transparent" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,0,1">
             <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="52" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="76" />
                     <ColumnDefinition Width="40" />
                 </Grid.ColumnDefinitions>
-                <Border Width="42" Height="42" HorizontalAlignment="Center" VerticalAlignment="Center"
+                <Border Grid.RowSpan="2" Width="42" Height="42" HorizontalAlignment="Center" VerticalAlignment="Center"
                         CornerRadius="8" Background="{DynamicResource SurfaceAltBrush}"
                         BorderBrush="{DynamicResource CardLineBrush}" BorderThickness="1" ToolTip="{Binding ProductName}">
                     <Image Source="{Binding IconPath}" Stretch="Uniform" Margin="3" RenderOptions.BitmapScalingMode="HighQuality" />
@@ -840,7 +844,7 @@
                 </StackPanel>
                 <Border Grid.Column="2" Height="26" MinWidth="64" Padding="8,0" CornerRadius="13"
                         Background="{DynamicResource SurfaceAltBrush}" BorderBrush="{DynamicResource CardLineBrush}"
-                        BorderThickness="1" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        BorderThickness="1" HorizontalAlignment="Right" VerticalAlignment="Top">
                     <TextBlock Text="{Binding StateText}" FontSize="10.5" FontWeight="SemiBold"
                                HorizontalAlignment="Center" VerticalAlignment="Center">
                         <TextBlock.Style>
@@ -860,7 +864,12 @@
                 </Border>
                 <Button Grid.Column="3" Content="{Binding RemoveActionGlyph}" ToolTip="删除此记录"
                         AutomationProperties.Name="删除此记录" Style="{DynamicResource QueueDangerIconButton}"
-                        IsEnabled="{Binding CanRemove}" Click="RemoveQueuedProduct_Click" />
+                        IsEnabled="{Binding CanRemove}" VerticalAlignment="Top" Click="RemoveQueuedProduct_Click" />
+                <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3"
+                           Text="{Binding CompletionTimeText}" ToolTip="{Binding CompletionTimeText}"
+                           Foreground="{DynamicResource MutedBrush}" FontSize="9.5"
+                           HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                           Margin="10,5,0,0" TextTrimming="CharacterEllipsis" />
             </Grid>
         </Border>
     </DataTemplate>

@@ -14,6 +14,7 @@ public sealed partial class ReliabilityTests
         var mainXaml = ReadDownloadQueueTabsSource("MainWindow.xaml");
         var products = ReadDownloadQueueTabsSource("MainWindow.Products.cs");
         var templates = ReadDownloadQueueTabsSource(Path.Combine("Resources", "MainWindowTemplates.xaml"));
+        var queue = ReadDownloadQueueTabsSource("ProductInstallQueue.cs");
 
         StringAssert.Contains(viewModel, "ActiveQueueItems => QueueItems");
         StringAssert.Contains(viewModel, ".Where(item => !item.IsTerminal)");
@@ -31,6 +32,56 @@ public sealed partial class ReliabilityTests
         StringAssert.Contains(templates, "x:Key=\"InstallationQueueHistoryItemTemplate\"");
         StringAssert.Contains(templates, "Value=\"完成\"");
         StringAssert.Contains(templates, "Value=\"失败\"");
+        StringAssert.Contains(templates, "Text=\"{Binding CompletionTimeText}\"");
+        StringAssert.Contains(queue, "public DateTime? CompletedAtUtc => _completedAtUtc;");
+        StringAssert.Contains(queue, "_completedAtUtc = DateTime.UtcNow;");
+        StringAssert.Contains(queue, "CompletedAtUtc = item.CompletedAtUtc");
+    }
+
+    [TestMethod]
+    public void DownloadQueueCompletedHistoryCarriesCompletionTimestamp()
+    {
+        var completedUtc = new DateTime(2026, 9, 5, 17, 30, 0, DateTimeKind.Utc);
+        var request = new ProductInstallWorkerRequest(
+            "TIME001",
+            "完成时间测试软件",
+            "在线",
+            string.Empty,
+            ProductSource.Online,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            false,
+            null,
+            null,
+            false);
+        var restored = new ProductInstallQueueItemViewModel(
+            "time-restored",
+            1,
+            request,
+            ProductInstallQueueStatus.Completed,
+            100d,
+            "产品文件与运行服务已处理完成。",
+            completedUtc);
+
+        Assert.AreEqual(completedUtc, restored.CompletedAtUtc);
+        Assert.IsTrue(restored.CompletionTimeText.StartsWith("部署完成 · ", StringComparison.Ordinal));
+        StringAssert.Contains(restored.CompletionTimeText, completedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm"));
+
+        var live = new ProductInstallQueueItemViewModel(
+            "time-live",
+            2,
+            request,
+            ProductInstallQueueStatus.Pending,
+            0d,
+            "等待处理");
+        var before = DateTime.UtcNow.AddSeconds(-1);
+        live.SetState(ProductInstallQueueStatus.Completed);
+        Assert.IsNotNull(live.CompletedAtUtc);
+        Assert.IsTrue(live.CompletedAtUtc >= before && live.CompletedAtUtc <= DateTime.UtcNow.AddSeconds(1));
     }
 
     private static string ReadDownloadQueueTabsSource(string relativePath)
