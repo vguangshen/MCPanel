@@ -60,7 +60,7 @@ jobs:
             -PublishDirectory $env:MCPANEL_PUBLISH_DIR `
             -OutputDirectory $updatesDir `
             -GitHubRelease `
-            -ReleaseNotes '修复下载队列工具栏角标字体与环形进度显示，并修复在队列弹窗内点击暂停、继续或删除时弹窗被错误关闭的问题。'
+            -ReleaseNotes 'Java/Tomcat 类产品安装或更新完成后不再自动重启共享 Tomcat，也不会自动启动新部署的软件；部署完成后由用户按需手动启动。'
           "MCPANEL_UPDATES_DIR=$updatesDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Create GitHub Release
@@ -74,15 +74,14 @@ jobs:
           $hash = "$zip.sha256"
           $manifest = Join-Path $env:MCPANEL_UPDATES_DIR 'update-manifest.json'
           $notes = @"
-          本版本集中修复产品下载与安装队列的工具栏显示和弹窗交互。
+          本版本调整 Java/Tomcat 类平台软件的部署后启动策略。
 
-          - 修复下载按钮右上角活动任务数量继承 Segoe MDL2 Assets 后被渲染成错误符号的问题，数量角标恢复使用正常 UI 字体。
-          - 调整下载按钮外围环形进度的宿主空间、尺寸和线宽，避免 48px 进度环被 40px 宿主裁切或紧贴按钮；下载百分比计算逻辑保持不变。
-          - 修复下载队列弹窗的点击边界判断：点击弹窗内部的暂停、继续、删除、滚动区域和任务行不再被误判为外部点击。
-          - 点击当前正在下载的任务“删除”后，会先安全发出取消标记；若后台已接管任务，该行保持“正在删除”直到后台确认终态，弹窗不会瞬间消失。
-          - 对尚未被后台接管的排队任务，删除仍可立即撤回请求并清理会话文件；删除最后一项后弹窗保留并正确显示空队列状态。
-          - 保留原有暂停/继续、进度、速度、传输量、队列顺序、历史记录、后台托盘运行和安装部署逻辑。
-          - 新增下载队列弹窗点击策略、工具栏环形进度尺寸和空队列状态回归检查，并继续执行既有队列暂停、删除、取消竞态与恢复测试。
+          - 复查确认：独立 Tomcat 单应用实例原本已经不会在安装完成后自动启动。
+          - 修复共享 Tomcat 已经处于运行状态时的隐式自动启动路径：部署新 Java 产品后不再自动停止并重启共享 Tomcat，因此不会因为一次安装而立即加载并启动新产品。
+          - Java 产品安装和成功更新完成后保持“已部署、未主动启动”状态；需要运行时由用户在产品管理中手动启动单应用，或明确启动共享 Tomcat 全部应用模式。
+          - 不改变 Tomcat 端口分配、server.xml Service/Context 写入、产品状态记录、Nginx 路由同步和手动启动功能。
+          - 保留更新失败时对原有 Tomcat 产品的故障恢复逻辑，避免失败操作无故留下原应用停止。
+          - 新增回归检查，锁定 DeployToTomcatAsync 不得因共享 Tomcat 原本正在运行而触发自动重载。
           - 发布前执行完整可靠性测试与 Win-x64 publish。
           "@
           gh release create $tag $zip $hash $manifest `
