@@ -1,0 +1,377 @@
+name: One-time Account API port editor
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/one-time-account-api-port-editor.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install SharpSvn runtime
+        shell: pwsh
+        run: choco install vcredist-all -y --no-progress
+
+      - name: Apply Account API port editor
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          def read(path):
+              return Path(path).read_text(encoding='utf-8-sig').replace('\r\n', '\n')
+
+          def write(path, text):
+              Path(path).write_text(text, encoding='utf-8', newline='\n')
+
+          def replace_once(path, old, new):
+              text = read(path)
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{path}: expected one occurrence, found {count}: {old[:180]!r}')
+              write(path, text.replace(old, new, 1))
+
+          # 1) Service: persist a new port and restart transactionally when enabled.
+          marker = '''    public string GenerateSigningSecret()
+          {
+              ThrowIfDisposed();
+              return GenerateSigningSecret(RequireConfiguration());
+          }
+          '''
+          service_method = '''    public async Task SetPortAsync(int port, CancellationToken cancellationToken = default)
+          {
+              ThrowIfDisposed();
+              if (port is < 1 or > 65535)
+              {
+                  throw new ArgumentOutOfRangeException(nameof(port), "Account API 监听端口必须在 1 到 65535 之间。");
+              }
+
+              await LifecycleGate.WaitAsync(cancellationToken);
+              try
+              {
+                  _enabled = LoadSettings().Enabled;
+                  var configuration = RequireConfiguration();
+                  var previousPort = configuration.Port;
+                  if (port == previousPort)
+                  {
+                      return;
+                  }
+
+                  var wasRunning = EmbeddedAccountApiRuntime.IsRunning;
+                  if (wasRunning)
+                  {
+                      EmbeddedAccountApiRuntime.Stop();
+                  }
+
+                  try
+                  {
+                      SetIniValue(
+                          configuration.ConfigPath,
+                          "AccountApi:Server",
+                          "Port",
+                          port.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+                      if (_enabled)
+                      {
+                          var updatedConfiguration = LoadConfiguration();
+                          if (!updatedConfiguration.HasSigningSecret)
+                          {
+                              GenerateSigningSecret(updatedConfiguration);
+                          }
+
+                          updatedConfiguration = RequireRunnableConfiguration();
+                          EmbeddedAccountApiRuntime.Start(updatedConfiguration.ConfigPath);
+                          if (!EmbeddedAccountApiRuntime.IsRunning)
+                          {
+                              throw new InvalidOperationException(
+                                  $"内置 Account API 修改到端口 {port} 后未进入监听状态。");
+                          }
+                      }
+                  }
+                  catch (Exception applyError)
+                  {
+                      EmbeddedAccountApiRuntime.Stop();
+                      Exception? restoreError = null;
+                      try
+                      {
+                          SetIniValue(
+                              configuration.ConfigPath,
+                              "AccountApi:Server",
+                              "Port",
+                              previousPort.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                          if (wasRunning)
+                          {
+                              EmbeddedAccountApiRuntime.Start(configuration.ConfigPath);
+                          }
+                      }
+                      catch (Exception error)
+                      {
+                          restoreError = error;
+                      }
+
+                      if (restoreError is not null)
+                      {
+                          throw new InvalidOperationException(
+                              $"监听端口 {port} 应用失败，并且恢复原端口 {previousPort} 时也失败。请检查 Account API 日志。",
+                              new AggregateException(applyError, restoreError));
+                      }
+
+                      if (applyError is HttpListenerException)
+                      {
+                          throw new InvalidOperationException(
+                              $"内置 Account API 无法监听端口 {port}。该端口可能已被其他软件占用，已恢复原端口 {previousPort}。",
+                              applyError);
+                      }
+
+                      throw new InvalidOperationException(
+                          $"修改 Account API 监听端口失败，已恢复原端口 {previousPort}。",
+                          applyError);
+                  }
+              }
+              finally
+              {
+                  LifecycleGate.Release();
+              }
+          }
+
+          ''' + marker
+          replace_once('AccountApiManagerService.cs', marker, service_method)
+
+          # 2) Reuse the unified input dialog for Account API ports.
+          replace_once(
+              'PanelInputDialog.xaml',
+              '<TextBlock Text="MySQL" Foreground="{DynamicResource DialogTonalTextBrush}" FontWeight="SemiBold" FontSize="12" />',
+              '<TextBlock x:Name="ContextBadgeText" Text="MySQL" Foreground="{DynamicResource DialogTonalTextBrush}" FontWeight="SemiBold" FontSize="12" />')
+          replace_once(
+              'PanelInputDialog.xaml',
+              '<TextBlock Text="修改后会同步更新 MySQL 配置与面板连接信息。" Foreground="{DynamicResource DialogMutedBrush}" FontSize="12" Margin="0,10,0,0" />',
+              '<TextBlock x:Name="TextHint" Text="修改后会同步更新 MySQL 配置与面板连接信息。" Foreground="{DynamicResource DialogMutedBrush}" FontSize="12" Margin="0,10,0,0" />')
+
+          old_factory = '''    public static PanelInputDialog CreatePortEditor(int currentPort)
+          {
+              var dialog = new PanelInputDialog(PanelInputDialogMode.Port);
+              dialog.TitleText.Text = "修改 MySQL 端口";
+              dialog.SubtitleText.Text = "更新 MySQL 服务监听端口，并同步面板连接配置。";
+              dialog.IconText.Text = "\\uE8D7";
+              dialog.InputLabel.Text = "MySQL 端口";
+              dialog.TextInput.Text = currentPort.ToString(CultureInfo.InvariantCulture);
+              dialog.TextPanel.Visibility = Visibility.Visible;
+              dialog.PasswordPanel.Visibility = Visibility.Collapsed;
+              return dialog;
+          }
+          '''
+          new_factory = '''    public static PanelInputDialog CreatePortEditor(int currentPort)
+          {
+              var dialog = new PanelInputDialog(PanelInputDialogMode.Port);
+              dialog.TitleText.Text = "修改 MySQL 端口";
+              dialog.SubtitleText.Text = "更新 MySQL 服务监听端口，并同步面板连接配置。";
+              dialog.IconText.Text = "\\uE8D7";
+              dialog.ContextBadgeText.Text = "MySQL";
+              dialog.InputLabel.Text = "MySQL 端口";
+              dialog.TextInput.Text = currentPort.ToString(CultureInfo.InvariantCulture);
+              dialog.TextHint.Text = "修改后会同步更新 MySQL 配置与面板连接信息。";
+              dialog.TextPanel.Visibility = Visibility.Visible;
+              dialog.PasswordPanel.Visibility = Visibility.Collapsed;
+              return dialog;
+          }
+
+              public static PanelInputDialog CreateAccountApiPortEditor(int currentPort)
+          {
+              var dialog = new PanelInputDialog(PanelInputDialogMode.Port);
+              dialog.TitleText.Text = "修改 Account API 监听端口";
+              dialog.SubtitleText.Text = "修改内置 Account API 的监听端口，用于避开其他软件的端口占用。";
+              dialog.IconText.Text = "\\uE8D7";
+              dialog.ContextBadgeText.Text = "Account API";
+              dialog.InputLabel.Text = "监听端口";
+              dialog.TextInput.Text = currentPort.ToString(CultureInfo.InvariantCulture);
+              dialog.TextHint.Text = "端口范围 1–65535；API 已启用时确认后会立即切换，失败会自动恢复原端口。";
+              dialog.TextPanel.Visibility = Visibility.Visible;
+              dialog.PasswordPanel.Visibility = Visibility.Collapsed;
+              return dialog;
+          }
+          '''
+          replace_once('PanelInputDialog.xaml.cs', old_factory, new_factory)
+
+          # 3) Add a compact Edit action to the listening-address metric card.
+          old_card = '''            <Border Grid.Column="1" Style="{DynamicResource Card}" Padding="12,8" Margin="0,0,6,0">
+                          <StackPanel>
+                              <TextBlock Text="监听地址" Style="{StaticResource AccountCaption}" />
+                              <TextBlock Text="{Binding EndpointText}" Style="{StaticResource AccountMetricValue}" Margin="0,3,0,0" TextTrimming="CharacterEllipsis" />
+                              <TextBlock Text="{Binding AuthModeText}" FontSize="11" Foreground="{DynamicResource MutedBrush}" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+                          </StackPanel>
+                      </Border>
+          '''
+          new_card = '''            <Border Grid.Column="1" Style="{DynamicResource Card}" Padding="12,8" Margin="0,0,6,0">
+                          <StackPanel>
+                              <Grid>
+                                  <Grid.ColumnDefinitions>
+                                      <ColumnDefinition Width="*" />
+                                      <ColumnDefinition Width="Auto" />
+                                  </Grid.ColumnDefinitions>
+                                  <TextBlock Text="监听地址" Style="{StaticResource AccountCaption}" VerticalAlignment="Center" />
+                                  <Button Grid.Column="1"
+                                          Content="编辑"
+                                          Style="{StaticResource AccountLinkButton}"
+                                          Height="22"
+                                          Padding="7,0"
+                                          Margin="6,-3,0,-3"
+                                          Click="EditEndpoint_Click"
+                                          IsEnabled="{Binding CanEditEndpoint}"
+                                          ToolTip="修改 Account API 监听端口"
+                                          AutomationProperties.Name="修改 Account API 监听端口" />
+                              </Grid>
+                              <TextBlock Text="{Binding EndpointText}" Style="{StaticResource AccountMetricValue}" Margin="0,3,0,0" TextTrimming="CharacterEllipsis" />
+                              <TextBlock Text="{Binding AuthModeText}" FontSize="11" Foreground="{DynamicResource MutedBrush}" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+                          </StackPanel>
+                      </Border>
+          '''
+          replace_once('AccountApiPage.xaml', old_card, new_card)
+
+          # 4) Page behavior: open the existing modal and apply the port safely.
+          replace_once(
+              'AccountApiPage.xaml.cs',
+              '    public bool CanOpenConfig => _snapshot?.Configuration.ConfigExists == true;\n',
+              '    public bool CanOpenConfig => _snapshot?.Configuration.ConfigExists == true;\n    public bool CanEditEndpoint => !IsBusy && _snapshot?.Configuration.ConfigExists == true;\n')
+          replace_once(
+              'AccountApiPage.xaml.cs',
+              '            "停用账号 API" => succeeded ? "账号 API 已停用" : "账号 API 停用失败",\n',
+              '            "停用账号 API" => succeeded ? "账号 API 已停用" : "账号 API 停用失败",\n            "修改监听端口" => succeeded ? "监听端口已更新" : "监听端口修改失败",\n')
+          refresh_handler = '''    private async void Refresh_Click(object sender, RoutedEventArgs e)
+          {
+              _manualErrorText = string.Empty;
+              await RefreshPageAsync();
+          }
+          '''
+          edit_handler = '''    private async void Refresh_Click(object sender, RoutedEventArgs e)
+          {
+              _manualErrorText = string.Empty;
+              await RefreshPageAsync();
+          }
+
+          private async void EditEndpoint_Click(object sender, RoutedEventArgs e)
+          {
+              if (IsBusy || _snapshot?.Configuration.ConfigExists != true)
+              {
+                  return;
+              }
+
+              var currentPort = _snapshot.Configuration.Port;
+              var dialog = PanelInputDialog.CreateAccountApiPortEditor(currentPort);
+              var owner = Window.GetWindow(this);
+              if (owner is not null)
+              {
+                  dialog.Owner = owner;
+              }
+
+              if (dialog.ShowDialog() != true ||
+                  !int.TryParse(dialog.ResultText, out var port) ||
+                  port == currentPort)
+              {
+                  return;
+              }
+
+              await RunOperationAsync(
+                  "正在修改监听端口…",
+                  () => _service.SetPortAsync(port));
+          }
+          '''
+          replace_once('AccountApiPage.xaml.cs', refresh_handler, edit_handler)
+
+          # 5) Regression/source-contract coverage for the complete wiring.
+          test_path = Path('MCPanel.Tests/ReliabilityTests.AccountApiPortEditing.cs')
+          if test_path.exists():
+              raise RuntimeError(f'{test_path} already exists')
+          test_path.write_text(r'''using System;
+          using System.IO;
+          using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+          namespace MCPanel.Tests;
+
+          public sealed partial class ReliabilityTests
+          {
+              [TestMethod]
+              public void AccountApiPortEditorIsWiredToTransactionalRuntimeRestart()
+              {
+                  var service = ReadAccountApiPortEditingSource("AccountApiManagerService.cs");
+                  var pageXaml = ReadAccountApiPortEditingSource("AccountApiPage.xaml");
+                  var pageCode = ReadAccountApiPortEditingSource("AccountApiPage.xaml.cs");
+                  var dialogXaml = ReadAccountApiPortEditingSource("PanelInputDialog.xaml");
+                  var dialogCode = ReadAccountApiPortEditingSource("PanelInputDialog.xaml.cs");
+
+                  StringAssert.Contains(service, "public async Task SetPortAsync(int port");
+                  StringAssert.Contains(service, "port is < 1 or > 65535");
+                  StringAssert.Contains(service, "\"AccountApi:Server\"");
+                  StringAssert.Contains(service, "\"Port\"");
+                  StringAssert.Contains(service, "var previousPort = configuration.Port;");
+                  StringAssert.Contains(service, "var wasRunning = EmbeddedAccountApiRuntime.IsRunning;");
+                  StringAssert.Contains(service, "EmbeddedAccountApiRuntime.Stop();");
+                  StringAssert.Contains(service, "EmbeddedAccountApiRuntime.Start(updatedConfiguration.ConfigPath);");
+                  StringAssert.Contains(service, "previousPort.ToString(System.Globalization.CultureInfo.InvariantCulture)");
+                  StringAssert.Contains(service, "已恢复原端口");
+
+                  StringAssert.Contains(pageXaml, "Content=\"编辑\"");
+                  StringAssert.Contains(pageXaml, "Click=\"EditEndpoint_Click\"");
+                  StringAssert.Contains(pageXaml, "IsEnabled=\"{Binding CanEditEndpoint}\"");
+                  StringAssert.Contains(pageCode, "PanelInputDialog.CreateAccountApiPortEditor(currentPort)");
+                  StringAssert.Contains(pageCode, "_service.SetPortAsync(port)");
+                  StringAssert.Contains(pageCode, "public bool CanEditEndpoint");
+
+                  StringAssert.Contains(dialogXaml, "x:Name=\"ContextBadgeText\"");
+                  StringAssert.Contains(dialogXaml, "x:Name=\"TextHint\"");
+                  StringAssert.Contains(dialogCode, "CreateAccountApiPortEditor(int currentPort)");
+                  StringAssert.Contains(dialogCode, "端口范围 1–65535");
+                  StringAssert.Contains(dialogCode, "port is < 1 or > 65535");
+              }
+
+              private static string ReadAccountApiPortEditingSource(string relativePath)
+              {
+                  var directory = new DirectoryInfo(AppContext.BaseDirectory);
+                  while (directory is not null)
+                  {
+                      var candidate = Path.Combine(directory.FullName, relativePath);
+                      if (File.Exists(Path.Combine(directory.FullName, "MCPanel.csproj")) && File.Exists(candidate))
+                      {
+                          return File.ReadAllText(candidate);
+                      }
+
+                      directory = directory.Parent;
+                  }
+
+                  Assert.Fail("Unable to locate repository source: " + relativePath);
+                  return string.Empty;
+              }
+          }
+          ''', encoding='utf-8', newline='\n')
+          '@ | python -
+
+      - name: Test Account API port editor
+        shell: pwsh
+        run: |
+          dotnet test .\MCPanel.Tests\MCPanel.Tests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Regression tests failed.' }
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { throw 'git diff --check failed.' }
+
+      - name: Commit feature
+        shell: pwsh
+        run: |
+          git config user.name "Xiangming"
+          git config user.email "40314529+vguangshen@users.noreply.github.com"
+          git add AccountApiManagerService.cs AccountApiPage.xaml AccountApiPage.xaml.cs PanelInputDialog.xaml PanelInputDialog.xaml.cs MCPanel.Tests/ReliabilityTests.AccountApiPortEditing.cs
+          git commit -m "feat: allow editing Account API listen port"
+          git push origin main
