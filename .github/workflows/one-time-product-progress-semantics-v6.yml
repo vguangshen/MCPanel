@@ -1,0 +1,107 @@
+name: One-time product progress semantics v6
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/one-time-product-progress-semantics-v6.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install SharpSvn runtime
+        shell: pwsh
+        run: choco install vcredist-all -y --no-progress
+
+      - name: Apply product progress patch
+        shell: pwsh
+        run: |
+          python .\tools\Apply-ProductProgressSemantics.py
+          @'
+          from pathlib import Path
+
+          def read(path):
+              return Path(path).read_text(encoding='utf-8-sig').replace('\r\n', '\n')
+
+          def write(path, text):
+              Path(path).write_text(text, encoding='utf-8', newline='\n')
+
+          def replace_once(path, old, new):
+              text = read(path)
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{path}: expected one occurrence, found {count}: {old!r}')
+              write(path, text.replace(old, new, 1))
+
+          # Keep the new activity arc separate from the determinate arc locals.
+          path = Path('Controls/PanelProgressControls.cs')
+          text = read(path)
+          marker = '        if (IsIndeterminate)\n'
+          start = text.find(marker)
+          end = text.find('        var percent = Compat.Clamp(AnimatedValue, 0, 100);', start)
+          if start < 0 or end < 0:
+              raise RuntimeError('Could not locate generated indeterminate progress block.')
+          block = text[start:end]
+          replacements = [
+              ('var startAngle = IndeterminateAngle - 90d;', 'var activityStartAngle = IndeterminateAngle - 90d;'),
+              ('var endAngle = startAngle + 96d;', 'var activityEndAngle = activityStartAngle + 96d;'),
+              ('var start = PointOnCircle(center, radius, startAngle);', 'var activityStart = PointOnCircle(center, radius, activityStartAngle);'),
+              ('var end = PointOnCircle(center, radius, endAngle);', 'var activityEnd = PointOnCircle(center, radius, activityEndAngle);'),
+              ('var geometry = new StreamGeometry();', 'var activityGeometry = new StreamGeometry();'),
+              ('using (var context = geometry.Open())', 'using (var activityContext = activityGeometry.Open())'),
+              ('context.BeginFigure(start, isFilled: false, isClosed: false);', 'activityContext.BeginFigure(activityStart, isFilled: false, isClosed: false);'),
+              ('context.ArcTo(end, new Size(radius, radius), 0, false, SweepDirection.Clockwise, true, false);', 'activityContext.ArcTo(activityEnd, new Size(radius, radius), 0, false, SweepDirection.Clockwise, true, false);'),
+              ('geometry.Freeze();', 'activityGeometry.Freeze();'),
+              ('drawingContext.DrawGeometry(null, progressPen, geometry);', 'drawingContext.DrawGeometry(null, progressPen, activityGeometry);'),
+          ]
+          for old, new in replacements:
+              if block.count(old) != 1:
+                  raise RuntimeError(f'Expected one generated activity token, found {block.count(old)}: {old}')
+              block = block.replace(old, new, 1)
+          write(path, text[:start] + block + text[end:])
+
+          # Existing callers that provide TotalBytes already mean an authoritative total.
+          # SVN telemetry opts out explicitly until the transfer has actually completed.
+          replace_once('ProductDownloadProgress.cs',
+                       '    bool HasReliableTotal = false)',
+                       '    bool HasReliableTotal = true)')
+          replace_once('SvnProductTransferService.cs',
+                       '                    _scannedFiles,\n                    _scannedBytes);',
+                       '                    _scannedFiles,\n                    _scannedBytes,\n                    HasReliableTotal: forceTotal);')
+
+          # Stage-aware queue wording intentionally distinguishes deployment from download.
+          replace_once('MCPanel.Tests/ReliabilityTests.DownloadQueue.cs',
+                       '            Assert.AreEqual("正在安装", item.StateText);',
+                       '            Assert.AreEqual("正在部署", item.StateText);')
+          '@ | python -
+
+      - name: Test product progress semantics
+        shell: pwsh
+        run: |
+          dotnet test .\MCPanel.Tests\MCPanel.Tests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Regression tests failed.' }
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { throw 'git diff --check failed.' }
+
+      - name: Commit patch
+        shell: pwsh
+        run: |
+          git config user.name "Xiangming"
+          git config user.email "40314529+vguangshen@users.noreply.github.com"
+          git add ProductDownloadProgress.cs McPanelStoreClient.cs SvnProductTransferService.cs ProductInstallWorker.cs ProductInstallQueue.cs MainWindow.Products.cs Controls/PanelProgressControls.cs ViewModels/ProductViewModels.cs MainWindow.xaml Resources/MainWindowTemplates.xaml MCPanel.Tests/ReliabilityTests.ProductProgressSemantics.cs MCPanel.Tests/ReliabilityTests.DownloadQueue.cs
+          git commit -m "ui: use stage-aware product transfer progress"
+          git push origin main
