@@ -1,0 +1,117 @@
+name: One-time Tomcat Server startup progress release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: contains(github.event.head_commit.message, '[tomcat-progress-1.3.13]')
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install SharpSvn native runtime dependencies
+        shell: pwsh
+        run: |
+          choco install vcredist-all -y --no-progress
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Failed to install the VC++ runtime bundle required by the vendored SharpSvn build.'
+          }
+
+      - name: Apply Tomcat Server startup progress migration
+        shell: pwsh
+        run: .\tools\Add-TomcatServerStartupProgress-1.3.13.ps1
+
+      - name: Run full regression tests
+        shell: pwsh
+        run: |
+          dotnet test .\MCPanel.Tests\MCPanel.Tests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) {
+            throw "Regression tests failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Publish Win-x64
+        shell: pwsh
+        run: |
+          $publishDir = Join-Path $env:RUNNER_TEMP 'MCPanelPublish113'
+          & .\Publish-WinX64.ps1 -OutputDirectory $publishDir
+          if ($LASTEXITCODE -ne 0) {
+            throw "Win-x64 publish failed with exit code $LASTEXITCODE."
+          }
+          "MCPANEL_PUBLISH_DIR=$publishDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Commit validated 1.3.13 source
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath '.github/workflows/tomcat-server-progress-1.3.13.yml' -Force
+          Remove-Item -LiteralPath 'tools/Add-TomcatServerStartupProgress-1.3.13.ps1' -Force
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m "Release MCPanel 1.3.13`n`nKeep shared Tomcat startup console-free and bind real application readiness to the Tomcat Server progress bar. Report preparation, background Windows Service startup, ready/total application ports, stability verification, and completion without changing Catalina diagnostic behavior."
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Unable to commit the validated 1.3.13 source.'
+          }
+          git push origin HEAD:main
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Unable to push MCPanel 1.3.13 to main.'
+          }
+          $releaseSha = (git rev-parse HEAD).Trim()
+          "MCPANEL_RELEASE_SHA=$releaseSha" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build 1.3.13 update assets
+        shell: pwsh
+        run: |
+          $updatesDir = Join-Path $env:RUNNER_TEMP 'MCPanelUpdates113'
+          & .\Build-UpdatePackage.ps1 `
+            -Version '1.3.13' `
+            -PublishDirectory $env:MCPANEL_PUBLISH_DIR `
+            -OutputDirectory $updatesDir `
+            -GitHubRelease `
+            -ReleaseNotes 'Tomcat Server 共享启动保持后台无 CMD，并将真实应用端口就绪数量实时绑定到环境页进度条；增加准备、应用加载、稳定性验证和完成阶段。'
+          if ($LASTEXITCODE -ne 0) {
+            throw "Update package build failed with exit code $LASTEXITCODE."
+          }
+          "MCPANEL_UPDATES_DIR=$updatesDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Create GitHub Release 1.3.13
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $zip = Join-Path $env:MCPANEL_UPDATES_DIR 'MCPanel-1.3.13.zip'
+          $hash = "$zip.sha256"
+          $manifest = Join-Path $env:MCPANEL_UPDATES_DIR 'update-manifest.json'
+          $notes = @"
+          本版本完善 Tomcat Server 的共享启动体验和可观测性。
+
+          - 普通 Tomcat Server 启动继续使用 MCPanelTomcat Windows Service 后台运行，不弹出 CMD 窗口。
+          - Catalina 方式仍保留为显式前台诊断模式，只有用户主动选择时才打开控制台。
+          - Tomcat Server 启动时，现有环境卡片进度条从准备阶段开始实时更新。
+          - 根据已配置 Java/Tomcat 产品的真实监听端口计算“已就绪应用 / 总应用”进度，不使用纯计时假进度。
+          - 进度阶段包含：准备共享服务、启动 Windows Service、逐个应用就绪、端口稳定性验证、100% 完成。
+          - 没有已部署产品时自动退化为 Tomcat 配置端口就绪进度。
+          - 保留原有 TomcatRuntimeProbe 稳定监听验证和 Windows Service watchdog，不降低启动可靠性。
+          - 新增回归测试，验证后台隐藏启动、进度回调、进度条绑定和稳定性检查链路。
+          - 已通过完整 Release 测试和 Win-x64 publish 校验。
+          "@
+          gh release create v1.3.13 $zip $hash $manifest `
+            --target $env:MCPANEL_RELEASE_SHA `
+            --title 'MCPanel 1.3.13' `
+            --notes $notes
