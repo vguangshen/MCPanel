@@ -59,7 +59,7 @@ public partial class ReliabilityTests
         Assert.IsFalse(products.Contains("OpenInstance", StringComparison.Ordinal));
         StringAssert.Contains(products, "ClearCacheAndRestartAsync");
 
-        Assert.IsFalse(manager.Contains("RestartAsync(", StringComparison.Ordinal));
+        Assert.IsFalse(manager.Contains("public async Task<string> RestartAsync(", StringComparison.Ordinal));
         Assert.IsFalse(manager.Contains("ClearCacheAsync(", StringComparison.Ordinal));
         Assert.IsFalse(manager.Contains("GetInstanceDirectory(", StringComparison.Ordinal));
         StringAssert.Contains(manager, "ClearCacheAndRestartAsync(");
