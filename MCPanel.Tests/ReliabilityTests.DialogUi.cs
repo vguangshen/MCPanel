@@ -12,15 +12,20 @@ public partial class ReliabilityTests
     {
         var modal = ReadRepositoryFile("PanelModalWindow.cs");
         var chrome = ReadRepositoryFile(Path.Combine("Resources", "PanelModalChrome.xaml"));
+        var controls = ReadRepositoryFile(Path.Combine("Resources", "PanelDialogControls.xaml"));
+        var productWebsite = ReadRepositoryFile("ProductWebsiteDialog.xaml");
         var main = ReadRepositoryFile("MainWindow.xaml");
         var environment = ReadRepositoryFile("MainWindow.Environment.cs");
 
-        StringAssert.Contains(modal, "StandardCardWidth = 820d");
-        StringAssert.Contains(modal, "StandardCardHeight = 600d");
+        StringAssert.Contains(modal, "StandardCardWidth = 780d");
+        StringAssert.Contains(modal, "StandardCardHeight = 482d");
         StringAssert.Contains(modal, "Color.FromArgb(0x78, 0x00, 0x00, 0x00)");
         StringAssert.Contains(chrome, "x:Key=\"PanelModalSurface\"");
-        StringAssert.Contains(chrome, "<Setter Property=\"Width\" Value=\"820\" />");
-        StringAssert.Contains(chrome, "<Setter Property=\"Height\" Value=\"600\" />");
+        StringAssert.Contains(chrome, "<Setter Property=\"Width\" Value=\"780\" />");
+        StringAssert.Contains(chrome, "<Setter Property=\"Height\" Value=\"482\" />");
+        StringAssert.Contains(controls, "x:Key=\"BrowseDialogButton\"");
+        StringAssert.Contains(controls, "CornerRadius=\"5\"");
+        StringAssert.Contains(productWebsite, "Style=\"{StaticResource BrowseDialogButton}\"");
 
         foreach (var path in new[]
                  {

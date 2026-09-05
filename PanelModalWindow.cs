@@ -8,8 +8,8 @@ namespace MCPanel;
 
 public class PanelModalWindow : Window
 {
-    public const double StandardCardWidth = 820d;
-    public const double StandardCardHeight = 600d;
+    public const double StandardCardWidth = 780d;
+    public const double StandardCardHeight = 482d;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct NativeRect

@@ -19,16 +19,16 @@
             </Grid.RowDefinitions>
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="58" />
+                    <ColumnDefinition Width="52" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <Border Style="{StaticResource PanelModalIconBadge}">
-                    <TextBlock Text="&#xE774;" FontFamily="Segoe MDL2 Assets" FontSize="21"
+                    <TextBlock Text="&#xE774;" FontFamily="Segoe MDL2 Assets" FontSize="20"
                                Foreground="{DynamicResource DialogPrimaryBrush}"
                                HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Border>
-                <StackPanel Grid.Column="1" Margin="12,1,16,0" VerticalAlignment="Center">
+                <StackPanel Grid.Column="1" Margin="10,0,14,0" VerticalAlignment="Center">
                     <TextBlock Text="产品域名与 SSL" Style="{StaticResource PanelModalTitle}" />
                     <TextBlock Text="通过统一 Nginx 为当前产品配置独立域名、HTTPS、跳转和下载限速。"
                                Style="{StaticResource PanelModalSubtitle}" />
@@ -38,52 +38,69 @@
                 </Border>
             </Grid>
 
-            <Border Grid.Row="1" Style="{StaticResource PanelModalContentCard}" Margin="0,20,0,18" Padding="20,18">
+            <Border Grid.Row="1" Style="{StaticResource PanelModalContentCard}" Margin="0,14,0,12" Padding="16,14">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel>
                         <CheckBox x:Name="EnabledBox" Content="启用独立域名访问" Checked="OptionChanged" Unchecked="OptionChanged" />
-                        <Grid Margin="0,16,0,0">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="140"/></Grid.ColumnDefinitions>
+
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="118" />
+                            </Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,14,0">
-                                <TextBlock Text="域名" Foreground="{DynamicResource DialogMutedBrush}" Margin="0,0,0,6" />
+                                <TextBlock Text="域名" Foreground="{DynamicResource DialogMutedBrush}" Margin="0,0,0,5" />
                                 <TextBox x:Name="DomainsBox" ToolTip="多个域名可用逗号或空格分隔" />
                             </StackPanel>
                             <StackPanel Grid.Column="1">
-                                <TextBlock Text="HTTP 端口" Foreground="{DynamicResource DialogMutedBrush}" Margin="0,0,0,6" />
+                                <TextBlock Text="HTTP 端口" Foreground="{DynamicResource DialogMutedBrush}" Margin="0,0,0,5" />
                                 <TextBox x:Name="HttpPortBox" />
                             </StackPanel>
                         </Grid>
+
                         <CheckBox x:Name="SslBox" Content="启用 HTTPS（PEM/CRT 证书 + PEM/KEY 私钥）"
-                                  Margin="0,18,0,0" Checked="OptionChanged" Unchecked="OptionChanged" />
-                        <Grid Margin="0,12,0,0">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="86"/><ColumnDefinition Width="120"/></Grid.ColumnDefinitions>
+                                  Margin="0,12,0,0" Checked="OptionChanged" Unchecked="OptionChanged" />
+
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="82" />
+                                <ColumnDefinition Width="110" />
+                            </Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,10,0">
-                                <TextBlock Text="证书文件" Foreground="{DynamicResource DialogMutedBrush}" Margin="0,0,0,6" />
+                                <TextBlock Text="证书文件" Foreground="{DynamicResource DialogMutedBrush}" Margin="0,0,0,5" />
                                 <TextBox x:Name="CertificateBox" />
                             </StackPanel>
-                            <Button Grid.Column="1" Content="浏览" VerticalAlignment="Bottom" Margin="0,0,10,0" Click="BrowseCertificate_Click" />
+                            <Button Grid.Column="1" Content="浏览" Style="{StaticResource BrowseDialogButton}"
+                                    VerticalAlignment="Bottom" HorizontalAlignment="Left" Margin="0,0,10,0"
+                                    Click="BrowseCertificate_Click" />
                             <StackPanel Grid.Column="2">
-                                <TextBlock Text="HTTPS 端口" Foreground="{DynamicResource DialogMutedBrush}" Margin="0,0,0,6" />
+                                <TextBlock Text="HTTPS 端口" Foreground="{DynamicResource DialogMutedBrush}" Margin="0,0,0,5" />
                                 <TextBox x:Name="HttpsPortBox" />
                             </StackPanel>
                         </Grid>
-                        <Grid Margin="0,12,0,0">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="86"/></Grid.ColumnDefinitions>
+
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="82" />
+                                <ColumnDefinition Width="154" />
+                            </Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,10,0">
-                                <TextBlock Text="私钥文件" Foreground="{DynamicResource DialogMutedBrush}" Margin="0,0,0,6" />
+                                <TextBlock Text="私钥文件" Foreground="{DynamicResource DialogMutedBrush}" Margin="0,0,0,5" />
                                 <TextBox x:Name="CertificateKeyBox" />
                             </StackPanel>
-                            <Button Grid.Column="1" Content="浏览" VerticalAlignment="Bottom" Margin="0" Click="BrowseKey_Click" />
-                        </Grid>
-                        <Grid Margin="0,18,0,0">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="190"/></Grid.ColumnDefinitions>
-                            <CheckBox x:Name="RedirectBox" Content="HTTP 自动 301 跳转到 HTTPS" />
-                            <StackPanel Grid.Column="1">
-                                <TextBlock Text="单连接限速（KB/s，0 不限）" Foreground="{DynamicResource DialogMutedBrush}" Margin="0,0,0,6" />
+                            <Button Grid.Column="1" Content="浏览" Style="{StaticResource BrowseDialogButton}"
+                                    VerticalAlignment="Bottom" HorizontalAlignment="Left" Margin="0,0,10,0"
+                                    Click="BrowseKey_Click" />
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="单连接限速（KB/s，0 不限）" Foreground="{DynamicResource DialogMutedBrush}" Margin="0,0,0,5" />
                                 <TextBox x:Name="BandwidthBox" />
                             </StackPanel>
                         </Grid>
-                        <TextBlock x:Name="StatusText" Margin="0,18,0,0" TextWrapping="Wrap"
+
+                        <CheckBox x:Name="RedirectBox" Content="HTTP 自动 301 跳转到 HTTPS" Margin="0,12,0,0" />
+                        <TextBlock x:Name="StatusText" Margin="0,8,0,0" TextWrapping="Wrap"
                                    Foreground="{DynamicResource DialogMutedBrush}" FontSize="12"
                                    Text="证书会复制到 Nginx 的独立配置目录；保存前会执行 nginx -t 校验，失败时自动恢复原配置。" />
                     </StackPanel>

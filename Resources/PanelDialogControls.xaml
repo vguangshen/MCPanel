@@ -69,6 +69,48 @@
         <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
     </Style>
 
+    <Style x:Key="BrowseDialogButton" TargetType="Button">
+        <Setter Property="Width" Value="72" />
+        <Setter Property="Height" Value="36" />
+        <Setter Property="Padding" Value="12,0" />
+        <Setter Property="Margin" Value="0" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontWeight" Value="Normal" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="Background" Value="{DynamicResource InputBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="ButtonRoot"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="5"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="ButtonRoot" Property="Opacity" Value="0.90" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="ButtonRoot" Property="Opacity" Value="0.76" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="ButtonRoot" Property="BorderBrush" Value="{DynamicResource DialogPrimaryBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="ButtonRoot" Property="Opacity" Value="0.55" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- Form controls used by all XAML dialogs. Keep this implicit only in
          the dialog resource scope so the main window's controls are unchanged. -->
     <Style TargetType="TextBox">
@@ -110,4 +152,3 @@
         <Setter Property="Margin" Value="8,0,0,0" />
     </Style>
 </ResourceDictionary>
-
