@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - '.github/workflows/one-time-inwindow-download-queue.yml'
-      - '.github/scripts/apply-inwindow-download-queue.py'
+      - '.github/scripts/apply-inwindow-download-queue-v2.py'
 
 permissions:
   contents: write
@@ -21,7 +21,7 @@ jobs:
 
       - name: Apply in-window queue flyout refactor
         shell: pwsh
-        run: python .github/scripts/apply-inwindow-download-queue.py
+        run: python .github/scripts/apply-inwindow-download-queue-v2.py
 
       - name: Validate diff
         shell: pwsh
