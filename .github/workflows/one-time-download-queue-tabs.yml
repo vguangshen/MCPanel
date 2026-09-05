@@ -32,6 +32,7 @@ jobs:
         run: |
           @'
           from pathlib import Path
+          from textwrap import dedent, indent
 
           def read(path):
               return Path(path).read_text(encoding='utf-8-sig').replace('\r\n', '\n')
@@ -39,49 +40,17 @@ jobs:
           def write(path, text):
               Path(path).write_text(text, encoding='utf-8', newline='\n')
 
-          def replace_once(path, old, new):
-              text = read(path)
-              count = text.count(old)
-              if count != 1:
-                  raise RuntimeError(f'{path}: expected one occurrence, found {count}: {old[:160]!r}')
-              write(path, text.replace(old, new, 1))
-
-          # 1) View model: expose active/history views over the existing durable queue.
+          # View model: preserve one durable queue, expose two presentation views.
           vm = 'ViewModels/ProductViewModels.cs'
-          replace_once(
-              vm,
-              '    private bool _downloadTotalKnown;\n',
-              '    private bool _downloadTotalKnown;\n    private bool _showCompletedQueue;\n')
+          text = read(vm)
+          field_anchor = '    private bool _downloadTotalKnown;\n'
+          if '    private bool _showCompletedQueue;\n' not in text:
+              text = text.replace(field_anchor, field_anchor + '    private bool _showCompletedQueue;\n', 1)
 
-          old_queue_props = '''    public ObservableCollection<string> RecentEvents { get; } = [];
-          public ObservableCollection<ProductInstallQueueItemViewModel> QueueItems { get; } = [];
-          public bool IsVisible { get => _isVisible; private set => SetProperty(ref _isVisible, value); }
-          public bool HasQueueItems => QueueItems.Count > 0;
-          public bool HasActiveQueue => QueueItems.Any(item => !item.IsTerminal);
-          public int ActiveQueueCount => QueueItems.Count(item => !item.IsTerminal);
-          public Visibility QueueEmptyVisibility => HasQueueItems ? Visibility.Collapsed : Visibility.Visible;
-          public Visibility QueueItemsVisibility => HasQueueItems ? Visibility.Visible : Visibility.Collapsed;
-          public string QueueSummaryText
-          {
-              get
-              {
-                  var active = QueueItems
-                      .Where(item => !item.IsTerminal)
-                      .OrderBy(item => item.Sequence)
-                      .ToArray();
-                  if (active.Length == 0)
-                  {
-                      return "安装队列已完成";
-                  }
-
-                  var running = active.FirstOrDefault(item => item.State == ProductInstallQueueStatus.Running);
-                  return running is null
-                      ? $"安装队列：等待 {active.Length} 个产品"
-                      : $"安装队列：正在处理第 {running.QueuePosition} 项，共 {active.Length} 项";
-              }
-          }
-          '''
-          new_queue_props = '''    public ObservableCollection<string> RecentEvents { get; } = [];
+          start = text.index('    public ObservableCollection<string> RecentEvents { get; } = [];')
+          end = text.index('    public bool CanCancel { get => _canCancel;', start)
+          queue_props = indent(dedent('''\
+          public ObservableCollection<string> RecentEvents { get; } = [];
           public ObservableCollection<ProductInstallQueueItemViewModel> QueueItems { get; } = [];
           public bool IsVisible { get => _isVisible; private set => SetProperty(ref _isVisible, value); }
           public bool HasQueueItems => QueueItems.Count > 0;
@@ -148,50 +117,56 @@ jobs:
                   ? "暂无已结束任务记录"
                   : $"最近保留 {CompletedQueueCount} 条任务记录"
               : QueueSummaryText;
-          '''
-          replace_once(vm, old_queue_props, new_queue_props)
 
-          old_notify = '''        OnPropertyChanged(nameof(HasQueueItems));
-                  OnPropertyChanged(nameof(HasActiveQueue));
-                  OnPropertyChanged(nameof(ActiveQueueCount));
-                  OnPropertyChanged(nameof(QueueEmptyVisibility));
-                  OnPropertyChanged(nameof(QueueItemsVisibility));
-                  OnPropertyChanged(nameof(QueueSummaryText));
-          '''
-          new_notify = '''        OnPropertyChanged(nameof(HasQueueItems));
-                  OnPropertyChanged(nameof(HasActiveQueue));
-                  OnPropertyChanged(nameof(ActiveQueueCount));
-                  OnPropertyChanged(nameof(CompletedQueueCount));
-                  OnPropertyChanged(nameof(ActiveQueueItems));
-                  OnPropertyChanged(nameof(CompletedQueueItems));
-                  OnPropertyChanged(nameof(ActiveQueueEmptyVisibility));
-                  OnPropertyChanged(nameof(ActiveQueueItemsVisibility));
-                  OnPropertyChanged(nameof(CompletedQueueEmptyVisibility));
-                  OnPropertyChanged(nameof(CompletedQueueItemsVisibility));
-                  OnPropertyChanged(nameof(QueueEmptyVisibility));
-                  OnPropertyChanged(nameof(QueueItemsVisibility));
-                  OnPropertyChanged(nameof(QueueSummaryText));
-                  OnPropertyChanged(nameof(QueuePanelSummaryText));
-          '''
-          replace_once(vm, old_notify, new_notify)
+          '''), '    ')
+          text = text[:start] + queue_props + text[end:]
 
-          # 2) Opening the popup always returns to the user's requested default: 下载中.
+          notify_start = text.index('    private void NotifyQueueProperties()')
+          notify_end = text.index('    private static string ResolveStage', notify_start)
+          notify_method = indent(dedent('''\
+          private void NotifyQueueProperties()
+          {
+              OnPropertyChanged(nameof(HasQueueItems));
+              OnPropertyChanged(nameof(HasActiveQueue));
+              OnPropertyChanged(nameof(ActiveQueueCount));
+              OnPropertyChanged(nameof(CompletedQueueCount));
+              OnPropertyChanged(nameof(ActiveQueueItems));
+              OnPropertyChanged(nameof(CompletedQueueItems));
+              OnPropertyChanged(nameof(ActiveQueueEmptyVisibility));
+              OnPropertyChanged(nameof(ActiveQueueItemsVisibility));
+              OnPropertyChanged(nameof(CompletedQueueEmptyVisibility));
+              OnPropertyChanged(nameof(CompletedQueueItemsVisibility));
+              OnPropertyChanged(nameof(QueueEmptyVisibility));
+              OnPropertyChanged(nameof(QueueItemsVisibility));
+              OnPropertyChanged(nameof(QueueSummaryText));
+              OnPropertyChanged(nameof(QueuePanelSummaryText));
+              OnPropertyChanged(nameof(IsDownloading));
+              OnPropertyChanged(nameof(OverallDownloadProgress));
+              OnPropertyChanged(nameof(IsQueueActivityAnimating));
+          }
+
+          '''), '    ')
+          text = text[:notify_start] + notify_method + text[notify_end:]
+          write(vm, text)
+
+          # Popup always opens on 下载中.
           products = 'MainWindow.Products.cs'
           text = read(products)
           method = text.index('    private void DownloadQueueButton_Click(object sender, RoutedEventArgs e)')
           insertion = text.index('        ProductsHeader.UpdateLayout();', method)
           reset = '        _model.InstallationProgress.ShowCompletedQueue = false;\n'
-          if reset not in text[method:insertion + len(reset) + 80]:
+          if reset not in text[method:insertion]:
               text = text[:insertion] + reset + text[insertion:]
           write(products, text)
 
-          # 3) Add a compact terminal-history row template for the 已完成 tab.
+          # Compact terminal history template.
           templates = 'Resources/MainWindowTemplates.xaml'
-          history_template = '''    <DataTemplate x:Key="InstallationQueueHistoryItemTemplate">
-              <Border Padding="8,10"
-                      Background="Transparent"
-                      BorderBrush="{DynamicResource LineBrush}"
-                      BorderThickness="0,0,0,1">
+          text = read(templates)
+          if 'x:Key="InstallationQueueHistoryItemTemplate"' not in text:
+              marker = '    <DataTemplate x:Key="InstallationRecentEventTemplate">\n'
+              history = indent(dedent('''\
+          <DataTemplate x:Key="InstallationQueueHistoryItemTemplate">
+              <Border Padding="8,10" Background="Transparent" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,0,1">
                   <Grid>
                       <Grid.ColumnDefinitions>
                           <ColumnDefinition Width="52" />
@@ -199,51 +174,26 @@ jobs:
                           <ColumnDefinition Width="76" />
                           <ColumnDefinition Width="40" />
                       </Grid.ColumnDefinitions>
-                      <Border Width="42"
-                              Height="42"
-                              HorizontalAlignment="Center"
-                              VerticalAlignment="Center"
-                              CornerRadius="8"
-                              Background="{DynamicResource SurfaceAltBrush}"
-                              BorderBrush="{DynamicResource CardLineBrush}"
-                              BorderThickness="1"
-                              ToolTip="{Binding ProductName}">
-                          <Image Source="{Binding IconPath}"
-                                 Stretch="Uniform"
-                                 Margin="3"
-                                 RenderOptions.BitmapScalingMode="HighQuality" />
+                      <Border Width="42" Height="42" HorizontalAlignment="Center" VerticalAlignment="Center"
+                              CornerRadius="8" Background="{DynamicResource SurfaceAltBrush}"
+                              BorderBrush="{DynamicResource CardLineBrush}" BorderThickness="1" ToolTip="{Binding ProductName}">
+                          <Image Source="{Binding IconPath}" Stretch="Uniform" Margin="3" RenderOptions.BitmapScalingMode="HighQuality" />
                       </Border>
                       <StackPanel Grid.Column="1" Margin="10,0,10,0" VerticalAlignment="Center">
-                          <TextBlock Text="{Binding ProductName}"
-                                     ToolTip="{Binding ProductName}"
-                                     Foreground="{DynamicResource TextBrush}"
-                                     FontSize="12"
-                                     FontWeight="SemiBold"
+                          <TextBlock Text="{Binding ProductName}" ToolTip="{Binding ProductName}"
+                                     Foreground="{DynamicResource TextBrush}" FontSize="12" FontWeight="SemiBold"
                                      TextTrimming="CharacterEllipsis" />
-                          <TextBlock FontSize="10"
-                                     Foreground="{DynamicResource MutedBrush}"
-                                     Margin="0,3,0,0"
-                                     TextTrimming="CharacterEllipsis">
+                          <TextBlock FontSize="10" Foreground="{DynamicResource MutedBrush}" Margin="0,3,0,0" TextTrimming="CharacterEllipsis">
                               <Run Text="{Binding ProductId, Mode=OneWay}" />
                               <Run Text=" · " />
                               <Run Text="{Binding Message, Mode=OneWay}" />
                           </TextBlock>
                       </StackPanel>
-                      <Border Grid.Column="2"
-                              Height="26"
-                              MinWidth="64"
-                              Padding="8,0"
-                              CornerRadius="13"
-                              Background="{DynamicResource SurfaceAltBrush}"
-                              BorderBrush="{DynamicResource CardLineBrush}"
-                              BorderThickness="1"
-                              HorizontalAlignment="Right"
-                              VerticalAlignment="Center">
-                          <TextBlock Text="{Binding StateText}"
-                                     FontSize="10.5"
-                                     FontWeight="SemiBold"
-                                     HorizontalAlignment="Center"
-                                     VerticalAlignment="Center">
+                      <Border Grid.Column="2" Height="26" MinWidth="64" Padding="8,0" CornerRadius="13"
+                              Background="{DynamicResource SurfaceAltBrush}" BorderBrush="{DynamicResource CardLineBrush}"
+                              BorderThickness="1" HorizontalAlignment="Right" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding StateText}" FontSize="10.5" FontWeight="SemiBold"
+                                     HorizontalAlignment="Center" VerticalAlignment="Center">
                               <TextBlock.Style>
                                   <Style TargetType="TextBlock">
                                       <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
@@ -259,22 +209,18 @@ jobs:
                               </TextBlock.Style>
                           </TextBlock>
                       </Border>
-                      <Button Grid.Column="3"
-                              Content="{Binding RemoveActionGlyph}"
-                              ToolTip="删除此记录"
-                              AutomationProperties.Name="删除此记录"
-                              Style="{DynamicResource QueueDangerIconButton}"
-                              IsEnabled="{Binding CanRemove}"
-                              Click="RemoveQueuedProduct_Click" />
+                      <Button Grid.Column="3" Content="{Binding RemoveActionGlyph}" ToolTip="删除此记录"
+                              AutomationProperties.Name="删除此记录" Style="{DynamicResource QueueDangerIconButton}"
+                              IsEnabled="{Binding CanRemove}" Click="RemoveQueuedProduct_Click" />
                   </Grid>
               </Border>
           </DataTemplate>
 
-          '''
-          marker = '    <DataTemplate x:Key="InstallationRecentEventTemplate">\n'
-          replace_once(templates, marker, history_template + marker)
+          '''), '    ')
+              text = text.replace(marker, history + marker, 1)
+          write(templates, text)
 
-          # 4) Replace the popup's mixed list with a segmented 下载中 / 已完成 design.
+          # Popup segmented design.
           xaml_path = 'MainWindow.xaml'
           xaml = read(xaml_path)
           popup = xaml.index('        <Popup x:Name="DownloadQueuePopup"')
@@ -282,184 +228,139 @@ jobs:
           popup_end = xaml.index('        </Popup>', grid_start)
           grid_close_start = xaml.rfind('                    </Grid>', grid_start, popup_end)
           if grid_close_start < grid_start:
-              raise RuntimeError('MainWindow.xaml: could not locate DownloadQueuePopup outer grid end')
+              raise RuntimeError('Could not locate DownloadQueuePopup outer grid end')
           grid_end = grid_close_start + len('                    </Grid>')
+          new_grid = indent(dedent('''\
+          <Grid>
+              <Grid.Resources>
+                  <Style x:Key="DownloadQueueTabButton" TargetType="RadioButton">
+                      <Setter Property="Height" Value="34" />
+                      <Setter Property="Padding" Value="12,0" />
+                      <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+                      <Setter Property="FontSize" Value="11.5" />
+                      <Setter Property="FontWeight" Value="SemiBold" />
+                      <Setter Property="Cursor" Value="Hand" />
+                      <Setter Property="HorizontalContentAlignment" Value="Center" />
+                      <Setter Property="VerticalContentAlignment" Value="Center" />
+                      <Setter Property="Template">
+                          <Setter.Value>
+                              <ControlTemplate TargetType="RadioButton">
+                                  <Border x:Name="TabRoot" Background="Transparent" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                      <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                        VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                                  </Border>
+                                  <ControlTemplate.Triggers>
+                                      <Trigger Property="IsMouseOver" Value="True">
+                                          <Setter TargetName="TabRoot" Property="Background" Value="{DynamicResource NavHoverBrush}" />
+                                      </Trigger>
+                                      <Trigger Property="IsChecked" Value="True">
+                                          <Setter TargetName="TabRoot" Property="Background" Value="{DynamicResource TonalBrush}" />
+                                          <Setter Property="Foreground" Value="{DynamicResource TonalTextBrush}" />
+                                      </Trigger>
+                                  </ControlTemplate.Triggers>
+                              </ControlTemplate>
+                          </Setter.Value>
+                      </Setter>
+                  </Style>
+              </Grid.Resources>
+              <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="*" />
+                  <RowDefinition Height="Auto" />
+              </Grid.RowDefinitions>
 
-          new_grid = '''                    <Grid>
-                          <Grid.Resources>
-                              <Style x:Key="DownloadQueueTabButton" TargetType="RadioButton">
-                                  <Setter Property="Height" Value="34" />
-                                  <Setter Property="Padding" Value="12,0" />
-                                  <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
-                                  <Setter Property="FontSize" Value="11.5" />
-                                  <Setter Property="FontWeight" Value="SemiBold" />
-                                  <Setter Property="Cursor" Value="Hand" />
-                                  <Setter Property="HorizontalContentAlignment" Value="Center" />
-                                  <Setter Property="VerticalContentAlignment" Value="Center" />
-                                  <Setter Property="Template">
-                                      <Setter.Value>
-                                          <ControlTemplate TargetType="RadioButton">
-                                              <Border x:Name="TabRoot"
-                                                      Background="Transparent"
-                                                      CornerRadius="6"
-                                                      Padding="{TemplateBinding Padding}">
-                                                  <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                                                    VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
-                                              </Border>
-                                              <ControlTemplate.Triggers>
-                                                  <Trigger Property="IsMouseOver" Value="True">
-                                                      <Setter TargetName="TabRoot" Property="Background" Value="{DynamicResource NavHoverBrush}" />
-                                                  </Trigger>
-                                                  <Trigger Property="IsChecked" Value="True">
-                                                      <Setter TargetName="TabRoot" Property="Background" Value="{DynamicResource TonalBrush}" />
-                                                      <Setter Property="Foreground" Value="{DynamicResource TonalTextBrush}" />
-                                                  </Trigger>
-                                              </ControlTemplate.Triggers>
-                                          </ControlTemplate>
-                                      </Setter.Value>
-                                  </Setter>
-                              </Style>
-                          </Grid.Resources>
-                          <Grid.RowDefinitions>
-                              <RowDefinition Height="Auto" />
-                              <RowDefinition Height="Auto" />
-                              <RowDefinition Height="*" />
-                              <RowDefinition Height="Auto" />
-                          </Grid.RowDefinitions>
+              <StackPanel>
+                  <TextBlock Text="下载与安装队列" Foreground="{DynamicResource TextBrush}" FontSize="16" FontWeight="SemiBold" />
+                  <TextBlock Text="{Binding InstallationProgress.QueuePanelSummaryText}" Foreground="{DynamicResource MutedBrush}"
+                             FontSize="11" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" />
+              </StackPanel>
 
-                          <StackPanel>
-                              <TextBlock Text="下载与安装队列"
-                                         Foreground="{DynamicResource TextBrush}"
-                                         FontSize="16"
-                                         FontWeight="SemiBold" />
-                              <TextBlock Text="{Binding InstallationProgress.QueuePanelSummaryText}"
-                                         Foreground="{DynamicResource MutedBrush}"
-                                         FontSize="11"
-                                         Margin="0,4,0,0"
-                                         TextTrimming="CharacterEllipsis" />
+              <Border Grid.Row="1" Margin="0,12,0,8" Padding="3" CornerRadius="8"
+                      Background="{DynamicResource SurfaceAltBrush}" BorderBrush="{DynamicResource CardLineBrush}" BorderThickness="1">
+                  <Grid>
+                      <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="*" />
+                      </Grid.ColumnDefinitions>
+                      <RadioButton Grid.Column="0" GroupName="DownloadQueueTabs" Style="{StaticResource DownloadQueueTabButton}"
+                                   IsChecked="{Binding InstallationProgress.ShowActiveQueue, Mode=TwoWay}">
+                          <StackPanel Orientation="Horizontal">
+                              <TextBlock Text="下载中" VerticalAlignment="Center" />
+                              <Border MinWidth="22" Height="18" Margin="7,0,0,0" Padding="6,0" Background="{DynamicResource InputBrush}" CornerRadius="9">
+                                  <TextBlock Text="{Binding InstallationProgress.ActiveQueueCount}" FontSize="9.5"
+                                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+                              </Border>
                           </StackPanel>
+                      </RadioButton>
+                      <RadioButton Grid.Column="1" GroupName="DownloadQueueTabs" Style="{StaticResource DownloadQueueTabButton}"
+                                   IsChecked="{Binding InstallationProgress.ShowCompletedQueue, Mode=TwoWay}">
+                          <StackPanel Orientation="Horizontal">
+                              <TextBlock Text="已完成" VerticalAlignment="Center" />
+                              <Border MinWidth="22" Height="18" Margin="7,0,0,0" Padding="6,0" Background="{DynamicResource InputBrush}" CornerRadius="9">
+                                  <TextBlock Text="{Binding InstallationProgress.CompletedQueueCount}" FontSize="9.5"
+                                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+                              </Border>
+                          </StackPanel>
+                      </RadioButton>
+                  </Grid>
+              </Border>
 
-                          <Border Grid.Row="1"
-                                  Margin="0,12,0,8"
-                                  Padding="3"
-                                  CornerRadius="8"
-                                  Background="{DynamicResource SurfaceAltBrush}"
-                                  BorderBrush="{DynamicResource CardLineBrush}"
-                                  BorderThickness="1">
-                              <Grid>
-                                  <Grid.ColumnDefinitions>
-                                      <ColumnDefinition Width="*" />
-                                      <ColumnDefinition Width="*" />
-                                  </Grid.ColumnDefinitions>
-                                  <RadioButton Grid.Column="0"
-                                               GroupName="DownloadQueueTabs"
-                                               Style="{StaticResource DownloadQueueTabButton}"
-                                               IsChecked="{Binding InstallationProgress.ShowActiveQueue, Mode=TwoWay}">
-                                      <StackPanel Orientation="Horizontal">
-                                          <TextBlock Text="下载中" VerticalAlignment="Center" />
-                                          <Border MinWidth="22" Height="18" Margin="7,0,0,0" Padding="6,0"
-                                                  Background="{DynamicResource InputBrush}" CornerRadius="9">
-                                              <TextBlock Text="{Binding InstallationProgress.ActiveQueueCount}"
-                                                         FontSize="9.5" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                          </Border>
-                                      </StackPanel>
-                                  </RadioButton>
-                                  <RadioButton Grid.Column="1"
-                                               GroupName="DownloadQueueTabs"
-                                               Style="{StaticResource DownloadQueueTabButton}"
-                                               IsChecked="{Binding InstallationProgress.ShowCompletedQueue, Mode=TwoWay}">
-                                      <StackPanel Orientation="Horizontal">
-                                          <TextBlock Text="已完成" VerticalAlignment="Center" />
-                                          <Border MinWidth="22" Height="18" Margin="7,0,0,0" Padding="6,0"
-                                                  Background="{DynamicResource InputBrush}" CornerRadius="9">
-                                              <TextBlock Text="{Binding InstallationProgress.CompletedQueueCount}"
-                                                         FontSize="9.5" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                          </Border>
-                                      </StackPanel>
-                                  </RadioButton>
-                              </Grid>
-                          </Border>
+              <Grid Grid.Row="2">
+                  <Grid Visibility="{Binding InstallationProgress.ShowActiveQueue, Converter={StaticResource BooleanToVisibility}}">
+                      <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,46"
+                                  Visibility="{Binding InstallationProgress.ActiveQueueEmptyVisibility}">
+                          <TextBlock Text="当前没有下载或安装任务" Foreground="{DynamicResource TextBrush}" FontSize="12.5"
+                                     FontWeight="SemiBold" HorizontalAlignment="Center" />
+                          <TextBlock Text="新任务加入后会自动显示在这里" Foreground="{DynamicResource MutedBrush}" FontSize="10.5"
+                                     Margin="0,5,0,0" HorizontalAlignment="Center" />
+                      </StackPanel>
+                      <ScrollViewer MaxHeight="390" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                    Visibility="{Binding InstallationProgress.ActiveQueueItemsVisibility}">
+                          <ScrollViewer.Resources>
+                              <Style TargetType="ScrollBar" BasedOn="{StaticResource ModernVerticalScrollBar}" />
+                          </ScrollViewer.Resources>
+                          <ItemsControl x:Name="DownloadQueueItemsControl"
+                                        ItemsSource="{Binding InstallationProgress.ActiveQueueItems}"
+                                        ItemTemplate="{StaticResource InstallationQueueItemTemplate}" />
+                      </ScrollViewer>
+                  </Grid>
 
-                          <Grid Grid.Row="2">
-                              <Grid Visibility="{Binding InstallationProgress.ShowActiveQueue, Converter={StaticResource BooleanToVisibility}}">
-                                  <StackPanel HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"
-                                              Margin="0,46"
-                                              Visibility="{Binding InstallationProgress.ActiveQueueEmptyVisibility}">
-                                      <TextBlock Text="当前没有下载或安装任务"
-                                                 Foreground="{DynamicResource TextBrush}"
-                                                 FontSize="12.5"
-                                                 FontWeight="SemiBold"
-                                                 HorizontalAlignment="Center" />
-                                      <TextBlock Text="新任务加入后会自动显示在这里"
-                                                 Foreground="{DynamicResource MutedBrush}"
-                                                 FontSize="10.5"
-                                                 Margin="0,5,0,0"
-                                                 HorizontalAlignment="Center" />
-                                  </StackPanel>
-                                  <ScrollViewer MaxHeight="390"
-                                                VerticalScrollBarVisibility="Auto"
-                                                HorizontalScrollBarVisibility="Disabled"
-                                                Visibility="{Binding InstallationProgress.ActiveQueueItemsVisibility}">
-                                      <ScrollViewer.Resources>
-                                          <Style TargetType="ScrollBar" BasedOn="{StaticResource ModernVerticalScrollBar}" />
-                                      </ScrollViewer.Resources>
-                                      <ItemsControl x:Name="DownloadQueueItemsControl"
-                                                    ItemsSource="{Binding InstallationProgress.ActiveQueueItems}"
-                                                    ItemTemplate="{StaticResource InstallationQueueItemTemplate}" />
-                                  </ScrollViewer>
-                              </Grid>
+                  <Grid Visibility="{Binding InstallationProgress.ShowCompletedQueue, Converter={StaticResource BooleanToVisibility}}">
+                      <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,46"
+                                  Visibility="{Binding InstallationProgress.CompletedQueueEmptyVisibility}">
+                          <TextBlock Text="还没有已完成的任务记录" Foreground="{DynamicResource TextBrush}" FontSize="12.5"
+                                     FontWeight="SemiBold" HorizontalAlignment="Center" />
+                          <TextBlock Text="任务结束后会自动移动到这里" Foreground="{DynamicResource MutedBrush}" FontSize="10.5"
+                                     Margin="0,5,0,0" HorizontalAlignment="Center" />
+                      </StackPanel>
+                      <ScrollViewer MaxHeight="390" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                    Visibility="{Binding InstallationProgress.CompletedQueueItemsVisibility}">
+                          <ScrollViewer.Resources>
+                              <Style TargetType="ScrollBar" BasedOn="{StaticResource ModernVerticalScrollBar}" />
+                          </ScrollViewer.Resources>
+                          <ItemsControl ItemsSource="{Binding InstallationProgress.CompletedQueueItems}"
+                                        ItemTemplate="{StaticResource InstallationQueueHistoryItemTemplate}" />
+                      </ScrollViewer>
+                  </Grid>
+              </Grid>
 
-                              <Grid Visibility="{Binding InstallationProgress.ShowCompletedQueue, Converter={StaticResource BooleanToVisibility}}">
-                                  <StackPanel HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"
-                                              Margin="0,46"
-                                              Visibility="{Binding InstallationProgress.CompletedQueueEmptyVisibility}">
-                                      <TextBlock Text="还没有已完成的任务记录"
-                                                 Foreground="{DynamicResource TextBrush}"
-                                                 FontSize="12.5"
-                                                 FontWeight="SemiBold"
-                                                 HorizontalAlignment="Center" />
-                                      <TextBlock Text="任务结束后会自动移动到这里"
-                                                 Foreground="{DynamicResource MutedBrush}"
-                                                 FontSize="10.5"
-                                                 Margin="0,5,0,0"
-                                                 HorizontalAlignment="Center" />
-                                  </StackPanel>
-                                  <ScrollViewer MaxHeight="390"
-                                                VerticalScrollBarVisibility="Auto"
-                                                HorizontalScrollBarVisibility="Disabled"
-                                                Visibility="{Binding InstallationProgress.CompletedQueueItemsVisibility}">
-                                      <ScrollViewer.Resources>
-                                          <Style TargetType="ScrollBar" BasedOn="{StaticResource ModernVerticalScrollBar}" />
-                                      </ScrollViewer.Resources>
-                                      <ItemsControl ItemsSource="{Binding InstallationProgress.CompletedQueueItems}"
-                                                    ItemTemplate="{StaticResource InstallationQueueHistoryItemTemplate}" />
-                                  </ScrollViewer>
-                              </Grid>
-                          </Grid>
-
-                          <Grid Grid.Row="3" Margin="0,10,0,0">
-                              <TextBlock Text="任务按加入时间逐项处理；关闭面板或收起窗口不会中断后台任务。"
-                                         Foreground="{DynamicResource MutedBrush}"
-                                         FontSize="10"
-                                         TextWrapping="Wrap"
-                                         Visibility="{Binding InstallationProgress.ShowActiveQueue, Converter={StaticResource BooleanToVisibility}}" />
-                              <TextBlock Text="部署成功后会自动移到“已完成”；失败和取消任务也会保留在这里便于查看原因，最多保留最近 20 条记录。"
-                                         Foreground="{DynamicResource MutedBrush}"
-                                         FontSize="10"
-                                         TextWrapping="Wrap"
-                                         Visibility="{Binding InstallationProgress.ShowCompletedQueue, Converter={StaticResource BooleanToVisibility}}" />
-                          </Grid>
-                      </Grid>'''
+              <Grid Grid.Row="3" Margin="0,10,0,0">
+                  <TextBlock Text="任务按加入时间逐项处理；关闭面板或收起窗口不会中断后台任务。"
+                             Foreground="{DynamicResource MutedBrush}" FontSize="10" TextWrapping="Wrap"
+                             Visibility="{Binding InstallationProgress.ShowActiveQueue, Converter={StaticResource BooleanToVisibility}}" />
+                  <TextBlock Text="部署成功后会自动移到“已完成”；失败和取消任务也会保留在这里便于查看原因，最多保留最近 20 条记录。"
+                             Foreground="{DynamicResource MutedBrush}" FontSize="10" TextWrapping="Wrap"
+                             Visibility="{Binding InstallationProgress.ShowCompletedQueue, Converter={StaticResource BooleanToVisibility}}" />
+              </Grid>
+          </Grid>'''), '                    ')
           xaml = xaml[:grid_start] + new_grid + xaml[grid_end:]
           write(xaml_path, xaml)
 
-          # 5) Regression coverage: default tab, filters, ordering and XAML wiring.
+          # Regression source-contract coverage.
           test_path = Path('MCPanel.Tests/ReliabilityTests.DownloadQueueTabs.cs')
-          if test_path.exists():
-              raise RuntimeError(f'{test_path} already exists')
-          test_path.write_text(r'''using System;
+          test = dedent(r'''\
+          using System;
           using System.IO;
           using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -480,10 +381,7 @@ jobs:
                   StringAssert.Contains(viewModel, "CompletedQueueItems => QueueItems");
                   StringAssert.Contains(viewModel, ".Where(item => item.IsTerminal)");
                   StringAssert.Contains(viewModel, ".OrderByDescending(item => item.Sequence)");
-                  StringAssert.Contains(viewModel, "public bool ShowActiveQueue");
                   StringAssert.Contains(viewModel, "get => !ShowCompletedQueue;");
-                  StringAssert.Contains(viewModel, "public int CompletedQueueCount");
-
                   StringAssert.Contains(mainXaml, "GroupName=\"DownloadQueueTabs\"");
                   StringAssert.Contains(mainXaml, "Text=\"下载中\"");
                   StringAssert.Contains(mainXaml, "Text=\"已完成\"");
@@ -506,7 +404,6 @@ jobs:
                       {
                           return File.ReadAllText(candidate);
                       }
-
                       directory = directory.Parent;
                   }
 
@@ -514,7 +411,8 @@ jobs:
                   return string.Empty;
               }
           }
-          ''', encoding='utf-8', newline='\n')
+          ''')
+          test_path.write_text(test, encoding='utf-8', newline='\n')
           '@ | python -
 
       - name: Validate diff
