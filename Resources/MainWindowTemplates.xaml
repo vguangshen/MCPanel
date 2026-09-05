@@ -446,23 +446,9 @@
                                     Tag="Stop" Click="InstalledProductTomcatAction_Click"
                                     IsEnabled="{Binding CanStopTomcatProduct}"
                                     Visibility="{Binding IsTomcatDeployment, Converter={StaticResource BooleanToVisibility}}" />
-                            <Button Content="重启应用" Style="{DynamicResource WebsiteActionButton}" Margin="0,0,8,0"
-                                    VerticalAlignment="Center"
-                                    Tag="Restart" Click="InstalledProductTomcatAction_Click"
-                                    IsEnabled="{Binding CanRestartTomcatProduct}"
-                                    Visibility="{Binding IsTomcatDeployment, Converter={StaticResource BooleanToVisibility}}" />
                             <Button Content="查看日志" Style="{DynamicResource WebsiteActionButton}" Margin="0,0,8,0"
                                     VerticalAlignment="Center"
                                     Tag="OpenLogs" Click="InstalledProductTomcatAction_Click"
-                                    Visibility="{Binding IsTomcatDeployment, Converter={StaticResource BooleanToVisibility}}" />
-                            <Button Content="实例目录" Style="{DynamicResource WebsiteActionButton}" Margin="0,0,8,0"
-                                    VerticalAlignment="Center"
-                                    Tag="OpenInstance" Click="InstalledProductTomcatAction_Click"
-                                    Visibility="{Binding IsTomcatDeployment, Converter={StaticResource BooleanToVisibility}}" />
-                            <Button Content="清理 work/temp" Style="{DynamicResource WebsiteActionButton}" Margin="0,0,8,0"
-                                    VerticalAlignment="Center"
-                                    Tag="ClearCache" Click="InstalledProductTomcatAction_Click"
-                                    IsEnabled="{Binding CanClearTomcatCache}"
                                     Visibility="{Binding IsTomcatDeployment, Converter={StaticResource BooleanToVisibility}}" />
                             <Button Content="清理缓存并重启" Style="{DynamicResource WebsiteActionButton}" Margin="0,0,8,0"
                                     VerticalAlignment="Center"
@@ -969,7 +955,7 @@
                             <TextBlock Text="{Binding CredentialTitle}" FontSize="18" FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextBrush}" />
                             <TextBlock Text="{Binding CredentialSubtitle}" FontSize="12"
-                                       Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,0" />
+                                       Foreground="{DynamicResource MutedBrush}" Margin="0,4,18,0" />
                         </StackPanel>
                         <Button HorizontalAlignment="Right" VerticalAlignment="Top"
                                 Width="32" Height="32"
