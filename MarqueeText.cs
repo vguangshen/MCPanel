@@ -32,6 +32,13 @@ public sealed class MarqueeText : Control
     public MarqueeText()
     {
         ClipToBounds = true;
+        SnapsToDevicePixels = true;
+        UseLayoutRounding = true;
+        TextOptions.SetTextFormattingMode(this, TextFormattingMode.Display);
+        TextOptions.SetTextRenderingMode(this, TextRenderingMode.ClearType);
+        TextOptions.SetTextHintingMode(this, TextHintingMode.Fixed);
+        RenderOptions.SetClearTypeHint(this, ClearTypeHint.Enabled);
+
         _animationTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromMilliseconds(80)
@@ -66,7 +73,8 @@ public sealed class MarqueeText : Control
 
         var text = CreateFormattedText();
         var textWidth = Math.Ceiling(text.WidthIncludingTrailingWhitespace) + 2;
-        var y = Math.Max(0, (ActualHeight - text.Height) / 2);
+        var dpi = VisualTreeHelper.GetDpi(this);
+        var y = SnapToDevicePixel(Math.Max(0, (ActualHeight - text.Height) / 2), dpi.DpiScaleY);
         if (textWidth <= ActualWidth)
         {
             drawingContext.DrawText(text, new Point(0, y));
@@ -79,7 +87,7 @@ public sealed class MarqueeText : Control
         var movingSeconds = Math.Max(0, _clock.Elapsed.TotalSeconds - initialDelaySeconds);
         var cycleDistance = ActualWidth + textWidth + blankGap;
         var offset = movingSeconds * speed % cycleDistance;
-        var x = ActualWidth - offset;
+        var x = SnapToDevicePixel(ActualWidth - offset, dpi.DpiScaleX);
         drawingContext.DrawText(text, new Point(x, y));
     }
 
@@ -93,6 +101,16 @@ public sealed class MarqueeText : Control
             FontSize,
             Foreground,
             VisualTreeHelper.GetDpi(this).PixelsPerDip);
+    }
+
+    private static double SnapToDevicePixel(double value, double dpiScale)
+    {
+        if (dpiScale <= 0 || double.IsNaN(dpiScale) || double.IsInfinity(dpiScale))
+        {
+            return Math.Round(value);
+        }
+
+        return Math.Round(value * dpiScale) / dpiScale;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
