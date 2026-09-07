@@ -10,7 +10,7 @@ public partial class MainWindow
 {
     private const double ResponsiveLayoutEpsilon = 0.5d;
     private const double CompactShellBreakpoint = 1180d;
-    private const double CompactSettingsBreakpoint = 1048d;
+    private const double CompactSettingsBreakpoint = 900d;
     private const double StandardNavWidth = 226d;
     private const double CompactNavWidth = 190d;
     private const double EmbeddedPageMinHeight = 630d;
@@ -30,10 +30,10 @@ public partial class MainWindow
     protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
     {
         base.OnRenderSizeChanged(sizeInfo);
-        ApplyResponsiveLayout();
+        ApplyResponsiveLayout(sizeInfo.NewSize.Width, sizeInfo.NewSize.Height);
     }
 
-    private void ApplyResponsiveLayout()
+    private void ApplyResponsiveLayout(double requestedWidth = double.NaN, double requestedHeight = double.NaN)
     {
         if (_applyingResponsiveLayout || MainViewbox is null || DesignSurface is null)
         {
@@ -52,20 +52,24 @@ public partial class MainWindow
             MainViewbox.HorizontalAlignment = HorizontalAlignment.Stretch;
             MainViewbox.VerticalAlignment = VerticalAlignment.Stretch;
 
-            var viewportWidth = MainViewbox.ActualWidth > 1d
-                ? MainViewbox.ActualWidth
-                : Math.Max(1d, ActualWidth);
-            var viewportHeight = MainViewbox.ActualHeight > 1d
-                ? MainViewbox.ActualHeight
-                : Math.Max(1d, ActualHeight);
+            var viewportWidth = IsUsableDimension(requestedWidth)
+                ? requestedWidth
+                : MainViewbox.ActualWidth > 1d
+                    ? MainViewbox.ActualWidth
+                    : Math.Max(1d, ActualWidth);
+            var viewportHeight = IsUsableDimension(requestedHeight)
+                ? requestedHeight
+                : MainViewbox.ActualHeight > 1d
+                    ? MainViewbox.ActualHeight
+                    : Math.Max(1d, ActualHeight);
 
-            if (!double.IsNaN(viewportWidth) && !double.IsInfinity(viewportWidth) &&
+            if (IsUsableDimension(viewportWidth) &&
                 Math.Abs(DesignSurface.Width - viewportWidth) > ResponsiveLayoutEpsilon)
             {
                 DesignSurface.Width = viewportWidth;
             }
 
-            if (!double.IsNaN(viewportHeight) && !double.IsInfinity(viewportHeight) &&
+            if (IsUsableDimension(viewportHeight) &&
                 Math.Abs(DesignSurface.Height - viewportHeight) > ResponsiveLayoutEpsilon)
             {
                 DesignSurface.Height = viewportHeight;
@@ -91,6 +95,9 @@ public partial class MainWindow
             _applyingResponsiveLayout = false;
         }
     }
+
+    private static bool IsUsableDimension(double value) =>
+        value > 1d && !double.IsNaN(value) && !double.IsInfinity(value);
 
     private void ConfigureNativeTextRendering()
     {
