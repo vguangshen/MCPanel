@@ -35,6 +35,10 @@ public class PanelModalWindow : Window
         FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI");
         SnapsToDevicePixels = true;
         UseLayoutRounding = true;
+        TextOptions.SetTextFormattingMode(this, TextFormattingMode.Display);
+        TextOptions.SetTextRenderingMode(this, TextRenderingMode.ClearType);
+        TextOptions.SetTextHintingMode(this, TextHintingMode.Fixed);
+        RenderOptions.SetClearTypeHint(this, ClearTypeHint.Enabled);
         SourceInitialized += (_, _) => FitOverlayToOwner();
         Loaded += (_, _) => FitOverlayToOwner();
     }
@@ -42,6 +46,13 @@ public class PanelModalWindow : Window
     protected override void OnContentRendered(EventArgs e)
     {
         base.OnContentRendered(e);
+        if (Content is DependencyObject content)
+        {
+            TextOptions.SetTextFormattingMode(content, TextFormattingMode.Display);
+            TextOptions.SetTextRenderingMode(content, TextRenderingMode.ClearType);
+            TextOptions.SetTextHintingMode(content, TextHintingMode.Fixed);
+            RenderOptions.SetClearTypeHint(content, ClearTypeHint.Enabled);
+        }
         FitOverlayToOwner();
     }
 
