@@ -29,6 +29,12 @@ public partial class MainWindow
         EnsureScrollableEmbeddedPages();
         EnsureSettingsAlignmentHook();
         ApplyResponsiveLayout();
+
+        // OnContentRendered is the first point where all responsive settings cards
+        // have real geometry. Prime the stability/alignment rules immediately rather
+        // than waiting for another LayoutUpdated pass that may never be scheduled.
+        StabilizeSoftwareUpdateCardHeight();
+        AlignSettingsCardBottoms();
     }
 
     protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
@@ -50,8 +56,15 @@ public partial class MainWindow
             IsInitialized &&
             !_applyingResponsiveLayout)
         {
+            var requestedWidth = e.Property == WidthProperty && e.NewValue is double width
+                ? width
+                : Width;
+            var requestedHeight = e.Property == HeightProperty && e.NewValue is double height
+                ? height
+                : Height;
+
             ResetSettingsCardAlignment();
-            ApplyResponsiveLayout(Width, Height);
+            ApplyResponsiveLayout(requestedWidth, requestedHeight);
         }
     }
 
@@ -102,9 +115,14 @@ public partial class MainWindow
 
             ConfigureNativeTextRendering();
 
-            // Window.Width reflects the user's requested normal-state width even when
-            // the underlying render target has not finished resizing yet.
-            var responsiveWidth = IsUsableDimension(Width) ? Width : viewportWidth;
+            // Use the explicit requested width when one is available. This preserves
+            // the user's requested responsive state even if the compositor or a remote
+            // session temporarily reports an older constrained render size.
+            var responsiveWidth = IsUsableDimension(requestedWidth)
+                ? requestedWidth
+                : IsUsableDimension(Width)
+                    ? Width
+                    : viewportWidth;
             var compactShell = responsiveWidth < CompactShellBreakpoint;
             ApplyShellDensity(compactShell);
             ApplyProductsHeaderDensity(compactShell);
