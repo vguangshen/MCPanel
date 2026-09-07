@@ -11,9 +11,9 @@ public partial class MainWindow
     private const double ResponsiveLayoutEpsilon = 0.5d;
     private const double CompactShellBreakpoint = 1180d;
     private const double CompactSettingsBreakpoint = 900d;
+    private const double CompactShellHeightBreakpoint = 760d;
     private const double StandardNavWidth = 226d;
     private const double CompactNavWidth = 190d;
-    private const double EmbeddedPageMinHeight = 630d;
     private const double StartupCardResponsiveMinHeight = 84d;
     private const double SoftwareUpdateStableMinHeight = 228d;
 
@@ -21,13 +21,11 @@ public partial class MainWindow
     private bool _nativeTextRenderingConfigured;
     private bool _settingsAlignmentHooked;
     private bool _aligningSettingsCards;
-    private ScrollViewer? _accountApiScrollHost;
-    private ScrollViewer? _aiAnalysisScrollHost;
 
     protected override void OnContentRendered(EventArgs e)
     {
         base.OnContentRendered(e);
-        EnsureScrollableEmbeddedPages();
+        EnsureResponsiveDensityHooks();
         EnsureSettingsAlignmentHook();
         ApplyResponsiveLayout();
         StabilizeSoftwareUpdateCardHeight();
@@ -111,13 +109,18 @@ public partial class MainWindow
                 : IsUsableDimension(Width)
                     ? Width
                     : viewportWidth;
-            var compactShell = responsiveWidth < CompactShellBreakpoint;
-            ApplyShellDensity(compactShell);
-            ApplyProductsHeaderDensity(compactShell);
-            ApplySettingsResponsiveColumns(responsiveWidth < CompactSettingsBreakpoint);
+            var responsiveHeight = IsUsableDimension(requestedHeight)
+                ? requestedHeight
+                : IsUsableDimension(Height)
+                    ? Height
+                    : viewportHeight;
 
-            HomePage.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
-            HomePage.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
+            var compactWidth = responsiveWidth < CompactShellBreakpoint;
+            var compactShell = compactWidth || responsiveHeight < CompactShellHeightBreakpoint;
+            ApplyShellDensity(compactShell, compactWidth);
+            ApplyProductsHeaderDensity(compactWidth);
+            ApplySettingsResponsiveColumns(responsiveWidth < CompactSettingsBreakpoint);
+            ApplyResponsivePageDensity(responsiveWidth, responsiveHeight);
         }
         finally
         {
@@ -142,15 +145,15 @@ public partial class MainWindow
         RenderOptions.SetClearTypeHint(DesignSurface, ClearTypeHint.Enabled);
     }
 
-    private void ApplyShellDensity(bool compact)
+    private void ApplyShellDensity(bool compactShell, bool compactWidth)
     {
         if (DesignSurface.RowDefinitions.Count >= 3)
         {
-            DesignSurface.RowDefinitions[0].Height = new GridLength(compact ? 56d : 64d);
-            DesignSurface.RowDefinitions[2].Height = new GridLength(compact ? 30d : 32d);
+            DesignSurface.RowDefinitions[0].Height = new GridLength(compactShell ? 56d : 64d);
+            DesignSurface.RowDefinitions[2].Height = new GridLength(compactShell ? 30d : 32d);
         }
 
-        NavRail.Margin = compact
+        NavRail.Margin = compactShell
             ? new Thickness(0d, 10d, 0d, 0d)
             : new Thickness(0d, 16d, 0d, 0d);
 
@@ -159,12 +162,12 @@ public partial class MainWindow
             navBorder.Parent is Grid shellGrid &&
             shellGrid.ColumnDefinitions.Count >= 2)
         {
-            shellGrid.ColumnDefinitions[0].Width = new GridLength(compact ? CompactNavWidth : StandardNavWidth);
+            shellGrid.ColumnDefinitions[0].Width = new GridLength(compactWidth ? CompactNavWidth : StandardNavWidth);
         }
 
         if (PageFocusSentinel.Parent is Grid contentHost)
         {
-            contentHost.Margin = compact ? new Thickness(16d) : new Thickness(24d);
+            contentHost.Margin = compactShell ? new Thickness(16d) : new Thickness(24d);
         }
     }
 
@@ -324,56 +327,5 @@ public partial class MainWindow
         {
             _aligningSettingsCards = false;
         }
-    }
-
-    private void EnsureScrollableEmbeddedPages()
-    {
-        _accountApiScrollHost ??= WrapEmbeddedPage(AccountApiPageControl);
-        _aiAnalysisScrollHost ??= WrapEmbeddedPage(AiAnalysisPageControl);
-    }
-
-    private static ScrollViewer? WrapEmbeddedPage(FrameworkElement page)
-    {
-        if (page.Parent is not Grid parent)
-        {
-            return null;
-        }
-
-        var row = Grid.GetRow(page);
-        var column = Grid.GetColumn(page);
-        var rowSpan = Grid.GetRowSpan(page);
-        var columnSpan = Grid.GetColumnSpan(page);
-        var zIndex = Panel.GetZIndex(page);
-
-        parent.Children.Remove(page);
-        page.MinHeight = EmbeddedPageMinHeight;
-
-        var host = new ScrollViewer
-        {
-            Content = page,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            VerticalContentAlignment = VerticalAlignment.Stretch,
-            Focusable = false
-        };
-
-        Grid.SetRow(host, row);
-        Grid.SetColumn(host, column);
-        Grid.SetRowSpan(host, rowSpan);
-        Grid.SetColumnSpan(host, columnSpan);
-        Panel.SetZIndex(host, zIndex);
-
-        BindingOperations.SetBinding(
-            host,
-            VisibilityProperty,
-            new Binding(nameof(Visibility))
-            {
-                Source = page,
-                Mode = BindingMode.OneWay
-            });
-
-        parent.Children.Add(host);
-        return host;
     }
 }
