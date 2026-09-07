@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Windows;
@@ -65,20 +66,15 @@ public sealed partial class ReliabilityTests
                     Assert.AreEqual(ClearTypeHint.Enabled, RenderOptions.GetClearTypeHint(surface));
                 }
 
+                var contentHost = (Grid)((FrameworkElement)window.FindName("PageFocusSentinel")).Parent;
                 var accountPage = (FrameworkElement)window.FindName("AccountApiPageControl");
                 var aiPage = (FrameworkElement)window.FindName("AiAnalysisPageControl");
-                Assert.IsInstanceOfType(accountPage.Parent, typeof(ScrollViewer),
-                    "账号 API 页面在小高度窗口中应使用滚动而不是整体缩放。");
-                Assert.IsInstanceOfType(aiPage.Parent, typeof(ScrollViewer),
-                    "AI 分析页面在小高度窗口中应使用滚动而不是整体缩放。");
-                Assert.AreEqual(ScrollBarVisibility.Auto,
-                    ((ScrollViewer)accountPage.Parent).VerticalScrollBarVisibility);
-                Assert.AreEqual(ScrollBarVisibility.Auto,
-                    ((ScrollViewer)aiPage.Parent).VerticalScrollBarVisibility);
-
-                var homePage = (ScrollViewer)window.FindName("HomePage");
-                Assert.AreEqual(ScrollBarVisibility.Auto, homePage.VerticalScrollBarVisibility,
-                    "首页高度不足时必须滚动，不能通过缩放文字来塞进窗口。");
+                Assert.AreSame(contentHost, accountPage.Parent,
+                    "账号 API 页面必须直接参与主内容区布局，不能再套强制滚动宿主。");
+                Assert.AreSame(contentHost, aiPage.Parent,
+                    "AI 分析页面必须直接参与主内容区布局，不能再套强制滚动宿主。");
+                Assert.IsFalse(accountPage.Parent is ScrollViewer);
+                Assert.IsFalse(aiPage.Parent is ScrollViewer);
             }
             catch (Exception ex)
             {
@@ -102,7 +98,7 @@ public sealed partial class ReliabilityTests
     }
 
     [TestMethod]
-    public void CompactShellReflowsInsteadOfScalingText()
+    public void CompactShellUsesIconNavigationAndKeepsPagesInsideViewport()
     {
         Exception? failure = null;
         var completed = new ManualResetEventSlim();
@@ -121,43 +117,112 @@ public sealed partial class ReliabilityTests
 
                 var navRail = (Grid)window.FindName("NavRail");
                 var navShell = (Grid)((Border)((DockPanel)navRail.Parent).Parent).Parent;
-                Assert.AreEqual(190d, navShell.ColumnDefinitions[0].Width.Value, 0.1d,
-                    "窄窗口应收紧导航栏宽度，而不是缩放文字。");
+                Assert.AreEqual(72d, navShell.ColumnDefinitions[0].Width.Value, 0.1d,
+                    "1024 宽度下应折叠为图标导航，为内容卡片释放横向空间。");
+
+                var navItems = (StackPanel)window.FindName("NavItemsPanel");
+                Assert.IsTrue(navItems.Children.OfType<RadioButton>().All(button =>
+                        string.IsNullOrEmpty(button.Content as string)),
+                    "图标导航模式不应继续占用文字标签宽度。");
 
                 var pageSentinel = (Border)window.FindName("PageFocusSentinel");
                 Assert.AreEqual(new Thickness(16d), ((Grid)pageSentinel.Parent).Margin,
-                    "窄窗口应减少内容边距。");
+                    "低高度或窄窗口应减少内容边距。");
+
+                var homePage = (ScrollViewer)window.FindName("HomePage");
+                var homeSummary = (Border)window.FindName("HomeSystemSummaryCard");
+                Assert.AreEqual(78d, homeSummary.Height, 0.1d,
+                    "紧凑窗口首页应压缩留白而不是缩放文字。");
+                Assert.IsTrue(homePage.ExtentHeight <= homePage.ViewportHeight + 3d,
+                    $"1024x640 首页正常状态不应出现整页滚动；Extent={homePage.ExtentHeight}, Viewport={homePage.ViewportHeight}。");
+
+                var environmentNav = navItems.Children
+                    .OfType<RadioButton>()
+                    .Single(button => string.Equals(button.CommandParameter as string, "Environment", StringComparison.Ordinal));
+                environmentNav.IsChecked = true;
+                window.UpdateLayout();
+                window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+                window.UpdateLayout();
+
+                var environmentPage = (Grid)window.FindName("EnvironmentPage");
+                var environmentItems = environmentPage.Children.OfType<ItemsControl>().Single();
+                Assert.IsTrue(environmentPage.ActualWidth >= 880d,
+                    $"图标导航后环境页应获得足够横向空间；实际 {environmentPage.ActualWidth:N1}。");
+                Assert.AreEqual(6, environmentItems.Items.Count);
+
+                var aiNav = navItems.Children
+                    .OfType<RadioButton>()
+                    .Single(button => string.Equals(button.CommandParameter as string, "AiAnalysis", StringComparison.Ordinal));
+                aiNav.IsChecked = true;
+                window.UpdateLayout();
+                window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+                window.UpdateLayout();
+
+                var aiPage = (FrameworkElement)window.FindName("AiAnalysisPageControl");
+                Assert.AreEqual(((Grid)pageSentinel.Parent).ActualHeight, aiPage.ActualHeight, 2d,
+                    "AI 分析页应直接填满主内容区高度，而不是使用大于视口的最小高度触发整页滚动。");
+            }
+            catch (Exception ex)
+            {
+                failure = ex;
+            }
+            finally
+            {
+                window?.Close();
+                completed.Set();
+            }
+        });
+
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.IsTrue(completed.Wait(TimeSpan.FromSeconds(20)), "紧凑布局一屏适配测试超时。");
+        if (failure is not null)
+        {
+            Assert.Fail($"紧凑布局一屏适配验证失败：{failure}");
+        }
+    }
+
+    [TestMethod]
+    public void CompactShellRestoresFullNavigationAtWideSize()
+    {
+        Exception? failure = null;
+        var completed = new ManualResetEventSlim();
+        var thread = new Thread(() =>
+        {
+            MainWindow? window = null;
+            try
+            {
+                window = CreateUiTestWindow();
+                window.Show();
+
+                var applyResponsiveLayout = typeof(MainWindow).GetMethod(
+                    "ApplyResponsiveLayout",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                Assert.IsNotNull(applyResponsiveLayout, "必须存在主窗口响应式布局入口。");
+
+                applyResponsiveLayout!.Invoke(window, new object[] { 1024d, 640d });
+                window.UpdateLayout();
+
+                var navRail = (Grid)window.FindName("NavRail");
+                var navShell = (Grid)((Border)((DockPanel)navRail.Parent).Parent).Parent;
+                Assert.AreEqual(72d, navShell.ColumnDefinitions[0].Width.Value, 0.1d);
+
+                applyResponsiveLayout.Invoke(window, new object[] { 1440d, 900d });
+                window.UpdateLayout();
+
+                Assert.AreEqual(226d, navShell.ColumnDefinitions[0].Width.Value, 0.1d,
+                    "宽窗口请求应恢复标准导航栏宽度。");
+                var navItems = (StackPanel)window.FindName("NavItemsPanel");
+                Assert.IsTrue(navItems.Children.OfType<RadioButton>().All(button =>
+                        !string.IsNullOrWhiteSpace(button.Content?.ToString())),
+                    "从紧凑窗口恢复宽窗口后必须恢复导航文字。");
 
                 var appearance = (FrameworkElement)window.FindName("AppearanceSettingsCard");
                 var updater = (FrameworkElement)window.FindName("SoftwareUpdateCard");
                 var leftColumn = (Grid)appearance.Parent;
                 var rightColumn = (Grid)updater.Parent;
                 Assert.AreSame(leftColumn.Parent, rightColumn.Parent);
-                Assert.AreEqual(0, Grid.GetRow(leftColumn));
-                Assert.AreEqual(0, Grid.GetRow(rightColumn));
-                Assert.AreEqual(0, Grid.GetColumn(leftColumn));
-                Assert.AreEqual(1, Grid.GetColumn(rightColumn),
-                    "受支持的最窄宽度下设置页仍应保留双列结构；紧凑化应通过导航、边距和滚动完成。");
-
-                window.Width = 1440d;
-                window.Height = 900d;
-                window.UpdateLayout();
-                window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
-                window.UpdateLayout();
-
-                // GitHub-hosted Windows UI sessions can cap the actual render target
-                // below the requested 1440 width. Exercise the requested-size path
-                // explicitly so this regression test validates MCPanel's responsive
-                // breakpoint logic instead of the runner compositor's desktop size.
-                var applyResponsiveLayout = typeof(MainWindow).GetMethod(
-                    "ApplyResponsiveLayout",
-                    BindingFlags.Instance | BindingFlags.NonPublic);
-                Assert.IsNotNull(applyResponsiveLayout, "必须存在主窗口响应式布局入口。");
-                applyResponsiveLayout!.Invoke(window, new object[] { 1440d, 900d });
-                window.UpdateLayout();
-
-                Assert.AreEqual(226d, navShell.ColumnDefinitions[0].Width.Value, 0.1d,
-                    "宽窗口请求应恢复标准导航栏宽度。");
                 Assert.AreEqual(0, Grid.GetRow(leftColumn));
                 Assert.AreEqual(0, Grid.GetRow(rightColumn));
                 Assert.AreEqual(0, Grid.GetColumn(leftColumn));
@@ -178,10 +243,10 @@ public sealed partial class ReliabilityTests
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
 
-        Assert.IsTrue(completed.Wait(TimeSpan.FromSeconds(20)), "紧凑布局回归测试超时。");
+        Assert.IsTrue(completed.Wait(TimeSpan.FromSeconds(20)), "宽窄窗口恢复测试超时。");
         if (failure is not null)
         {
-            Assert.Fail($"紧凑布局回归验证失败：{failure}");
+            Assert.Fail($"宽窄窗口恢复验证失败：{failure}");
         }
     }
 
@@ -192,6 +257,17 @@ public sealed partial class ReliabilityTests
         StringAssert.Contains(responsiveSource, "MainViewbox.Stretch = Stretch.None");
         Assert.IsFalse(responsiveSource.Contains("viewportWidth / ResponsiveWindowSizing.MainDesignWidth"),
             "主窗口不应再计算整棵视觉树的缩放比例。");
+        Assert.IsFalse(responsiveSource.Contains("WrapEmbeddedPage"),
+            "账号 API 与 AI 分析页不能再被额外 ScrollViewer 包裹。");
+
+        var densitySource = ReadRepositoryFile("MainWindow.ResponsivePageDensity.cs");
+        StringAssert.Contains(densitySource, "IconOnlyNavigationBreakpoint");
+        StringAssert.Contains(densitySource, "ApplyHomePageDensity");
+        StringAssert.Contains(densitySource, "ApplyEnvironmentPageDensity");
+
+        var aiPage = ReadRepositoryFile("AiAnalysisPage.xaml");
+        Assert.IsFalse(aiPage.Contains("MinHeight=\"620\""),
+            "AI 分析页不能再通过固定 620 高度强制整页滚动。");
 
         var templates = ReadRepositoryFile("Resources/MainWindowTemplates.xaml");
         var viewboxCount = templates.Split(new[] { "<Viewbox" }, StringSplitOptions.None).Length - 1;
