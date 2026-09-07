@@ -68,9 +68,9 @@
                                         Padding="{TemplateBinding Padding}">
                                     <Grid>
                                         <TextBlock Text="{TemplateBinding SelectionBoxItem}"
-                                                          VerticalAlignment="Center"
-                                                          HorizontalAlignment="Left"
-                                                          Foreground="{DynamicResource TextBrush}" />
+                                                   VerticalAlignment="Center"
+                                                   HorizontalAlignment="Left"
+                                                   Foreground="{DynamicResource TextBrush}" />
                                         <TextBlock Text="&#xE70D;"
                                                    FontFamily="Segoe MDL2 Assets"
                                                    FontSize="11"
@@ -137,20 +137,17 @@
         </Style>
 
         <Style TargetType="ScrollBar" BasedOn="{StaticResource CompactScrollBar}" />
-
-
         </ResourceDictionary>
     </UserControl.Resources>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto"
-                  HorizontalScrollBarVisibility="Disabled"
-                  Focusable="True"
-                  KeyboardNavigation.TabNavigation="Local">
-        <Grid MinHeight="620">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-            </Grid.RowDefinitions>
+    <Grid MinHeight="0"
+          Focusable="True"
+          KeyboardNavigation.TabNavigation="Local"
+          ClipToBounds="True">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
 
         <Border Style="{DynamicResource Card}" Padding="22,18" Margin="0,0,0,14"
                 ClipToBounds="True">
@@ -320,6 +317,5 @@
                 </Grid>
             </Border>
         </Grid>
-        </Grid>
-    </ScrollViewer>
+    </Grid>
 </UserControl>
