@@ -64,9 +64,6 @@ public partial class MainWindow
             ApplyHomePageDensity(compactPageDensity);
             ApplyEnvironmentPageDensity(compactPageDensity);
 
-            // Embedded pages are already responsive grids. Keep them attached directly
-            // to the main content host so a synthetic outer ScrollViewer cannot force
-            // a full-page scrollbar or constrain their star-sized rows.
             AccountApiPageControl.MinHeight = 0d;
             AccountApiPageControl.VerticalAlignment = VerticalAlignment.Stretch;
             AccountApiPageControl.HorizontalAlignment = HorizontalAlignment.Stretch;
@@ -130,7 +127,10 @@ public partial class MainWindow
             return;
         }
 
-        HomeSystemSummaryCard.Height = compact ? 78d : 92d;
+        // Keep the overview card at its proven 92 DIP height so the three hardware
+        // lines never crowd one another. Recover compact-height space from the much
+        // more flexible resource/service sections instead.
+        HomeSystemSummaryCard.Height = 92d;
         HomeSystemSummaryCard.Padding = compact
             ? new Thickness(18d, 10d, 18d, 10d)
             : new Thickness(22d, 16d, 22d, 16d);
@@ -140,9 +140,9 @@ public partial class MainWindow
             .FirstOrDefault(border => Grid.GetRow(border) == 1);
         if (resourceCard is not null)
         {
-            resourceCard.Height = compact ? 136d : 162d;
+            resourceCard.Height = compact ? 132d : 162d;
             resourceCard.Padding = compact
-                ? new Thickness(14d, 8d, 14d, 8d)
+                ? new Thickness(14d, 7d, 14d, 7d)
                 : new Thickness(16d, 10d, 16d, 10d);
             resourceCard.Margin = compact
                 ? new Thickness(0d, 8d, 0d, 0d)
@@ -167,29 +167,27 @@ public partial class MainWindow
                 if (header is not null)
                 {
                     header.Padding = compact
-                        ? new Thickness(14d, 6d, 14d, 6d)
+                        ? new Thickness(14d, 5d, 14d, 5d)
                         : new Thickness(16d, 8d, 16d, 8d);
                 }
 
                 var items = dock.Children.OfType<ItemsControl>().FirstOrDefault();
                 if (items is not null)
                 {
-                    items.Margin = compact ? new Thickness(8d) : new Thickness(10d);
+                    items.Margin = compact ? new Thickness(6d) : new Thickness(10d);
                     items.UpdateLayout();
                     ApplyServiceCardDensity(items, compact);
                 }
             }
         }
 
-        // Keep Auto as a safety fallback for exceptionally large dynamic content, but
-        // the supported 1024x640 viewport is compacted to a zero-scroll normal state.
         HomePage.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
         HomePage.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
     }
 
     private static void ApplyCircularMetricDensity(CircularProgress progress, bool compact)
     {
-        var size = compact ? 72d : 86d;
+        var size = compact ? 70d : 86d;
         progress.Width = size;
         progress.Height = size;
 
@@ -202,7 +200,7 @@ public partial class MainWindow
         circleHost.Height = size;
         if (circleHost.Parent is Grid metricHost && metricHost.RowDefinitions.Count >= 2)
         {
-            metricHost.RowDefinitions[0].Height = new GridLength(compact ? 74d : 90d);
+            metricHost.RowDefinitions[0].Height = new GridLength(compact ? 72d : 90d);
             metricHost.RowDefinitions[1].Height = new GridLength(compact ? 18d : 20d);
         }
     }
@@ -222,10 +220,10 @@ public partial class MainWindow
                 continue;
             }
 
-            card.Height = compact ? 110d : 166d;
-            card.Padding = compact ? new Thickness(8d) : new Thickness(10d);
+            card.Height = compact ? 92d : 166d;
+            card.Padding = compact ? new Thickness(6d) : new Thickness(10d);
             card.Margin = compact
-                ? new Thickness(0d, 0d, 6d, 6d)
+                ? new Thickness(0d, 0d, 5d, 5d)
                 : new Thickness(0d, 0d, 8d, 8d);
 
             if (card.Child is not Grid cardGrid)
@@ -242,7 +240,7 @@ public partial class MainWindow
             }
 
             details.Margin = compact
-                ? new Thickness(0d, 4d, 0d, 4d)
+                ? new Thickness(0d, 2d, 0d, 2d)
                 : new Thickness(0d, 6d, 0d, 6d);
             var lines = details.Children.OfType<TextBlock>().ToList();
             if (lines.Count >= 2)
@@ -307,8 +305,6 @@ public partial class MainWindow
                 }
                 else if (!compact && Math.Abs(text.FontSize - 16d) < 0.1d)
                 {
-                    // Environment headings are the only 18 DIP text elements in this
-                    // template. Restore those headings when the full layout returns.
                     text.FontSize = 18d;
                 }
 
