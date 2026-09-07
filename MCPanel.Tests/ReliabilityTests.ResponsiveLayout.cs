@@ -13,6 +13,8 @@ public sealed partial class ReliabilityTests
     [TestMethod]
     public void MainWindowResponsiveSurfaceFillsArbitraryAspectRatiosWithoutLetterbox()
     {
+        const double designWidth = 1280d;
+        const double designHeight = 820d;
         Exception? failure = null;
         var completed = new ManualResetEventSlim();
         var thread = new Thread(() =>
@@ -59,23 +61,23 @@ public sealed partial class ReliabilityTests
                         "大窗口应扩展真实布局面积，而不是把固定画布继续整体放大。");
 
                     Assert.IsTrue(viewbox.ActualWidth > 0d && viewbox.ActualHeight > 0d,
-                        "主视口必须完成布局。 ");
-                    Assert.IsTrue(surface.ActualWidth >= ResponsiveWindowSizing.MainDesignWidth - 0.5d,
-                        "逻辑布局宽度不能小于基准设计宽度。 ");
-                    Assert.IsTrue(surface.ActualHeight >= ResponsiveWindowSizing.MainDesignHeight - 0.5d,
-                        "逻辑布局高度不能小于基准设计高度。 ");
+                        "主视口必须完成布局。");
+                    Assert.IsTrue(surface.ActualWidth >= designWidth - 0.5d,
+                        "逻辑布局宽度不能小于基准设计宽度。");
+                    Assert.IsTrue(surface.ActualHeight >= designHeight - 0.5d,
+                        "逻辑布局高度不能小于基准设计高度。");
 
                     var horizontalScale = viewbox.ActualWidth / surface.ActualWidth;
                     var verticalScale = viewbox.ActualHeight / surface.ActualHeight;
                     Assert.AreEqual(horizontalScale, verticalScale, 0.005d,
-                        $"{size.Width}x{size.Height} 下横纵缩放必须一致，否则控件会变形。 ");
+                        $"{size.Width}x{size.Height} 下横纵缩放必须一致，否则控件会变形。");
                     Assert.IsTrue(horizontalScale <= 1.005d,
-                        "响应式布局不应在大窗口整体放大固定画布。 ");
+                        "响应式布局不应在大窗口整体放大固定画布。");
 
                     var viewportRatio = viewbox.ActualWidth / viewbox.ActualHeight;
                     var surfaceRatio = surface.ActualWidth / surface.ActualHeight;
                     Assert.AreEqual(viewportRatio, surfaceRatio, 0.005d,
-                        $"{size.Width}x{size.Height} 下设计面必须匹配视口宽高比，避免出现 letterbox 纯色边带。 ");
+                        $"{size.Width}x{size.Height} 下设计面必须匹配视口宽高比，避免出现 letterbox 纯色边带。");
                 }
             }
             catch (Exception ex)
@@ -92,7 +94,7 @@ public sealed partial class ReliabilityTests
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
 
-        Assert.IsTrue(completed.Wait(TimeSpan.FromSeconds(20)), "响应式主窗口渲染测试超时。 ");
+        Assert.IsTrue(completed.Wait(TimeSpan.FromSeconds(20)), "响应式主窗口渲染测试超时。");
         if (failure is not null)
         {
             Assert.Fail($"响应式主窗口布局验证失败：{failure}");
