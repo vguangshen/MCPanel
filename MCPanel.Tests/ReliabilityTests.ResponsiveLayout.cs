@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
@@ -24,7 +25,7 @@ public sealed partial class ReliabilityTests
                 window.Show();
 
                 var timer = typeof(MainWindow)
-                    .GetField("_timer", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?
+                    .GetField("_timer", BindingFlags.Instance | BindingFlags.NonPublic)?
                     .GetValue(window) as DispatcherTimer;
                 timer?.Stop();
 
@@ -144,8 +145,19 @@ public sealed partial class ReliabilityTests
                 window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
                 window.UpdateLayout();
 
+                // GitHub-hosted Windows UI sessions can cap the actual render target
+                // below the requested 1440 width. Exercise the requested-size path
+                // explicitly so this regression test validates MCPanel's responsive
+                // breakpoint logic instead of the runner compositor's desktop size.
+                var applyResponsiveLayout = typeof(MainWindow).GetMethod(
+                    "ApplyResponsiveLayout",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                Assert.IsNotNull(applyResponsiveLayout, "必须存在主窗口响应式布局入口。");
+                applyResponsiveLayout!.Invoke(window, new object[] { 1440d, 900d });
+                window.UpdateLayout();
+
                 Assert.AreEqual(226d, navShell.ColumnDefinitions[0].Width.Value, 0.1d,
-                    "宽窗口应恢复标准导航栏宽度。");
+                    "宽窗口请求应恢复标准导航栏宽度。");
                 Assert.AreEqual(0, Grid.GetRow(leftColumn));
                 Assert.AreEqual(0, Grid.GetRow(rightColumn));
                 Assert.AreEqual(0, Grid.GetColumn(leftColumn));
