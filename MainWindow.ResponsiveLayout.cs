@@ -14,6 +14,7 @@ public partial class MainWindow
     private const double StandardNavWidth = 226d;
     private const double CompactNavWidth = 190d;
     private const double EmbeddedPageMinHeight = 630d;
+    private const double StartupCardResponsiveMinHeight = 84d;
 
     private bool _applyingResponsiveLayout;
     private bool _nativeTextRenderingConfigured;
@@ -33,7 +34,25 @@ public partial class MainWindow
     protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
     {
         base.OnRenderSizeChanged(sizeInfo);
+        ResetSettingsCardAlignment();
         ApplyResponsiveLayout(sizeInfo.NewSize.Width, sizeInfo.NewSize.Height);
+    }
+
+    protected override void OnPropertyChanged(DependencyPropertyChangedEventArgs e)
+    {
+        base.OnPropertyChanged(e);
+
+        // A requested Window.Width/Height change can be observed before the hosted
+        // render target catches up (notably on RDP and headless Windows runners).
+        // React to the requested size as well as the rendered size so responsive
+        // breakpoints never get stuck in the previous compact state.
+        if ((e.Property == WidthProperty || e.Property == HeightProperty) &&
+            IsInitialized &&
+            !_applyingResponsiveLayout)
+        {
+            ResetSettingsCardAlignment();
+            ApplyResponsiveLayout(Width, Height);
+        }
     }
 
     private void ApplyResponsiveLayout(double requestedWidth = double.NaN, double requestedHeight = double.NaN)
@@ -83,9 +102,8 @@ public partial class MainWindow
 
             ConfigureNativeTextRendering();
 
-            // Window.Width reflects the user's requested normal-state width even in
-            // headless UI tests where the render target may temporarily stay constrained.
-            // Use it for breakpoints, while the actual viewport remains the 1:1 surface size.
+            // Window.Width reflects the user's requested normal-state width even when
+            // the underlying render target has not finished resizing yet.
             var responsiveWidth = IsUsableDimension(Width) ? Width : viewportWidth;
             var compactShell = responsiveWidth < CompactShellBreakpoint;
             ApplyShellDensity(compactShell);
@@ -206,7 +224,52 @@ public partial class MainWindow
         }
 
         _settingsAlignmentHooked = true;
-        LayoutUpdated += (_, _) => AlignSettingsCardBottoms();
+
+        // The legacy fixed-height binding tied the startup card to the appearance
+        // card. With native-size responsive text that creates a circular height
+        // dependency and prevents the shorter column from being aligned correctly.
+        BindingOperations.ClearBinding(StartupSettingsCard, FrameworkElement.HeightProperty);
+        StartupSettingsCard.Height = double.NaN;
+        StartupSettingsCard.MinHeight = Math.Max(StartupSettingsCard.MinHeight, StartupCardResponsiveMinHeight);
+
+        LayoutUpdated += (_, _) =>
+        {
+            StabilizeSoftwareUpdateCardHeight();
+            AlignSettingsCardBottoms();
+        };
+    }
+
+    private void ResetSettingsCardAlignment()
+    {
+        if (!_settingsAlignmentHooked || AppearanceSettingsCard is null || StartupSettingsCard is null)
+        {
+            return;
+        }
+
+        AppearanceSettingsCard.Height = double.NaN;
+        StartupSettingsCard.Height = double.NaN;
+    }
+
+    private void StabilizeSoftwareUpdateCardHeight()
+    {
+        if (SoftwareUpdateCard is null || SoftwareUpdateCard.ActualHeight <= 1d)
+        {
+            return;
+        }
+
+        // The cancel button switches layout visibility when an update starts. On a
+        // rounded WPF layout this can otherwise make the card shrink by one device
+        // pixel even though the progress row itself is fixed. Preserve the largest
+        // idle/native height so starting an update never makes the card jump.
+        if (DataContext is MainViewModel model && model.IsUpdateBusy)
+        {
+            return;
+        }
+
+        if (SoftwareUpdateCard.ActualHeight > SoftwareUpdateCard.MinHeight + ResponsiveLayoutEpsilon)
+        {
+            SoftwareUpdateCard.MinHeight = SoftwareUpdateCard.ActualHeight;
+        }
     }
 
     private void AlignSettingsCardBottoms()
@@ -226,18 +289,35 @@ public partial class MainWindow
         try
         {
             _aligningSettingsCards = true;
+
             var appearanceTop = AppearanceSettingsCard.TransformToAncestor(columnsGrid).Transform(new Point(0d, 0d)).Y;
             var startupTop = StartupSettingsCard.TransformToAncestor(columnsGrid).Transform(new Point(0d, 0d)).Y;
-            var desiredHeight = appearanceTop + AppearanceSettingsCard.ActualHeight - startupTop;
-            desiredHeight = Math.Max(StartupSettingsCard.MinHeight, desiredHeight);
+            var appearanceBottom = appearanceTop + AppearanceSettingsCard.ActualHeight;
+            var startupBottom = startupTop + StartupSettingsCard.ActualHeight;
+            var delta = startupBottom - appearanceBottom;
 
-            if (IsUsableDimension(desiredHeight) &&
-                Math.Abs(StartupSettingsCard.ActualHeight - desiredHeight) > ResponsiveLayoutEpsilon)
+            if (Math.Abs(delta) <= ResponsiveLayoutEpsilon)
             {
-                // Replace the old fixed subtraction binding with the real geometry of
-                // the two responsive columns. This preserves aligned card bottoms even
-                // when native-size text wraps to different heights at compact widths.
-                StartupSettingsCard.Height = desiredHeight;
+                return;
+            }
+
+            if (delta > 0d)
+            {
+                // The right column is taller. Grow the appearance card instead of
+                // trying to shrink the startup card below its readable minimum.
+                var targetHeight = AppearanceSettingsCard.ActualHeight + delta;
+                if (IsUsableDimension(targetHeight))
+                {
+                    AppearanceSettingsCard.Height = targetHeight;
+                }
+            }
+            else
+            {
+                var targetHeight = StartupSettingsCard.ActualHeight - delta;
+                if (IsUsableDimension(targetHeight))
+                {
+                    StartupSettingsCard.Height = Math.Max(StartupSettingsCard.MinHeight, targetHeight);
+                }
             }
         }
         catch (InvalidOperationException)
