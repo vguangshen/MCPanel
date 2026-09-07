@@ -15,6 +15,7 @@ public partial class MainWindow
     private const double CompactNavWidth = 190d;
     private const double EmbeddedPageMinHeight = 630d;
     private const double StartupCardResponsiveMinHeight = 84d;
+    private const double SoftwareUpdateStableMinHeight = 228d;
 
     private bool _applyingResponsiveLayout;
     private bool _nativeTextRenderingConfigured;
@@ -29,10 +30,6 @@ public partial class MainWindow
         EnsureScrollableEmbeddedPages();
         EnsureSettingsAlignmentHook();
         ApplyResponsiveLayout();
-
-        // OnContentRendered is the first point where all responsive settings cards
-        // have real geometry. Prime the stability/alignment rules immediately rather
-        // than waiting for another LayoutUpdated pass that may never be scheduled.
         StabilizeSoftwareUpdateCardHeight();
         AlignSettingsCardBottoms();
     }
@@ -40,18 +37,15 @@ public partial class MainWindow
     protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
     {
         base.OnRenderSizeChanged(sizeInfo);
-        ResetSettingsCardAlignment();
         ApplyResponsiveLayout(sizeInfo.NewSize.Width, sizeInfo.NewSize.Height);
+        StabilizeSoftwareUpdateCardHeight();
+        AlignSettingsCardBottoms();
     }
 
     protected override void OnPropertyChanged(DependencyPropertyChangedEventArgs e)
     {
         base.OnPropertyChanged(e);
 
-        // A requested Window.Width/Height change can be observed before the hosted
-        // render target catches up (notably on RDP and headless Windows runners).
-        // React to the requested size as well as the rendered size so responsive
-        // breakpoints never get stuck in the previous compact state.
         if ((e.Property == WidthProperty || e.Property == HeightProperty) &&
             IsInitialized &&
             !_applyingResponsiveLayout)
@@ -63,8 +57,9 @@ public partial class MainWindow
                 ? height
                 : Height;
 
-            ResetSettingsCardAlignment();
             ApplyResponsiveLayout(requestedWidth, requestedHeight);
+            StabilizeSoftwareUpdateCardHeight();
+            AlignSettingsCardBottoms();
         }
     }
 
@@ -78,10 +73,6 @@ public partial class MainWindow
         _applyingResponsiveLayout = true;
         try
         {
-            // Never scale the complete visual tree. Whole-window Viewbox scaling makes
-            // WPF text land on fractional pixels and causes small fonts to look soft.
-            // The Viewbox is retained only as a host so existing XAML names and tests
-            // remain stable; Stretch=None guarantees a 1:1 device-independent layout.
             MainViewbox.Stretch = Stretch.None;
             MainViewbox.StretchDirection = StretchDirection.Both;
             MainViewbox.HorizontalAlignment = HorizontalAlignment.Stretch;
@@ -115,9 +106,6 @@ public partial class MainWindow
 
             ConfigureNativeTextRendering();
 
-            // Use the explicit requested width when one is available. This preserves
-            // the user's requested responsive state even if the compositor or a remote
-            // session temporarily reports an older constrained render size.
             var responsiveWidth = IsUsableDimension(requestedWidth)
                 ? requestedWidth
                 : IsUsableDimension(Width)
@@ -128,8 +116,6 @@ public partial class MainWindow
             ApplyProductsHeaderDensity(compactShell);
             ApplySettingsResponsiveColumns(responsiveWidth < CompactSettingsBreakpoint);
 
-            // The dashboard used to rely on the Viewbox to make all three sections fit
-            // vertically. Native-size text must scroll instead of being scaled down.
             HomePage.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
             HomePage.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
         }
@@ -243,12 +229,14 @@ public partial class MainWindow
 
         _settingsAlignmentHooked = true;
 
-        // The legacy fixed-height binding tied the startup card to the appearance
-        // card. With native-size responsive text that creates a circular height
-        // dependency and prevents the shorter column from being aligned correctly.
         BindingOperations.ClearBinding(StartupSettingsCard, FrameworkElement.HeightProperty);
         StartupSettingsCard.Height = double.NaN;
         StartupSettingsCard.MinHeight = Math.Max(StartupSettingsCard.MinHeight, StartupCardResponsiveMinHeight);
+        SoftwareUpdateCard.MinHeight = Math.Max(SoftwareUpdateCard.MinHeight, SoftwareUpdateStableMinHeight);
+
+        AppearanceSettingsCard.Loaded += (_, _) => AlignSettingsCardBottoms();
+        StartupSettingsCard.Loaded += (_, _) => AlignSettingsCardBottoms();
+        SoftwareUpdateCard.Loaded += (_, _) => StabilizeSoftwareUpdateCardHeight();
 
         LayoutUpdated += (_, _) =>
         {
@@ -257,29 +245,19 @@ public partial class MainWindow
         };
     }
 
-    private void ResetSettingsCardAlignment()
-    {
-        if (!_settingsAlignmentHooked || AppearanceSettingsCard is null || StartupSettingsCard is null)
-        {
-            return;
-        }
-
-        AppearanceSettingsCard.Height = double.NaN;
-        StartupSettingsCard.Height = double.NaN;
-    }
-
     private void StabilizeSoftwareUpdateCardHeight()
     {
-        if (SoftwareUpdateCard is null || SoftwareUpdateCard.ActualHeight <= 1d)
+        if (SoftwareUpdateCard is null)
         {
             return;
         }
 
-        // The cancel button switches layout visibility when an update starts. On a
-        // rounded WPF layout this can otherwise make the card shrink by one device
-        // pixel even though the progress row itself is fixed. Preserve the largest
-        // idle/native height so starting an update never makes the card jump.
-        if (DataContext is MainViewModel model && model.IsUpdateBusy)
+        SoftwareUpdateCard.MinHeight = Math.Max(
+            SoftwareUpdateCard.MinHeight,
+            SoftwareUpdateStableMinHeight);
+
+        if (SoftwareUpdateCard.ActualHeight <= 1d ||
+            DataContext is MainViewModel { IsUpdateBusy: true })
         {
             return;
         }
@@ -299,7 +277,9 @@ public partial class MainWindow
             StartupSettingsCard.Parent is not Grid rightColumn ||
             leftColumn.Parent is not Grid columnsGrid ||
             !ReferenceEquals(rightColumn.Parent, columnsGrid) ||
-            Grid.GetColumn(leftColumn) == Grid.GetColumn(rightColumn))
+            Grid.GetColumn(leftColumn) == Grid.GetColumn(rightColumn) ||
+            AppearanceSettingsCard.ActualHeight <= 1d ||
+            StartupSettingsCard.ActualHeight <= 1d)
         {
             return;
         }
@@ -321,8 +301,6 @@ public partial class MainWindow
 
             if (delta > 0d)
             {
-                // The right column is taller. Grow the appearance card instead of
-                // trying to shrink the startup card below its readable minimum.
                 var targetHeight = AppearanceSettingsCard.ActualHeight + delta;
                 if (IsUsableDimension(targetHeight))
                 {
