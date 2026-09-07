@@ -131,8 +131,8 @@ public sealed partial class ReliabilityTests
 
                 var homePage = (ScrollViewer)window.FindName("HomePage");
                 var homeSummary = (Border)window.FindName("HomeSystemSummaryCard");
-                Assert.AreEqual(78d, homeSummary.Height, 0.1d,
-                    "紧凑窗口首页应压缩留白而不是缩放文字。");
+                Assert.AreEqual(92d, homeSummary.Height, 0.1d,
+                    "紧凑首页仍应保留系统概览的安全高度，避免硬件信息行拥挤。");
                 Assert.IsTrue(homePage.ExtentHeight <= homePage.ViewportHeight + 3d,
                     $"1024x640 首页正常状态不应出现整页滚动；Extent={homePage.ExtentHeight}, Viewport={homePage.ViewportHeight}。");
 
