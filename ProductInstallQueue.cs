@@ -63,6 +63,7 @@ internal sealed class ProductInstallQueueService : IDisposable
         TouchHeartbeat();
         LoadPersistedQueue();
         RefreshQueuePositions();
+        QueueSessionMaintenance.PruneInactiveSessions(_sessionRoot);
     }
 
     public ObservableCollection<ProductInstallQueueItemViewModel> Items => _progress.QueueItems;

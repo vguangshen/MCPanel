@@ -60,7 +60,7 @@ jobs:
             -PublishDirectory $env:MCPANEL_PUBLISH_DIR `
             -OutputDirectory $updatesDir `
             -GitHubRelease `
-            -ReleaseNotes '下载与安装队列改为 MCPanel 主窗口内部浮层，避免跨窗口覆盖其他应用，并保留下载中/已完成、进度、暂停、删除和历史时间信息。'
+            -ReleaseNotes (Get-Content -LiteralPath 'RELEASE-NOTES.md' -Raw)
           "MCPANEL_UPDATES_DIR=$updatesDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Create GitHub Release
@@ -73,17 +73,7 @@ jobs:
           $zip = Join-Path $env:MCPANEL_UPDATES_DIR "MCPanel-$version.zip"
           $hash = "$zip.sha256"
           $manifest = Join-Path $env:MCPANEL_UPDATES_DIR 'update-manifest.json'
-          $notes = @"
-          本版本修复下载与安装队列浮层越出 MCPanel 窗口、覆盖其他应用的问题。
-
-          - 下载与安装队列由独立 WPF Popup 改为 MCPanel 主窗口视觉树内的 Flyout，不再创建独立弹出窗口。
-          - 浮层被限制在产品管理页面和 MCPanel 客户区内，即使窗口缩放或靠近屏幕边缘也不会覆盖到其他软件。
-          - 保留“下载中 / 已完成”两个页面、实时进度、暂停、取消/删除、历史记录及任务开始/完成/总用时信息。
-          - 保留原有交互：点击下载按钮展开或收起，点击浮层内部不会误关闭，点击外部、按 Esc 或离开产品管理页面时关闭。
-          - 删除旧 Popup 的 DPI/Viewbox 定位、CustomPopupPlacementCallback 与偏移刷新逻辑，减少缩放和多屏环境下的位置异常。
-          - 同步更新下载队列与统一弹窗相关回归测试，并在发布前执行完整可靠性测试与 Win-x64 publish。
-          "@
           gh release create $tag $zip $hash $manifest `
             --target '${{ github.sha }}' `
             --title "MCPanel $version" `
-            --notes $notes
+            --notes-file RELEASE-NOTES.md

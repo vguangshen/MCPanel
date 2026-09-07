@@ -41,9 +41,46 @@ public sealed class MainViewModel : ObservableObject
     private CancellationTokenSource? _productIconCacheCancellation;
     private CancellationTokenSource? _installedProductsRefreshCancellation;
     private bool _disposed;
+    private readonly CancellationTokenSource _driveCancellation = new();
+    private bool _driveRefreshInFlight;
+    private DateTime _nextDriveRefreshUtc;
+    private readonly Func<CancellationToken, DriveSnapshotResult> _captureDrives;
 
-    public MainViewModel()
+    internal async Task RefreshDrivesAsync()
     {
+        if (_disposed || _driveRefreshInFlight || DateTime.UtcNow < _nextDriveRefreshUtc) return;
+        _driveRefreshInFlight = true;
+        var token = _driveCancellation.Token;
+        try
+        {
+            var result = await Task.Run(() => _captureDrives(token), token);
+            if (_disposed || token.IsCancellationRequested) return;
+            foreach (var snapshot in result.Drives)
+            {
+                var existing = Drives.FirstOrDefault(item => item.Name.Equals(snapshot.Name, StringComparison.OrdinalIgnoreCase));
+                if (existing is null) Drives.Add(new DriveItem(snapshot.Name, snapshot.Used, snapshot.Total));
+                else { existing.UpdateTarget(snapshot.Used, snapshot.Total); existing.SnapToTarget(); }
+            }
+            if (result.IsComplete)
+            {
+                var names = result.Drives.Select(drive => drive.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                for (var index = Drives.Count - 1; index >= 0; index--)
+                    if (!names.Contains(Drives[index].Name)) Drives.RemoveAt(index);
+            }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        finally
+        {
+            _nextDriveRefreshUtc = DateTime.UtcNow.AddSeconds(10);
+            _driveRefreshInFlight = false;
+        }
+    }
+
+    public MainViewModel() : this(true) { }
+
+    internal MainViewModel(bool initializeData, Func<CancellationToken, DriveSnapshotResult>? captureDrives = null)
+    {
+        _captureDrives = captureDrives ?? DriveSnapshotService.Capture;
         SummaryCounters =
         [
             new SummaryCounter("网站", 0),
@@ -95,8 +132,11 @@ public sealed class MainViewModel : ObservableObject
 
         RefreshProductCategories();
         ApplyProductFilter(string.Empty);
-        LoadCachedProducts();
-        LoadHardwareSummary();
+        if (initializeData)
+        {
+            LoadCachedProducts();
+            LoadHardwareSummary();
+        }
     }
 
     public string WelcomeText => "欢迎：admin";
@@ -509,6 +549,8 @@ public sealed class MainViewModel : ObservableObject
         }
 
         _disposed = true;
+        _driveCancellation.Cancel();
+        _driveCancellation.Dispose();
         _installedProductsRefreshCancellation?.Cancel();
         _productIconCacheCancellation?.Cancel();
         _productIconCache.Dispose();
@@ -627,74 +669,7 @@ public sealed class MainViewModel : ObservableObject
         _targetCpuUsage = Compat.Clamp(_cpuSampler.NextValue(), 0, 100);
         _targetMemoryUsage = Compat.Clamp(SystemMemory.GetMemoryUsagePercent(), 0, 100);
 
-        try
-        {
-            var snapshots = new List<(string Name, long Used, long Total)>();
-            var hadReadFailure = false;
-            foreach (var drive in DriveInfo.GetDrives())
-            {
-                try
-                {
-                    if (!drive.IsReady || drive.DriveType != DriveType.Fixed)
-                    {
-                        continue;
-                    }
-
-                    var total = drive.TotalSize;
-                    var used = total - drive.AvailableFreeSpace;
-                    snapshots.Add((drive.Name, used, total));
-                    if (snapshots.Count == 6)
-                    {
-                        break;
-                    }
-                }
-                catch (IOException)
-                {
-                    hadReadFailure = true;
-                    // A removable or temporarily unavailable drive should not
-                    // terminate the DispatcherTimer callback.
-                }
-                catch (UnauthorizedAccessException)
-                {
-                    hadReadFailure = true;
-                }
-            }
-
-            foreach (var snapshot in snapshots)
-            {
-                var existing = Drives.FirstOrDefault(item => item.Name.Equals(snapshot.Name, StringComparison.OrdinalIgnoreCase));
-                if (existing is null)
-                {
-                    Drives.Add(new DriveItem(snapshot.Name, snapshot.Used, snapshot.Total));
-                }
-                else
-                {
-                    existing.UpdateTarget(snapshot.Used, snapshot.Total);
-                }
-            }
-
-            if (!hadReadFailure)
-            {
-                var activeNames = snapshots
-                    .Select(snapshot => snapshot.Name)
-                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
-                for (var index = Drives.Count - 1; index >= 0; index--)
-                {
-                    if (!activeNames.Contains(Drives[index].Name))
-                    {
-                        Drives.RemoveAt(index);
-                    }
-                }
-            }
-        }
-        catch (IOException)
-        {
-            // Keep the previous drive snapshot when the system changes while
-            // the timer is reading it.
-        }
-        catch (UnauthorizedAccessException)
-        {
-        }
+        _ = RefreshDrivesAsync();
 
         CpuUsage = _targetCpuUsage;
         MemoryUsage = _targetMemoryUsage;

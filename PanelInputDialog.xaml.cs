@@ -25,8 +25,8 @@ public partial class PanelInputDialog : PanelModalWindow
             }
             else
             {
-                TextInput.Focus();
-                TextInput.SelectAll();
+                ValueTextBox.Focus();
+                ValueTextBox.SelectAll();
             }
         };
     }
@@ -41,7 +41,7 @@ public partial class PanelInputDialog : PanelModalWindow
         dialog.IconText.Text = "\uE8D7";
         dialog.ContextBadgeText.Text = "MySQL";
         dialog.InputLabel.Text = "MySQL 端口";
-        dialog.TextInput.Text = currentPort.ToString(CultureInfo.InvariantCulture);
+        dialog.ValueTextBox.Text = currentPort.ToString(CultureInfo.InvariantCulture);
         dialog.TextHint.Text = "修改后会同步更新 MySQL 配置与面板连接信息。";
         dialog.TextPanel.Visibility = Visibility.Visible;
         dialog.PasswordPanel.Visibility = Visibility.Collapsed;
@@ -57,7 +57,7 @@ public partial class PanelInputDialog : PanelModalWindow
         dialog.IconText.Text = "\uE8D7";
         dialog.ContextBadgeText.Text = "Account API";
         dialog.InputLabel.Text = "监听端口";
-        dialog.TextInput.Text = currentPort.ToString(CultureInfo.InvariantCulture);
+        dialog.ValueTextBox.Text = currentPort.ToString(CultureInfo.InvariantCulture);
         dialog.TextHint.Text = "端口范围 1–65535；API 已启用时确认后会立即切换，失败会自动恢复原端口。";
         dialog.TextPanel.Visibility = Visibility.Visible;
         dialog.PasswordPanel.Visibility = Visibility.Collapsed;
@@ -82,12 +82,12 @@ public partial class PanelInputDialog : PanelModalWindow
         StatusText.Text = string.Empty;
         if (_mode == PanelInputDialogMode.Port)
         {
-            var text = TextInput.Text.Trim();
+            var text = ValueTextBox.Text.Trim();
             if (!int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var port) || port is < 1 or > 65535)
             {
                 StatusText.Text = "请输入 1 到 65535 之间的有效端口号。";
-                TextInput.Focus();
-                TextInput.SelectAll();
+                ValueTextBox.Focus();
+                ValueTextBox.SelectAll();
                 return;
             }
 

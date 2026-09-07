@@ -236,8 +236,15 @@ public partial class AiAnalysisPage : UserControl, INotifyPropertyChanged, IDisp
     {
         if (!string.IsNullOrWhiteSpace(AnalysisBox.Text))
         {
-            Clipboard.SetText(AnalysisBox.Text);
-            AnalysisStatus = "分析结果已复制。";
+            try
+            {
+                Clipboard.SetText(AnalysisBox.Text);
+                AnalysisStatus = "分析结果已复制。";
+            }
+            catch (System.Runtime.InteropServices.ExternalException)
+            {
+                AnalysisStatus = "剪贴板正被其他程序占用，请稍后重试复制。";
+            }
         }
     }
 

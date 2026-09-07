@@ -22,7 +22,7 @@ public sealed partial class ReliabilityTests
             Exception? dispatcherFailure = null;
             try
             {
-                window = new MainWindow();
+                window = CreateUiTestWindow();
                 window.Dispatcher.UnhandledException += (_, args) =>
                 {
                     dispatcherFailure ??= args.Exception;

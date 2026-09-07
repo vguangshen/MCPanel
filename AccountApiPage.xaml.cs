@@ -34,7 +34,6 @@ public partial class AccountApiPage : UserControl, INotifyPropertyChanged, IDisp
     private string _deviceIdText = "未读取";
     private string _checkedAtText = "尚未检查";
     private string _headerHintText = "Account API 已集成在 MCPanel 内，首次进入页面会自动检查运行状态。";
-    private string _serviceStatusText = "检测中";
     private string _serviceStatusKind = "Checking";
     private string _operationStatusText = "服务由顶部开关控制";
     private string _operationHintText = "打开顶部开关后，MCPanel 会启动内置 Account API；关闭后会停止监听。";
@@ -66,7 +65,6 @@ public partial class AccountApiPage : UserControl, INotifyPropertyChanged, IDisp
     public string DeviceIdText { get => _deviceIdText; private set => SetProperty(ref _deviceIdText, value); }
     public string CheckedAtText { get => _checkedAtText; private set => SetProperty(ref _checkedAtText, value); }
     public string HeaderHintText { get => _headerHintText; private set => SetProperty(ref _headerHintText, value); }
-    public string ServiceStatusText { get => _serviceStatusText; private set => SetProperty(ref _serviceStatusText, value); }
     public string ServiceStatusKind { get => _serviceStatusKind; private set => SetProperty(ref _serviceStatusKind, value); }
     public string OperationStatusText { get => _operationStatusText; private set => SetProperty(ref _operationStatusText, value); }
     public string OperationHintText { get => _operationHintText; private set => SetProperty(ref _operationHintText, value); }
@@ -114,17 +112,19 @@ public partial class AccountApiPage : UserControl, INotifyPropertyChanged, IDisp
         !IsBusy &&
         _snapshot?.Configuration.ConfigExists == true;
     public bool CanCopySecret => !IsBusy && HasSigningSecret;
-    public bool CanInstallService => false;
-    public bool CanUninstallService => false;
+    public bool CanImportSettings => !IsBusy && !AccountApiEnabled;
     public bool CanOpenRuntime => _snapshot?.Configuration.RuntimeExists == true;
-    public bool CanOpenConfig => _snapshot?.Configuration.ConfigExists == true;
     public bool CanEditEndpoint => !IsBusy && _snapshot?.Configuration.ConfigExists == true;
     public bool CanOpenLogs => _snapshot?.Configuration.RuntimeExists == true;
     public string ProviderEmptyText =>
         _snapshot is not null && !_snapshot.Enabled
             ? "账号 API 当前未启用，开启开关后才会检测数据库连接。"
+            : _snapshot?.HealthStatus == "not_checked"
+            ? "云端连接配置已就绪。点击“检测”查看数据库连接状态。"
+            : _snapshot?.HealthStatus == "check_failed"
+            ? "数据库检测未完成；本地桥接仍在线，请检查数据库可达性后重试。"
             : _snapshot?.Reachable == true
-            ? "内置服务尚未收到 SQL Server / MySQL 配置。请在 MarchCenter 网页后台完成配置后再次检测。"
+            ? "数据库连接由 MarchCenter 云端管理；本地桥接在线，可等待云端下发配置。"
             : "内置服务未在线，暂时没有可展示的数据库连接状态。";
     public Visibility ProviderEmptyVisibility => Providers.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     public string ErrorText => _snapshot is null
@@ -152,9 +152,10 @@ public partial class AccountApiPage : UserControl, INotifyPropertyChanged, IDisp
     public void Deactivate()
     {
         _timer.Stop();
+        _refreshCancellation?.Cancel();
     }
 
-    private async Task RefreshPageAsync()
+    private async Task RefreshPageAsync(bool checkDatabases = false)
     {
         if (_disposed || _isRefreshing || IsBusy)
         {
@@ -169,7 +170,8 @@ public partial class AccountApiPage : UserControl, INotifyPropertyChanged, IDisp
 
         try
         {
-            var snapshot = await _service.RefreshAsync(cancellationToken);
+            var snapshot = await _service.RefreshAsync(cancellationToken, checkDatabases);
+            if (_disposed || cancellationToken.IsCancellationRequested || IsBusy) return;
             ApplySnapshot(snapshot);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -188,7 +190,7 @@ public partial class AccountApiPage : UserControl, INotifyPropertyChanged, IDisp
         }
     }
 
-    private void ApplySnapshot(AccountApiSnapshot snapshot)
+    internal void ApplySnapshot(AccountApiSnapshot snapshot)
     {
         _snapshot = snapshot;
         _secretValue = snapshot.Configuration.SigningSecret;
@@ -225,16 +227,16 @@ public partial class AccountApiPage : UserControl, INotifyPropertyChanged, IDisp
             ? "HMAC 请求签名"
             : snapshot.Configuration.AuthenticationMode;
         DatabaseSummaryText = BuildDatabaseSummary(snapshot);
-        HealthStatusText = BuildHealthStatus(snapshot);
+        HealthStatusText = BuildHealthStatus(snapshot) + (snapshot.DatabaseCheckedAt.HasValue
+            ? " · " + snapshot.DatabaseCheckedAt.Value.ToLocalTime().ToString("HH:mm:ss") : string.Empty);
         WindowsServiceText = snapshot.Enabled ? snapshot.WindowsServiceStatus : "未启用";
         RuntimeStateText = !snapshot.Enabled
             ? "未启用"
             : snapshot.Reachable
-            ? snapshot.Healthy ? "服务在线且健康" : "服务在线，需关注"
+            ? "本地桥接在线"
             : !snapshot.Configuration.RuntimeExists
                 ? "未部署"
-                : snapshot.LocalProcessRunning ||
-                  (snapshot.ServiceInstalled && string.Equals(snapshot.WindowsServiceStatus, "Running", StringComparison.OrdinalIgnoreCase))
+                : snapshot.LocalProcessRunning
                     ? "进程运行中但接口未响应"
                     : "未响应";
         ServiceModeText = !snapshot.Enabled
@@ -251,7 +253,6 @@ public partial class AccountApiPage : UserControl, INotifyPropertyChanged, IDisp
             ? snapshot.Configuration.LogDirectory
             : "尚未创建日志目录";
         ServiceStatusKind = GetStatusKind(snapshot);
-        ServiceStatusText = GetStatusText(snapshot);
         HeaderHintText = BuildHeaderHint(snapshot);
         Providers.Clear();
         foreach (var provider in snapshot.Providers)
@@ -276,7 +277,7 @@ public partial class AccountApiPage : UserControl, INotifyPropertyChanged, IDisp
 
         if (snapshot.Providers.Count == 0)
         {
-            return snapshot.Reachable ? "待配置" : "未检测";
+            return snapshot.Reachable ? "云端管理" : "未检测";
         }
 
         var healthy = snapshot.Providers.Count(provider => provider.IsHealthy);
@@ -300,7 +301,9 @@ public partial class AccountApiPage : UserControl, INotifyPropertyChanged, IDisp
         return snapshot.HealthStatus switch
         {
             "ok" => "全部连接正常",
-            "setup_required" => "等待网页下发配置",
+            "setup_required" => "尚无云端连接配置",
+            "not_checked" => "点击检测数据库连接",
+            "check_failed" => "数据库检测未完成",
             "degraded" => "至少一个连接异常",
             _ => snapshot.HealthStatus
         };
@@ -323,39 +326,9 @@ public partial class AccountApiPage : UserControl, INotifyPropertyChanged, IDisp
             return "Offline";
         }
 
-        return snapshot.Healthy
+        return snapshot.Healthy || snapshot.HealthStatus == "setup_required"
             ? "Healthy"
-            : snapshot.HealthStatus == "setup_required" ? "Setup" : "Degraded";
-    }
-
-    private static string GetStatusText(AccountApiSnapshot snapshot)
-    {
-        if (!snapshot.Enabled)
-        {
-            return "未启用";
-        }
-
-        if (!snapshot.Configuration.RuntimeExists)
-        {
-            return "未部署";
-        }
-
-        if (!snapshot.Reachable)
-        {
-            return snapshot.LocalProcessRunning ||
-                   (snapshot.ServiceInstalled && string.Equals(snapshot.WindowsServiceStatus, "Running", StringComparison.OrdinalIgnoreCase))
-                ? "服务运行中 · 接口未响应"
-                : "服务未运行";
-        }
-
-        if (snapshot.Healthy)
-        {
-            return "服务运行正常";
-        }
-
-        return snapshot.HealthStatus == "setup_required"
-            ? "服务在线 · 待配置"
-            : "服务在线 · 连接异常";
+            : "Degraded";
     }
 
     private static string BuildHeaderHint(AccountApiSnapshot snapshot)
@@ -381,18 +354,19 @@ public partial class AccountApiPage : UserControl, INotifyPropertyChanged, IDisp
         }
 
         return snapshot.Reachable
-            ? "内置服务已连接；面板只展示状态和审计信息，不接触数据库明文配置。"
-            : "内置服务已准备就绪，打开顶部开关即可开始监听。";
+            ? "本地桥接已在线；云端管理连接配置，本机执行请求并展示诊断信息。"
+            : "账号 API 已启用，但接口尚未响应；请检查监听端口和运行日志。";
     }
 
     private async Task RunOperationAsync(string operation, Func<Task> action)
     {
-        if (IsBusy)
+        if (_disposed || IsBusy)
         {
             return;
         }
 
         IsBusy = true;
+        _refreshCancellation?.Cancel();
         _manualErrorText = string.Empty;
         OperationStatusText = operation;
         OperationHintText = "正在执行，请稍候...";
@@ -436,6 +410,15 @@ public partial class AccountApiPage : UserControl, INotifyPropertyChanged, IDisp
     {
         _manualErrorText = string.Empty;
         await RefreshPageAsync();
+    }
+
+    private async void DetectDatabases_Click(object sender, RoutedEventArgs e)
+    {
+        await RunOperationAsync("正在检测数据库连接…", async () =>
+        {
+            var snapshot = await _service.RefreshAsync(checkDatabases: true);
+            if (!_disposed) ApplySnapshot(snapshot);
+        });
     }
 
 
@@ -482,7 +465,6 @@ public partial class AccountApiPage : UserControl, INotifyPropertyChanged, IDisp
         // seconds when a configured database is unavailable.
         AccountApiEnabled = enabled;
         ServiceStatusKind = enabled ? "Starting" : "Disabled";
-        ServiceStatusText = enabled ? "正在启动…" : "未启用";
         await RunOperationAsync(
             enabled ? "正在启用账号 API…" : "正在停用账号 API…",
             async () =>
@@ -519,6 +501,7 @@ public partial class AccountApiPage : UserControl, INotifyPropertyChanged, IDisp
 
     private async void SelectRuntime_Click(object sender, RoutedEventArgs e)
     {
+        if (!CanImportSettings) return;
         var dialog = new OpenFileDialog
         {
             Title = "导入 Account API 配置",
@@ -553,7 +536,6 @@ public partial class AccountApiPage : UserControl, INotifyPropertyChanged, IDisp
     }
 
     private void OpenRuntime_Click(object sender, RoutedEventArgs e) => RunUiAction(_service.OpenRuntimeDirectory);
-    private void OpenConfig_Click(object sender, RoutedEventArgs e) => RunUiAction(_service.OpenConfigurationFile);
     private void OpenLogs_Click(object sender, RoutedEventArgs e) => RunUiAction(_service.OpenLogDirectory);
 
     private void ToggleSecret_Click(object sender, RoutedEventArgs e)
@@ -609,9 +591,7 @@ public partial class AccountApiPage : UserControl, INotifyPropertyChanged, IDisp
             {
             }
 
-            var shouldRestart = _snapshot?.Reachable == true ||
-                                 string.Equals(_snapshot?.WindowsServiceStatus, "Running", StringComparison.OrdinalIgnoreCase) ||
-                                 _service.IsLocalProcessRunning();
+            var shouldRestart = _service.IsLocalProcessRunning();
             if (shouldRestart)
             {
                 await _service.RestartAsync();

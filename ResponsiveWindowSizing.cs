@@ -9,7 +9,7 @@ internal static class ResponsiveWindowSizing
 {
     public const double MainDesignWidth = 1280;
     public const double MainDesignHeight = 820;
-    public const double MainDefaultScale = 0.8;
+    public const double MainDefaultScale = 1.0;
 
     public static void FitToCurrentMonitor(
         Window window,

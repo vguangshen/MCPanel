@@ -175,6 +175,12 @@ namespace MarchCenter.AccountApi
                 WriteJson(http.Response, 200, result); return;
             }
             if (request.HttpMethod == "GET" && path == "/health") { Health(http.Response); return; }
+            if (request.HttpMethod == "GET" && path == "/health/live")
+            {
+                var configured = _repository.Profiles.Any(pair => pair.Value.Enabled);
+                WriteJson(http.Response, 200, new { ok = true, status = configured ? "not_checked" : "setup_required", service = "MarchCenter Account API", version = ServiceVersion, deviceId = _identity.DeviceId, bindAddress = _effectiveBindAddress });
+                return;
+            }
             if (request.HttpMethod == "GET" && path == "/api/v1/capabilities") { Capabilities(http.Response); return; }
             if (request.HttpMethod == "GET" && path == "/api/v1/connections/test")
             {

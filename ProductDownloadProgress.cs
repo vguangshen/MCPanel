@@ -19,17 +19,18 @@ public sealed record ProductDownloadProgress(
         get
         {
             var received = ProductTransferFormatting.FormatBytes(BytesReceived);
-            var hasReliableTotal = HasReliableTotal && TotalBytes is > 0;
+            var totalBytes = TotalBytes.GetValueOrDefault();
+            var hasReliableTotal = HasReliableTotal && totalBytes > 0;
             if (ScannedFiles > 0 || ScannedBytes > 0)
             {
                 var downloaded = hasReliableTotal
-                    ? $"{received} / {ProductTransferFormatting.FormatBytes(TotalBytes.Value)}"
+                    ? $"{received} / {ProductTransferFormatting.FormatBytes(totalBytes)}"
                     : received;
                 return $"已扫描 {ScannedFiles:N0} 项 · {ProductTransferFormatting.FormatBytes(ScannedBytes)} · 已下载 {downloaded}";
             }
 
             return hasReliableTotal
-                ? $"已下载 {received} / {ProductTransferFormatting.FormatBytes(TotalBytes.Value)}"
+                ? $"已下载 {received} / {ProductTransferFormatting.FormatBytes(totalBytes)}"
                 : $"已下载 {received}";
         }
     }

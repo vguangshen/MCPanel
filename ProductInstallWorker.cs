@@ -675,7 +675,7 @@ internal static class ProductInstallWorker
         }
     }
 
-    private static Mutex? AcquireQueueMutex(string queueRoot)
+    internal static Mutex? AcquireQueueMutex(string queueRoot, TimeSpan? timeout = null)
     {
         Mutex? mutex = null;
         try
@@ -689,7 +689,7 @@ internal static class ProductInstallWorker
             mutex = new Mutex(false, $"Local\\MCPanel.ProductInstallQueue.{hash}");
             try
             {
-                if (!mutex.WaitOne(TimeSpan.FromSeconds(60)))
+                if (!mutex.WaitOne(timeout ?? TimeSpan.FromSeconds(60)))
                 {
                     mutex.Dispose();
                     return null;

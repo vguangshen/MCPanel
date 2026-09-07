@@ -360,27 +360,25 @@ public sealed class InstallationProgressViewModel : ObservableObject
     private double _downloadProgress;
     private bool _downloadTotalKnown;
     private bool _showCompletedQueue;
+    private readonly HashSet<ProductInstallQueueItemViewModel> _subscribedQueueItems = new();
+    private IReadOnlyList<ProductInstallQueueItemViewModel> _activeQueueItems = Array.Empty<ProductInstallQueueItemViewModel>();
+    private IReadOnlyList<ProductInstallQueueItemViewModel> _completedQueueItems = Array.Empty<ProductInstallQueueItemViewModel>();
 
     public InstallationProgressViewModel()
     {
         QueueItems.CollectionChanged += (_, args) =>
         {
-            if (args.OldItems is not null)
+            foreach (var item in _subscribedQueueItems.Where(item => !QueueItems.Contains(item)).ToArray())
             {
-                foreach (ProductInstallQueueItemViewModel item in args.OldItems)
-                {
-                    item.PropertyChanged -= QueueItem_PropertyChanged;
-                }
+                item.PropertyChanged -= QueueItem_PropertyChanged;
+                _subscribedQueueItems.Remove(item);
             }
-
-            if (args.NewItems is not null)
+            foreach (var item in QueueItems)
             {
-                foreach (ProductInstallQueueItemViewModel item in args.NewItems)
-                {
+                if (_subscribedQueueItems.Add(item))
                     item.PropertyChanged += QueueItem_PropertyChanged;
-                }
             }
-
+            RefreshQueueLists();
             NotifyQueueProperties();
         };
     }
@@ -392,14 +390,8 @@ public sealed class InstallationProgressViewModel : ObservableObject
     public bool HasActiveQueue => QueueItems.Any(item => !item.IsTerminal);
     public int ActiveQueueCount => QueueItems.Count(item => !item.IsTerminal);
     public int CompletedQueueCount => QueueItems.Count(item => item.IsTerminal);
-    public IReadOnlyList<ProductInstallQueueItemViewModel> ActiveQueueItems => QueueItems
-        .Where(item => !item.IsTerminal)
-        .OrderBy(item => item.Sequence)
-        .ToArray();
-    public IReadOnlyList<ProductInstallQueueItemViewModel> CompletedQueueItems => QueueItems
-        .Where(item => item.IsTerminal)
-        .OrderByDescending(item => item.Sequence)
-        .ToArray();
+    public IReadOnlyList<ProductInstallQueueItemViewModel> ActiveQueueItems => _activeQueueItems;
+    public IReadOnlyList<ProductInstallQueueItemViewModel> CompletedQueueItems => _completedQueueItems;
     public bool ShowActiveQueue
     {
         get => !ShowCompletedQueue;
@@ -900,8 +892,50 @@ public sealed class InstallationProgressViewModel : ObservableObject
         }
     }
 
-    private void QueueItem_PropertyChanged(object? sender, PropertyChangedEventArgs e) =>
-        NotifyQueueProperties();
+    private void QueueItem_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(e.PropertyName) || e.PropertyName == nameof(ProductInstallQueueItemViewModel.State))
+        {
+            RefreshQueueLists();
+            NotifyQueueProperties();
+        }
+        else if (e.PropertyName == nameof(ProductInstallQueueItemViewModel.QueuePosition))
+        {
+            OnPropertyChanged(nameof(QueueSummaryText));
+            OnPropertyChanged(nameof(QueuePanelSummaryText));
+        }
+        else if (e.PropertyName == nameof(ProductInstallQueueItemViewModel.IsDownloading))
+        {
+            OnPropertyChanged(nameof(IsDownloading));
+            OnPropertyChanged(nameof(IsQueueActivityAnimating));
+            OnPropertyChanged(nameof(OverallDownloadProgress));
+        }
+        else if (e.PropertyName == nameof(ProductInstallQueueItemViewModel.Progress) ||
+                 e.PropertyName == nameof(ProductInstallQueueItemViewModel.DownloadProgress))
+        {
+            OnPropertyChanged(nameof(OverallDownloadProgress));
+        }
+        else if (e.PropertyName == nameof(ProductInstallQueueItemViewModel.IsPaused))
+        {
+            OnPropertyChanged(nameof(IsQueueActivityAnimating));
+        }
+    }
+
+    private void RefreshQueueLists()
+    {
+        var active = QueueItems.Where(item => !item.IsTerminal).OrderBy(item => item.Sequence).ToArray();
+        var completed = QueueItems.Where(item => item.IsTerminal).OrderByDescending(item => item.Sequence).ToArray();
+        if (!_activeQueueItems.SequenceEqual(active))
+        {
+            _activeQueueItems = active;
+            OnPropertyChanged(nameof(ActiveQueueItems));
+        }
+        if (!_completedQueueItems.SequenceEqual(completed))
+        {
+            _completedQueueItems = completed;
+            OnPropertyChanged(nameof(CompletedQueueItems));
+        }
+    }
 
     private void NotifyQueueProperties()
     {
@@ -909,8 +943,6 @@ public sealed class InstallationProgressViewModel : ObservableObject
         OnPropertyChanged(nameof(HasActiveQueue));
         OnPropertyChanged(nameof(ActiveQueueCount));
         OnPropertyChanged(nameof(CompletedQueueCount));
-        OnPropertyChanged(nameof(ActiveQueueItems));
-        OnPropertyChanged(nameof(CompletedQueueItems));
         OnPropertyChanged(nameof(ActiveQueueEmptyVisibility));
         OnPropertyChanged(nameof(ActiveQueueItemsVisibility));
         OnPropertyChanged(nameof(CompletedQueueEmptyVisibility));

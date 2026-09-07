@@ -539,7 +539,7 @@
                                             Visibility="{Binding InstallationProgress.ActiveQueueEmptyVisibility}">
                                     <TextBlock Text="当前没有下载或安装任务" Foreground="{DynamicResource TextBrush}" FontSize="12.5"
                                                FontWeight="SemiBold" HorizontalAlignment="Center" />
-                                    <TextBlock Text="新任务加入后会自动显示在这里" Foreground="{DynamicResource MutedBrush}" FontSize="10.5"
+                                    <TextBlock Text="新任务加入后会自动显示在这里" Foreground="{DynamicResource MutedBrush}" FontSize="12.5"
                                                Margin="0,5,0,0" HorizontalAlignment="Center" />
                                 </StackPanel>
                                 <ScrollViewer MaxHeight="390" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
@@ -558,7 +558,7 @@
                                             Visibility="{Binding InstallationProgress.CompletedQueueEmptyVisibility}">
                                     <TextBlock Text="还没有已完成的任务记录" Foreground="{DynamicResource TextBrush}" FontSize="12.5"
                                                FontWeight="SemiBold" HorizontalAlignment="Center" />
-                                    <TextBlock Text="任务结束后会自动移动到这里" Foreground="{DynamicResource MutedBrush}" FontSize="10.5"
+                                    <TextBlock Text="任务结束后会自动移动到这里" Foreground="{DynamicResource MutedBrush}" FontSize="12.5"
                                                Margin="0,5,0,0" HorizontalAlignment="Center" />
                                 </StackPanel>
                                 <ScrollViewer MaxHeight="390" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"

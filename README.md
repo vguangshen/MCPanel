@@ -27,6 +27,22 @@ routing. Its settings, product, and environment handlers live in
 same split under `MCPanel.Tests`, so adding a new feature does not require
 extending one monolithic source file.
 
+Disk snapshots and inactive queue-session maintenance live in dedicated services
+under `Services`. Disk sampling runs off the UI thread at ten-second intervals;
+CPU and uptime retain their one-second updates. Queue list snapshots remain stable
+during progress updates and are replaced only when their membership changes.
+
+UI tests use an explicit initialization option and a temporary queue data root to
+render the real window without starting installers, runtime synchronization, or
+startup registration. The public window constructor retains normal startup behavior.
+
+The Account API page polls the authenticated `/health/live` endpoint without
+opening database connections. Use its database check button to run the existing
+`/health` diagnostic; results show their check time and expire after one minute.
+The original cloud routes are unchanged. Stop the Account API before importing
+bridge settings, then enable it again to apply the imported listener and signing
+configuration.
+
 ## Environment download URLs
 
 The published application reads environment package URLs from `MCPanel.exe.config` beside the executable. Edit the matching `Environment.*` values before the next installation; no rebuild is needed.

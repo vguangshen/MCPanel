@@ -36,7 +36,7 @@
                 <Grid VerticalAlignment="Center">
                     <StackPanel x:Name="TextPanel" Width="520" HorizontalAlignment="Center">
                         <TextBlock x:Name="InputLabel" Text="端口" Foreground="{DynamicResource DialogMutedBrush}" FontSize="13" Margin="0,0,0,7" />
-                        <TextBox x:Name="TextInput" FontSize="15" />
+                        <TextBox x:Name="ValueTextBox" FontSize="15" />
                         <TextBlock x:Name="TextHint" Text="修改后会同步更新 MySQL 配置与面板连接信息。" Foreground="{DynamicResource DialogMutedBrush}" FontSize="12" Margin="0,10,0,0" />
                     </StackPanel>
                     <StackPanel x:Name="PasswordPanel" Width="520" HorizontalAlignment="Center" Visibility="Collapsed">

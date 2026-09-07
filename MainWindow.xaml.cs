@@ -34,7 +34,7 @@ public partial class MainWindow : Window
         ref int value,
         int valueSize);
 
-    private readonly MainViewModel _model = new();
+    private readonly MainViewModel _model;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly McPanelStoreClient _storeClient = new();
     private readonly EnvironmentInstaller _environmentInstaller = new();
@@ -62,11 +62,14 @@ public partial class MainWindow : Window
 
     internal bool IsDarkThemeActive => _isDarkThemeActive;
 
-    public MainWindow()
+    public MainWindow() : this(true, null) { }
+
+    internal MainWindow(bool initializeRuntime, string? queueDataRoot)
     {
+        _model = new MainViewModel(initializeRuntime);
         InitializeComponent();
         _productWebsiteService = new ProductWebsiteService(_runtimeService);
-        _productInstallQueue = new ProductInstallQueueService(_model.InstallationProgress);
+        _productInstallQueue = new ProductInstallQueueService(_model.InstallationProgress, queueDataRoot, initializeRuntime);
         _productInstallQueue.ItemChanged += ProductInstallQueue_ItemChanged;
         _productInstallQueue.ProgressChanged += ProductInstallQueue_ProgressChanged;
         _productInstallQueue.ItemFinished += ProductInstallQueue_ItemFinished;
@@ -83,7 +86,7 @@ public partial class MainWindow : Window
         Closing += MainWindow_Closing;
         ContentRendered += (_, _) =>
         {
-            _applicationUpdateService.CleanupStaleUpdaterFiles();
+            if (initializeRuntime) _applicationUpdateService.CleanupStaleUpdaterFiles();
             HomeNavButton.IsChecked = true;
             Dispatcher.BeginInvoke(
                 new Action(FocusActiveNavigationItem),
@@ -143,6 +146,7 @@ public partial class MainWindow : Window
                 _runtimeRefreshInFlight = false;
             }
         };
+        if (!initializeRuntime) return;
         _model.RefreshSystemState();
         _deploymentService.PruneStaleDeploymentState();
         TomcatProductStartupManager.RefreshRegistration();

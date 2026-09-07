@@ -124,7 +124,7 @@
                 </Border>
                 <StackPanel Grid.Column="1" Margin="12,0,16,0" VerticalAlignment="Center">
                     <TextBlock Text="账号管理 API" Style="{DynamicResource SectionTitle}" FontSize="18" />
-                    <TextBlock Text="统一管理内置 Account API、HMAC 密钥和连接状态。" Margin="0,3,0,0" FontSize="11" Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="连接云端账号管理与本机服务；数据库配置由云端统一管理。" Margin="0,3,0,0" FontSize="11" Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -152,73 +152,7 @@
                             </TextBlock.Style>
                         </TextBlock>
                     </StackPanel>
-                    <Border x:Name="ServiceStatusBadge"
-                            MinWidth="92"
-                            Height="30"
-                            CornerRadius="6"
-                            Padding="10,0"
-                            Margin="8,0,0,0"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
-                            BorderThickness="1">
-                        <Border.Style>
-                            <Style TargetType="Border">
-                                <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
-                                <Setter Property="BorderBrush" Value="{DynamicResource CardLineBrush}" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding ServiceStatusKind}" Value="Starting">
-                                        <Setter Property="BorderBrush" Value="{DynamicResource TonalTextBrush}" />
-                                    </DataTrigger>
-                                    <DataTrigger Binding="{Binding ServiceStatusKind}" Value="Healthy">
-                                        <Setter Property="BorderBrush" Value="{DynamicResource MemoryBrush}" />
-                                    </DataTrigger>
-                                    <DataTrigger Binding="{Binding ServiceStatusKind}" Value="Setup">
-                                        <Setter Property="BorderBrush" Value="{DynamicResource WarningTextBrush}" />
-                                    </DataTrigger>
-                                    <DataTrigger Binding="{Binding ServiceStatusKind}" Value="Degraded">
-                                        <Setter Property="BorderBrush" Value="{DynamicResource WarningTextBrush}" />
-                                    </DataTrigger>
-                                    <DataTrigger Binding="{Binding ServiceStatusKind}" Value="Missing">
-                                        <Setter Property="BorderBrush" Value="{DynamicResource DangerTextBrush}" />
-                                    </DataTrigger>
-                                    <DataTrigger Binding="{Binding ServiceStatusKind}" Value="Offline">
-                                        <Setter Property="BorderBrush" Value="{DynamicResource WarningTextBrush}" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Border.Style>
-                        <TextBlock Text="{Binding ServiceStatusText}"
-                                   FontSize="11"
-                                   FontWeight="SemiBold"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"
-                                   TextAlignment="Center"
-                                   TextWrapping="NoWrap"
-                                   TextTrimming="CharacterEllipsis">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding ServiceStatusKind}" Value="Healthy">
-                                            <Setter Property="Foreground" Value="{DynamicResource MemoryBrush}" />
-                                        </DataTrigger>
-                                        <DataTrigger Binding="{Binding ServiceStatusKind}" Value="Starting">
-                                            <Setter Property="Foreground" Value="{DynamicResource TonalTextBrush}" />
-                                        </DataTrigger>
-                                        <DataTrigger Binding="{Binding ServiceStatusKind}" Value="Setup">
-                                            <Setter Property="Foreground" Value="{DynamicResource WarningTextBrush}" />
-                                        </DataTrigger>
-                                        <DataTrigger Binding="{Binding ServiceStatusKind}" Value="Degraded">
-                                            <Setter Property="Foreground" Value="{DynamicResource WarningTextBrush}" />
-                                        </DataTrigger>
-                                        <DataTrigger Binding="{Binding ServiceStatusKind}" Value="Missing">
-                                            <Setter Property="Foreground" Value="{DynamicResource DangerTextBrush}" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
-                    </Border>
+
                 </StackPanel>
             </Grid>
         </Border>
@@ -310,7 +244,7 @@
                         </Grid.RowDefinitions>
                         <TextBox Text="{Binding RuntimeDirectoryText, Mode=OneWay}" IsReadOnly="True" Height="28" Padding="8,0" VerticalContentAlignment="Center" FontSize="10" ToolTip="{Binding RuntimeDirectoryText}" />
                         <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,6,0,0">
-                            <Button Content="导入" Width="72" Style="{DynamicResource RoundedRectTonalButton}" Height="28" Padding="9,0" Click="SelectRuntime_Click" IsEnabled="{Binding CanInteract}" />
+                            <Button Content="导入桥接设置" Width="110" Style="{DynamicResource RoundedRectTonalButton}" Height="28" Padding="9,0" Click="SelectRuntime_Click" IsEnabled="{Binding CanImportSettings}" ToolTip="请先关闭顶部开关，再导入本地监听和认证设置。" ToolTipService.ShowOnDisabled="True" />
                             <Button Content="打开" Width="72" Style="{DynamicResource RoundedRectTonalButton}" Height="28" Padding="9,0" Margin="6,0,0,0" Click="OpenRuntime_Click" IsEnabled="{Binding CanOpenRuntime}" />
                         </StackPanel>
                     </Grid>
@@ -416,8 +350,8 @@
                             <TextBlock Text="内置 /health 检查 SQL Server / MySQL。" Style="{StaticResource AccountCaption}" FontSize="10" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Button Content="配置" Style="{DynamicResource AccountLinkButton}" Click="OpenConfig_Click" IsEnabled="{Binding CanOpenConfig}" />
-                            <Button Content="检测" Style="{DynamicResource RoundedRectTonalButton}" Height="27" Padding="10,0" Margin="6,0,0,0" Click="Refresh_Click" IsEnabled="{Binding CanInteract}" />
+
+                            <Button Content="检测" Style="{DynamicResource RoundedRectTonalButton}" Height="27" Padding="10,0" Margin="6,0,0,0" Click="DetectDatabases_Click" IsEnabled="{Binding CanInteract}" />
                         </StackPanel>
                     </Grid>
                     <ItemsControl ItemsSource="{Binding Providers}" ItemTemplate="{StaticResource ProviderStatusTemplate}" Margin="0,7,0,0" MaxHeight="50" ClipToBounds="True">

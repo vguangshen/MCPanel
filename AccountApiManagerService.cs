@@ -28,6 +28,8 @@ public sealed class AccountApiManagerService : IDisposable
     private bool _enabled;
     private string _initializationError = string.Empty;
     private bool _disposed;
+    private AccountApiHealthProbe? _lastDatabaseProbe;
+    private DateTimeOffset? _databaseCheckedAt;
 
     public AccountApiManagerService()
     {
@@ -86,6 +88,21 @@ public sealed class AccountApiManagerService : IDisposable
     public void SetRuntimeDirectory(string directory)
     {
         ThrowIfDisposed();
+        if (!LifecycleGate.Wait(0))
+            throw new InvalidOperationException("账号 API 正在切换运行状态，请稍后重试导入。");
+        try
+        {
+            if (LoadSettings().Enabled || EmbeddedAccountApiRuntime.IsRunning)
+                throw new InvalidOperationException("请先关闭顶部账号 API 开关，再导入桥接设置。");
+            ImportStoppedConfiguration(directory);
+            _lastDatabaseProbe = null;
+            _databaseCheckedAt = null;
+        }
+        finally { LifecycleGate.Release(); }
+    }
+
+    private void ImportStoppedConfiguration(string directory)
+    {
 
         if (string.IsNullOrWhiteSpace(directory))
         {
@@ -113,7 +130,7 @@ public sealed class AccountApiManagerService : IDisposable
         SaveSettings();
     }
 
-    public async Task<AccountApiSnapshot> RefreshAsync(CancellationToken cancellationToken = default)
+    public async Task<AccountApiSnapshot> RefreshAsync(CancellationToken cancellationToken = default, bool checkDatabases = false)
     {
         ThrowIfDisposed();
         using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
@@ -138,12 +155,36 @@ public sealed class AccountApiManagerService : IDisposable
         }
 
         var healthTask = IsEnabled
-            ? ProbeAsync(configuration, operationToken)
+            ? ProbeAsync(configuration, operationToken, "/health/live")
             : Task.FromResult(AccountApiHealthProbe.Disabled());
         var runningTask = Task.Run(() => EmbeddedAccountApiRuntime.IsRunning, operationToken);
         await Task.WhenAll(healthTask, runningTask);
 
         var health = healthTask.Result;
+        if (health.Reachable && checkDatabases)
+        {
+            var database = await ProbeAsync(configuration, operationToken);
+            _databaseCheckedAt = DateTimeOffset.Now;
+            _lastDatabaseProbe = database.Reachable ? database : database with { Status = "check_failed" };
+        }
+        if (!health.Reachable || health.Status == "setup_required")
+        {
+            _lastDatabaseProbe = null;
+            _databaseCheckedAt = null;
+        }
+        if (_lastDatabaseProbe is not null && _databaseCheckedAt.HasValue &&
+            DateTimeOffset.Now - _databaseCheckedAt.Value < TimeSpan.FromMinutes(1))
+        {
+            health = health with
+            {
+                Healthy = _lastDatabaseProbe.Healthy,
+                Status = _lastDatabaseProbe.Status,
+                Providers = _lastDatabaseProbe.Providers,
+                Error = _lastDatabaseProbe.Error
+            };
+        }
+        else { _lastDatabaseProbe = null; _databaseCheckedAt = null; }
+        var logs = await Task.Run(() => ReadRecentLogs(configuration), operationToken);
         return new AccountApiSnapshot
         {
             Configuration = configuration,
@@ -159,7 +200,8 @@ public sealed class AccountApiManagerService : IDisposable
             WindowsServiceStatus = "MCPanel 内置",
             WindowsServiceError = string.Empty,
             LocalProcessRunning = runningTask.Result,
-            LogsText = ReadRecentLogs(configuration),
+            LogsText = logs,
+            DatabaseCheckedAt = _databaseCheckedAt,
             Enabled = IsEnabled,
             ErrorText = JoinMessages(_initializationError, configurationError, health.Error),
             CheckedAt = DateTimeOffset.Now
@@ -501,7 +543,8 @@ public sealed class AccountApiManagerService : IDisposable
 
     private async Task<AccountApiHealthProbe> ProbeAsync(
         AccountApiConfiguration configuration,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string path = "/health")
     {
         if (!configuration.ConfigExists)
         {
@@ -515,7 +558,7 @@ public sealed class AccountApiManagerService : IDisposable
 
         try
         {
-            using var request = CreateSignedRequest(configuration, "/health");
+            using var request = CreateSignedRequest(configuration, path);
             using var response = await _http.SendAsync(request, cancellationToken);
             var body = await response.Content.ReadAsStringAsync();
             return ParseHealthResponse((int)response.StatusCode, body);
@@ -538,7 +581,7 @@ public sealed class AccountApiManagerService : IDisposable
         var startedAt = DateTime.UtcNow;
         while (DateTime.UtcNow - startedAt < timeout)
         {
-            var probe = await ProbeAsync(configuration, cancellationToken);
+            var probe = await ProbeAsync(configuration, cancellationToken, "/health/live");
             if (probe.Reachable)
             {
                 return true;
@@ -550,7 +593,7 @@ public sealed class AccountApiManagerService : IDisposable
         return false;
     }
 
-    private static HttpRequestMessage CreateSignedRequest(AccountApiConfiguration configuration, string rawPath)
+    internal static HttpRequestMessage CreateSignedRequest(AccountApiConfiguration configuration, string rawPath)
     {
         var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
         var nonceBytes = new byte[16];
@@ -1038,6 +1081,7 @@ public sealed class AccountApiSnapshot
     public string LogsText { get; init; } = string.Empty;
     public string ErrorText { get; init; } = string.Empty;
     public DateTimeOffset CheckedAt { get; init; }
+    public DateTimeOffset? DatabaseCheckedAt { get; init; }
     public IReadOnlyList<AccountApiProviderStatus> Providers { get; init; } = Array.Empty<AccountApiProviderStatus>();
 }
 

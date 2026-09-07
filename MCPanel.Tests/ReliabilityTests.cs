@@ -29,6 +29,14 @@ namespace MCPanel.Tests;
 [TestClass]
 public sealed partial class ReliabilityTests
 {
+    private static MainWindow CreateUiTestWindow()
+    {
+        var root = CreateTemporaryDirectory();
+        var window = new MainWindow(false, root);
+        window.Closed += (_, _) => DeleteTemporaryTree(root);
+        return window;
+    }
+
     private static IEnumerable<T> FindVisualChildren<T>(DependencyObject root)
         where T : DependencyObject
     {

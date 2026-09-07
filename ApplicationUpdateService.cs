@@ -792,7 +792,7 @@ internal void LaunchUpdater(
                 ?? throw new InvalidDataException("更新计划无效。");
             ValidateApplyPlan(plan);
             if (!string.IsNullOrWhiteSpace(expectedInstallDirectory) &&
-                !PathsEqual(plan.InstallDirectory, expectedInstallDirectory))
+                !PathsEqual(plan.InstallDirectory, expectedInstallDirectory!))
             {
                 throw new InvalidDataException("管理员更新授权与当前 MCPanel 安装目录不一致。");
             }

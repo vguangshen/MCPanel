@@ -81,7 +81,7 @@ public sealed partial class ReliabilityTests
             FrameworkElement? flyout = null;
             try
             {
-                window = new MainWindow();
+                window = CreateUiTestWindow();
                 var model = (MainViewModel)window.DataContext;
                 var initialActiveCount = model.InstallationProgress.ActiveQueueCount;
                 var initialCompletedCount = model.InstallationProgress.CompletedQueueCount;
@@ -244,7 +244,7 @@ public sealed partial class ReliabilityTests
             FrameworkElement? flyout = null;
             try
             {
-                window = new MainWindow();
+                window = CreateUiTestWindow();
                 var model = (MainViewModel)window.DataContext;
                 var item = new ProductInstallQueueItemViewModel(
                     "popup-delete-route-test",
@@ -334,7 +334,7 @@ public sealed partial class ReliabilityTests
             MainWindow? window = null;
             try
             {
-                window = new MainWindow();
+                window = CreateUiTestWindow();
 
                 foreach (var resourceKey in new[]
                 {
@@ -484,7 +484,7 @@ public sealed partial class ReliabilityTests
             MainWindow? window = null;
             try
             {
-                window = new MainWindow();
+                window = CreateUiTestWindow();
                 var navItems = (StackPanel)window.FindName("NavItemsPanel");
                 var settingsNav = navItems.Children
                     .OfType<RadioButton>()
@@ -578,7 +578,7 @@ public sealed partial class ReliabilityTests
             MainWindow? window = null;
             try
             {
-                window = new MainWindow();
+                window = CreateUiTestWindow();
                 window.Show();
                 window.UpdateLayout();
 
@@ -639,7 +639,7 @@ public sealed partial class ReliabilityTests
             Exception? dispatcherFailure = null;
             try
             {
-                window = new MainWindow();
+                window = CreateUiTestWindow();
                 var navItems = (StackPanel)window.FindName("NavItemsPanel");
                 var settingsNav = navItems.Children
                     .OfType<RadioButton>()

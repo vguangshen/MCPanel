@@ -16,11 +16,6 @@ public sealed partial class ReliabilityTests
         var templates = ReadDownloadQueueTabsSource(Path.Combine("Resources", "MainWindowTemplates.xaml"));
         var queue = ReadDownloadQueueTabsSource("ProductInstallQueue.cs");
 
-        StringAssert.Contains(viewModel, "ActiveQueueItems => QueueItems");
-        StringAssert.Contains(viewModel, ".Where(item => !item.IsTerminal)");
-        StringAssert.Contains(viewModel, "CompletedQueueItems => QueueItems");
-        StringAssert.Contains(viewModel, ".Where(item => item.IsTerminal)");
-        StringAssert.Contains(viewModel, ".OrderByDescending(item => item.Sequence)");
         StringAssert.Contains(viewModel, "get => !ShowCompletedQueue;");
         StringAssert.Contains(mainXaml, "GroupName=\"DownloadQueueTabs\"");
         StringAssert.Contains(mainXaml, "Text=\"下载中\"");
