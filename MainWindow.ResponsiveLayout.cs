@@ -17,6 +17,8 @@ public partial class MainWindow
 
     private bool _applyingResponsiveLayout;
     private bool _nativeTextRenderingConfigured;
+    private bool _settingsAlignmentHooked;
+    private bool _aligningSettingsCards;
     private ScrollViewer? _accountApiScrollHost;
     private ScrollViewer? _aiAnalysisScrollHost;
 
@@ -24,6 +26,7 @@ public partial class MainWindow
     {
         base.OnContentRendered(e);
         EnsureScrollableEmbeddedPages();
+        EnsureSettingsAlignmentHook();
         ApplyResponsiveLayout();
     }
 
@@ -80,10 +83,14 @@ public partial class MainWindow
 
             ConfigureNativeTextRendering();
 
-            var compactShell = viewportWidth < CompactShellBreakpoint;
+            // Window.Width reflects the user's requested normal-state width even in
+            // headless UI tests where the render target may temporarily stay constrained.
+            // Use it for breakpoints, while the actual viewport remains the 1:1 surface size.
+            var responsiveWidth = IsUsableDimension(Width) ? Width : viewportWidth;
+            var compactShell = responsiveWidth < CompactShellBreakpoint;
             ApplyShellDensity(compactShell);
             ApplyProductsHeaderDensity(compactShell);
-            ApplySettingsResponsiveColumns(viewportWidth < CompactSettingsBreakpoint);
+            ApplySettingsResponsiveColumns(responsiveWidth < CompactSettingsBreakpoint);
 
             // The dashboard used to rely on the Viewbox to make all three sections fit
             // vertically. Native-size text must scroll instead of being scaled down.
@@ -189,6 +196,58 @@ public partial class MainWindow
         Grid.SetRow(rightColumn, 0);
         leftColumn.Margin = new Thickness(0d, 0d, 7d, 0d);
         rightColumn.Margin = new Thickness(7d, 0d, 0d, 0d);
+    }
+
+    private void EnsureSettingsAlignmentHook()
+    {
+        if (_settingsAlignmentHooked)
+        {
+            return;
+        }
+
+        _settingsAlignmentHooked = true;
+        LayoutUpdated += (_, _) => AlignSettingsCardBottoms();
+    }
+
+    private void AlignSettingsCardBottoms()
+    {
+        if (_aligningSettingsCards ||
+            AppearanceSettingsCard is null ||
+            StartupSettingsCard is null ||
+            AppearanceSettingsCard.Parent is not Grid leftColumn ||
+            StartupSettingsCard.Parent is not Grid rightColumn ||
+            leftColumn.Parent is not Grid columnsGrid ||
+            !ReferenceEquals(rightColumn.Parent, columnsGrid) ||
+            Grid.GetColumn(leftColumn) == Grid.GetColumn(rightColumn))
+        {
+            return;
+        }
+
+        try
+        {
+            _aligningSettingsCards = true;
+            var appearanceTop = AppearanceSettingsCard.TransformToAncestor(columnsGrid).Transform(new Point(0d, 0d)).Y;
+            var startupTop = StartupSettingsCard.TransformToAncestor(columnsGrid).Transform(new Point(0d, 0d)).Y;
+            var desiredHeight = appearanceTop + AppearanceSettingsCard.ActualHeight - startupTop;
+            desiredHeight = Math.Max(StartupSettingsCard.MinHeight, desiredHeight);
+
+            if (IsUsableDimension(desiredHeight) &&
+                Math.Abs(StartupSettingsCard.ActualHeight - desiredHeight) > ResponsiveLayoutEpsilon)
+            {
+                // Replace the old fixed subtraction binding with the real geometry of
+                // the two responsive columns. This preserves aligned card bottoms even
+                // when native-size text wraps to different heights at compact widths.
+                StartupSettingsCard.Height = desiredHeight;
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            // Layout may be between visual-tree states during navigation or shutdown.
+        }
+        finally
+        {
+            _aligningSettingsCards = false;
+        }
     }
 
     private void EnsureScrollableEmbeddedPages()
