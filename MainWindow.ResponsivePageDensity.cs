@@ -325,9 +325,9 @@ public partial class MainWindow
                     continue;
                 }
 
-                if (Math.Abs(button.Width - 172d) < 0.1d || Math.Abs(button.Width - 146d) < 0.1d)
+                if (Math.Abs(button.Width - 172d) < 0.1d || Math.Abs(button.Width - 134d) < 0.1d)
                 {
-                    button.Width = compact ? 146d : 172d;
+                    button.Width = compact ? 134d : 172d;
                     button.MinWidth = 0d;
                     button.Height = compact ? 28d : 30d;
                     button.Margin = compact
