@@ -74,6 +74,28 @@
         </Setter>
     </Style>
 
+    <ControlTemplate x:Key="ModernHorizontalScrollBarTemplate" TargetType="ScrollBar">
+        <Grid Height="18" Background="Transparent">
+            <Track x:Name="PART_Track" Orientation="Horizontal" Margin="7,5"
+                   IsDirectionReversed="False" Focusable="False"
+                   Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}"
+                   Value="{Binding Value, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                   ViewportSize="NaN">
+                <Track.DecreaseRepeatButton>
+                    <RepeatButton Command="{x:Static ScrollBar.PageLeftCommand}" Focusable="False" IsTabStop="False" Opacity="0" />
+                </Track.DecreaseRepeatButton>
+                <Track.Thumb>
+                    <Thumb Style="{StaticResource ModernScrollThumb}">
+                        <Thumb.LayoutTransform><RotateTransform Angle="90" /></Thumb.LayoutTransform>
+                    </Thumb>
+                </Track.Thumb>
+                <Track.IncreaseRepeatButton>
+                    <RepeatButton Command="{x:Static ScrollBar.PageRightCommand}" Focusable="False" IsTabStop="False" Opacity="0" />
+                </Track.IncreaseRepeatButton>
+            </Track>
+        </Grid>
+    </ControlTemplate>
+
     <Style x:Key="CompactScrollBar" TargetType="ScrollBar">
         <Setter Property="Width" Value="9" />
         <Setter Property="Margin" Value="3,2,2,2" />

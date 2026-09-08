@@ -7,6 +7,17 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="Resources/PanelDialogControls.xaml" />
             </ResourceDictionary.MergedDictionaries>
+            <Style TargetType="ScrollBar" BasedOn="{StaticResource ModernVerticalScrollBar}">
+                <Style.Triggers>
+                    <Trigger Property="Orientation" Value="Horizontal">
+                        <Setter Property="Width" Value="Auto" />
+                        <Setter Property="MinWidth" Value="0" />
+                        <Setter Property="Height" Value="18" />
+                        <Setter Property="Margin" Value="0,3,0,0" />
+                        <Setter Property="Template" Value="{StaticResource ModernHorizontalScrollBarTemplate}" />
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
             <Style TargetType="DataGrid">
                 <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
                 <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
@@ -14,13 +25,28 @@
                 <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="GridLinesVisibility" Value="None" />
                 <Setter Property="HeadersVisibility" Value="Column" />
-                <Setter Property="RowHeight" Value="38" />
+                <Setter Property="RowBackground" Value="{DynamicResource SurfaceBrush}" />
+                <Setter Property="AlternatingRowBackground" Value="{DynamicResource SurfaceAltBrush}" />
+                <Setter Property="RowHeight" Value="42" />
                 <Setter Property="ColumnHeaderHeight" Value="38" />
-                <Setter Property="FontSize" Value="12" />
+                <Setter Property="FontSize" Value="13" />
+                <Setter Property="ScrollViewer.CanContentScroll" Value="True" />
+                <Setter Property="EnableRowVirtualization" Value="True" />
+            </Style>
+            <Style TargetType="DataGridRow">
+                <Setter Property="Foreground" Value="{DynamicResource DialogTextBrush}" />
+                <Style.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="Background" Value="{DynamicResource NavHoverBrush}" />
+                    </Trigger>
+                    <Trigger Property="IsSelected" Value="True">
+                        <Setter Property="Background" Value="{DynamicResource DialogTonalBrush}" />
+                    </Trigger>
+                </Style.Triggers>
             </Style>
             <Style TargetType="DataGridColumnHeader">
                 <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
-                <Setter Property="Foreground" Value="{DynamicResource DialogMutedBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource DialogTextBrush}" />
                 <Setter Property="BorderBrush" Value="{DynamicResource DialogLineBrush}" />
                 <Setter Property="Padding" Value="9,0" />
                 <Setter Property="FontWeight" Value="SemiBold" />
@@ -30,11 +56,47 @@
                 <Setter Property="BorderBrush" Value="Transparent" />
                 <Setter Property="Padding" Value="7,0" />
                 <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="DataGridCell">
+                            <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter VerticalAlignment="Center" SnapsToDevicePixels="True" />
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+                <Style.Triggers>
+                    <Trigger Property="IsSelected" Value="True">
+                        <Setter Property="Background" Value="{DynamicResource DialogTonalBrush}" />
+                        <Setter Property="Foreground" Value="{DynamicResource DialogTextBrush}" />
+                    </Trigger>
+                    <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                        <Setter Property="BorderBrush" Value="{DynamicResource DialogPrimaryBrush}" />
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+            <Style x:Key="RuleText" TargetType="TextBlock">
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                <Setter Property="ToolTip" Value="{Binding Text, RelativeSource={RelativeSource Self}}" />
+            </Style>
+            <Style x:Key="RuleEditor" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                <Setter Property="Foreground" Value="{DynamicResource DialogTextBrush}" />
+                <Setter Property="Background" Value="{DynamicResource InputBrush}" />
+                <Setter Property="CaretBrush" Value="{DynamicResource DialogTextBrush}" />
+                <Setter Property="SelectionBrush" Value="{DynamicResource DialogPrimaryBrush}" />
+                <Setter Property="Padding" Value="4,2" />
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
             </Style>
         </ResourceDictionary>
     </local:PanelModalWindow.Resources>
 
-    <Border Style="{StaticResource PanelModalSurface}">
+    <Border Style="{StaticResource PanelModalSurface}" Width="Auto" Height="Auto"
+            MaxWidth="960" MaxHeight="560" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="20">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -83,11 +145,11 @@
                           VerticalScrollBarVisibility="Auto">
                     <DataGrid.Columns>
                         <DataGridCheckBoxColumn Header="启用" Binding="{Binding Enabled}" Width="58" />
-                        <DataGridTextColumn Header="名称" Binding="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Width="120" />
-                        <DataGridTextColumn Header="端口" Binding="{Binding ListenPort, UpdateSourceTrigger=PropertyChanged}" Width="76" />
-                        <DataGridTextColumn Header="域名/主机" Binding="{Binding ServerName, UpdateSourceTrigger=PropertyChanged}" Width="120" />
-                        <DataGridTextColumn Header="路径" Binding="{Binding LocationPath, UpdateSourceTrigger=PropertyChanged}" Width="82" />
-                        <DataGridTextColumn Header="代理目标" Binding="{Binding ProxyTarget, UpdateSourceTrigger=PropertyChanged}" Width="*" MinWidth="180" />
+                        <DataGridTextColumn Header="名称" Binding="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Width="140" ElementStyle="{StaticResource RuleText}" EditingElementStyle="{StaticResource RuleEditor}" />
+                        <DataGridTextColumn Header="端口" Binding="{Binding ListenPort, UpdateSourceTrigger=PropertyChanged}" Width="70" ElementStyle="{StaticResource RuleText}" EditingElementStyle="{StaticResource RuleEditor}" />
+                        <DataGridTextColumn Header="域名/主机" Binding="{Binding ServerName, UpdateSourceTrigger=PropertyChanged}" Width="140" ElementStyle="{StaticResource RuleText}" EditingElementStyle="{StaticResource RuleEditor}" />
+                        <DataGridTextColumn Header="路径" Binding="{Binding LocationPath, UpdateSourceTrigger=PropertyChanged}" Width="110" ElementStyle="{StaticResource RuleText}" EditingElementStyle="{StaticResource RuleEditor}" />
+                        <DataGridTextColumn Header="代理目标" Binding="{Binding ProxyTarget, UpdateSourceTrigger=PropertyChanged}" Width="*" MinWidth="220" ElementStyle="{StaticResource RuleText}" EditingElementStyle="{StaticResource RuleEditor}" />
                         <DataGridCheckBoxColumn Header="WebSocket" Binding="{Binding WebSocket}" Width="86" />
                     </DataGrid.Columns>
                 </DataGrid>
@@ -95,7 +157,7 @@
 
             <Grid Grid.Row="3" Margin="0,16,0,0">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                <TextBlock x:Name="StatusText" Foreground="{DynamicResource DialogMutedBrush}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                <TextBlock x:Name="StatusText" Foreground="{DynamicResource DialogMutedBrush}" FontSize="12" Margin="0,0,16,0" VerticalAlignment="Center" TextWrapping="Wrap" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
                     <Button Content="取消" Style="{StaticResource DialogButton}" Margin="0,0,10,0" Click="Cancel_Click" />
                     <Button Content="保存并应用" Style="{StaticResource PrimaryDialogButton}" Click="Save_Click" />
