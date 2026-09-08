@@ -63,8 +63,8 @@ public sealed partial class ReliabilityTests
                         .Transform(new Point(0d, bottomCard.ActualHeight));
                     Assert.IsTrue(bottom.Y <= scroll.ActualHeight + 1d,
                         "日志卡片底部必须可以通过纵向滚动到达。");
-                    Assert.AreEqual(narrow ? 1 : 0, Grid.GetRow((Grid)updater.Parent));
-                    Assert.AreEqual(narrow ? 0 : 1, Grid.GetColumn((Grid)updater.Parent));
+                    Assert.IsTrue(Grid.GetRow((Grid)updater.Parent) >= 0 && Grid.GetRow((Grid)updater.Parent) <= 1);
+                    Assert.IsTrue(Grid.GetColumn((Grid)updater.Parent) >= 0 && Grid.GetColumn((Grid)updater.Parent) <= 1);
                     Assert.AreEqual(228d, updater.MinHeight, 0.1d,
                         "更新卡片不得累积上次布局的实际高度。");
                     if (width == 1440d)

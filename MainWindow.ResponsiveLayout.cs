@@ -12,7 +12,7 @@ public partial class MainWindow
 {
     private const double ResponsiveLayoutEpsilon = 0.5d;
     private const double CompactShellBreakpoint = 1180d;
-    private const double CompactSettingsBreakpoint = 960d;
+    private const double CompactSettingsBreakpoint = 900d;
     private const double CompactShellHeightBreakpoint = 760d;
     private const double StandardNavWidth = 226d;
     private const double CompactNavWidth = 190d;
@@ -128,11 +128,7 @@ public partial class MainWindow
             ApplyShellDensity(compactShell, compactWidth);
             ApplyProductsHeaderDensity(compactWidth);
             ApplyResponsivePageDensity(responsiveWidth, responsiveHeight);
-            var navigationWidth = responsiveWidth < IconOnlyNavigationBreakpoint
-                ? IconOnlyNavigationWidth
-                : compactWidth ? CompactNavWidth : StandardNavWidth;
-            var contentWidth = responsiveWidth - navigationWidth - (compactShell ? 32d : 48d);
-            ApplySettingsResponsiveColumns(contentWidth < CompactSettingsBreakpoint);
+            ApplySettingsResponsiveColumns(responsiveWidth < CompactSettingsBreakpoint);
         }
         finally
         {
