@@ -132,8 +132,6 @@ public partial class MainWindow
                 ? IconOnlyNavigationWidth
                 : compactWidth ? CompactNavWidth : StandardNavWidth;
             var contentWidth = responsiveWidth - navigationWidth - (compactShell ? 32d : 48d);
-            AppearanceSettingsCard.Height = double.NaN;
-            StartupSettingsCard.Height = double.NaN;
             ApplySettingsResponsiveColumns(contentWidth < CompactSettingsBreakpoint);
         }
         finally
@@ -366,10 +364,6 @@ public partial class MainWindow
         {
             _aligningSettingsCards = true;
 
-            // Measure natural content again so a previous narrow layout cannot
-            // permanently inflate either card after the window grows.
-            AppearanceSettingsCard.Height = double.NaN;
-            StartupSettingsCard.Height = double.NaN;
             columnsGrid.UpdateLayout();
 
             var appearanceTop = AppearanceSettingsCard.TransformToAncestor(columnsGrid).Transform(new Point(0d, 0d)).Y;
