@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -26,6 +27,11 @@ public sealed partial class ReliabilityTests
                 window.Show();
                 var account = (AccountApiPage)window.FindName("AccountApiPageControl");
                 var settings = (ScrollViewer)window.FindName("SettingsPage");
+                var settingsScrollBarStyle = settings.Resources[typeof(ScrollBar)] as Style;
+                Assert.IsNotNull(settingsScrollBarStyle,
+                    "面板设置外层滚动条必须显式使用软件自带样式。");
+                Assert.IsNotNull(settingsScrollBarStyle!.BasedOn,
+                    "面板设置外层滚动条必须基于软件自带滚动条样式。");
                 var appearance = (Border)window.FindName("AppearanceSettingsCard");
                 var updater = (Border)window.FindName("SoftwareUpdateCard");
                 var startup = (Border)window.FindName("StartupSettingsCard");

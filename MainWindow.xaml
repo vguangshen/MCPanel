@@ -627,6 +627,9 @@
                               Focusable="True"
                               KeyboardNavigation.TabNavigation="Local"
                               HorizontalContentAlignment="Stretch">
+                    <ScrollViewer.Resources>
+                        <Style TargetType="ScrollBar" BasedOn="{StaticResource ModernVerticalScrollBar}" />
+                    </ScrollViewer.Resources>
                     <Grid MinHeight="0">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
