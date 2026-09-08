@@ -10,7 +10,6 @@ namespace MCPanel;
 /// </summary>
 public static class NginxProductProxyService
 {
-    private static readonly SemaphoreSlim SyncLock = new(1, 1);
 
     private sealed record ProductRoute(string ProductId, string LocationPath, int Port);
 
@@ -33,57 +32,52 @@ public static class NginxProductProxyService
         }
     }
 
-    public static async Task SyncAsync(CancellationToken cancellationToken = default)
+    public static Task SyncAsync(CancellationToken cancellationToken = default) =>
+        NginxConfigurationCoordinator.RunAsync(() => SyncCoreAsync(cancellationToken), cancellationToken);
+
+    private static async Task SyncCoreAsync(CancellationToken cancellationToken)
     {
-        await SyncLock.WaitAsync(cancellationToken);
-        try
+        if (new ComponentLocator().FindNginxExecutable() is null)
         {
-            if (new ComponentLocator().FindNginxExecutable() is null)
-            {
-                return;
-            }
-
-            var runtimeService = new EnvironmentRuntimeService();
-            var current = NginxRuntimeManager.NormalizeOptions(runtimeService.GetNginxOptions());
-            var publicPort = IsValidPort(current.ListenPort)
-                ? current.ListenPort
-                : NginxRuntimeManager.DefaultListenPort;
-
-            var manualRules = current.Rules
-                .Select(NginxRuntimeManager.NormalizeRule)
-                .Where(rule => string.IsNullOrWhiteSpace(rule.ManagedProductId))
-                .ToList();
-            var generatedRules = BuildProductRules(publicPort, manualRules);
-            var mergedRules = manualRules.Concat(generatedRules).ToList();
-
-            if (mergedRules.Count == 0)
-            {
-                mergedRules.Add(NginxRuntimeManager.CreateDefaultRule(
-                    publicPort,
-                    "http://127.0.0.1:9287",
-                    current.ProxyEnabled));
-            }
-
-            var merged = NginxRuntimeManager.NormalizeOptions(new NginxRuntimeOptions
-            {
-                ListenPort = publicPort,
-                ProxyEnabled = mergedRules.Any(rule => rule.Enabled),
-                ProxyTarget = mergedRules.FirstOrDefault(rule => rule.Enabled)?.ProxyTarget
-                    ?? "http://127.0.0.1:9287",
-                Rules = mergedRules
-            });
-
-            if (AreEquivalent(current, merged))
-            {
-                return;
-            }
-
-            await runtimeService.SaveNginxOptionsAsync(merged, cancellationToken);
+            return;
         }
-        finally
+
+        var runtimeService = new EnvironmentRuntimeService();
+        var current = NginxRuntimeManager.NormalizeOptions(runtimeService.GetNginxOptions());
+        var publicPort = IsValidPort(current.ListenPort)
+            ? current.ListenPort
+            : NginxRuntimeManager.DefaultListenPort;
+
+        var manualRules = current.Rules
+            .Select(NginxRuntimeManager.NormalizeRule)
+            .Where(rule => string.IsNullOrWhiteSpace(rule.ManagedProductId))
+            .ToList();
+        var generatedRules = BuildProductRules(publicPort, manualRules);
+        var mergedRules = manualRules.Concat(generatedRules).ToList();
+
+        if (mergedRules.Count == 0)
         {
-            SyncLock.Release();
+            mergedRules.Add(NginxRuntimeManager.CreateDefaultRule(
+                publicPort,
+                "http://127.0.0.1:9287",
+                current.ProxyEnabled));
         }
+
+        var merged = NginxRuntimeManager.NormalizeOptions(new NginxRuntimeOptions
+        {
+            ListenPort = publicPort,
+            ProxyEnabled = mergedRules.Any(rule => rule.Enabled),
+            ProxyTarget = mergedRules.FirstOrDefault(rule => rule.Enabled)?.ProxyTarget
+                ?? "http://127.0.0.1:9287",
+            Rules = mergedRules
+        });
+
+        if (AreEquivalent(current, merged))
+        {
+            return;
+        }
+
+        await runtimeService.SaveNginxOptionsAsync(merged, cancellationToken);
     }
 
     private static IReadOnlyList<NginxProxyRule> BuildProductRules(

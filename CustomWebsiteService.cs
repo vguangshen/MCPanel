@@ -150,7 +150,9 @@ public sealed class CustomWebsiteService
             }
             catch (Exception error)
             {
-                webConfigTransaction.Rollback();
+                Exception? configRollbackError = null;
+                try { webConfigTransaction.Rollback(); }
+                catch (Exception rollbackError) { configRollbackError = rollbackError; }
                 if (siteMutationStarted && existing is not null)
                 {
                     try
@@ -162,18 +164,35 @@ public sealed class CustomWebsiteService
                     }
                     catch (Exception restoreError)
                     {
-                        throw new InvalidOperationException(
-                            $"网站修改失败，且原 IIS 网站恢复失败：{restoreError.Message}。原始错误：{error.Message}",
-                            restoreError);
+                        throw new AggregateException("网站修改失败，且原 IIS 网站恢复失败。",
+                            new[] { error, restoreError, configRollbackError }.OfType<Exception>());
                     }
                 }
 
+                else if (siteMutationStarted && File.Exists(resultFile + ".created"))
+                {
+                    try
+                    {
+                        await FileCompat.WriteAllTextAsync(scriptFile,
+                            BuildNewSiteRollbackScript(definition), new UTF8Encoding(true), CancellationToken.None);
+                        await RunElevatedScriptAsync(scriptFile, CancellationToken.None);
+                    }
+                    catch (Exception cleanupError)
+                    {
+                        throw new AggregateException("新建网站失败，且新建 IIS 资源清理未完成。",
+                            new[] { error, cleanupError, configRollbackError }.OfType<Exception>());
+                    }
+                }
+
+                if (configRollbackError is not null)
+                    throw new AggregateException("网站保存失败，且 web.config 恢复未完成。", error, configRollbackError);
                 throw;
             }
             finally
             {
                 DeleteFile(scriptFile);
                 DeleteFile(resultFile);
+                DeleteFile(resultFile + ".created");
             }
         }
         finally
@@ -187,6 +206,7 @@ public sealed class CustomWebsiteService
         await OperationLock.WaitAsync(cancellationToken);
         try
         {
+            var knownSites = ReadAll(throwOnError: true);
             Directory.CreateDirectory(WorkDirectory);
             var scriptFile = Path.Combine(WorkDirectory, $"remove-site-{Guid.NewGuid():N}.ps1");
             try
@@ -200,7 +220,7 @@ public sealed class CustomWebsiteService
             }
 
             RemoveManagedWebConfig(definition);
-            SaveAll(ReadAll(throwOnError: true).Where(site => !site.Id.Equals(definition.Id, StringComparison.OrdinalIgnoreCase)));
+            SaveAll(knownSites.Where(site => !site.Id.Equals(definition.Id, StringComparison.OrdinalIgnoreCase)));
             return $"已从 IIS 移除网站“{definition.Name}”。网站根目录和业务文件已保留。";
         }
         finally
@@ -359,6 +379,12 @@ public sealed class CustomWebsiteService
             $protectedPassword='{{protectedPassword}}'
             $resultFile='{{EscapePowerShell(resultFile)}}'
 
+            # Record ownership only after proving that neither resource existed.
+            if (-not ${{allowExistingSite.ToString().ToLowerInvariant()}}) {
+                if (Test-Path "IIS:\Sites\$siteName") { throw "IIS 中已存在同名网站：$siteName。请换一个名称。" }
+                if (Test-Path "IIS:\AppPools\$poolName") { throw "IIS 中已存在同名应用程序池：$poolName。" }
+                [IO.File]::WriteAllText($resultFile + '.created', $poolName)
+            }
             if (Test-Path "IIS:\Sites\$siteName") {
                 if (-not ${{allowExistingSite.ToString().ToLowerInvariant()}}) { throw "IIS 中已存在同名网站：$siteName。请换一个名称。" }
                 Remove-Website -Name $siteName
@@ -396,8 +422,8 @@ public sealed class CustomWebsiteService
             }
 
             Set-WebConfigurationProperty -PSPath 'MACHINE/WEBROOT/APPHOST' -Filter "/system.applicationHost/sites/site[@name='$siteName']/limits" -Name maxBandwidth -Value {{maxBandwidth}}
-            Start-WebAppPool -Name $poolName
-            Start-Website -Name $siteName
+            if ((Get-WebAppPoolState -Name $poolName).Value -ne 'Started') { Start-WebAppPool -Name $poolName }
+            if ((Get-Website -Name $siteName).State -ne 'Started') { Start-Website -Name $siteName }
             [IO.File]::WriteAllText($resultFile, $thumbprint, [Text.UTF8Encoding]::new($false))
             exit 0
             """;
@@ -413,14 +439,38 @@ public sealed class CustomWebsiteService
         exit 0
         """;
 
-    internal static XElement BuildHttpsRedirectRule(string httpsAuthority) => new("rule",
+    internal static string BuildNewSiteRollbackScript(CustomWebsiteDefinition definition) => $$"""
+        $ErrorActionPreference='Stop'
+        Import-Module WebAdministration
+        $siteName='{{EscapePowerShell(definition.Name)}}'
+        $poolName='{{EscapePowerShell(definition.ApplicationPoolName)}}'
+        $siteRoot='{{EscapePowerShell(definition.PhysicalPath)}}'
+        $site=Get-Website | Where-Object { $_.Name -eq $siteName } | Select-Object -First 1
+        if ($site) {
+            if ($site.applicationPool -ne $poolName -or $site.physicalPath -ne $siteRoot) {
+                throw '网站归属发生变化，已停止自动清理。'
+            }
+            Remove-Website -Name $siteName
+        }
+        if (Test-Path "IIS:\AppPools\$poolName") {
+            $users=@(Get-Website | Where-Object { $_.applicationPool -eq $poolName })
+            $apps=@(Get-WebApplication | Where-Object { $_.applicationPool -eq $poolName })
+            if ($users.Count -gt 0 -or $apps.Count -gt 0) { throw '应用程序池仍被使用，已保留。' }
+            Remove-WebAppPool -Name $poolName
+        }
+        exit 0
+        """;
+
+    internal static XElement BuildHttpsRedirectRule(int httpsPort) => new("rule",
         new XAttribute("name", "MCPanel HTTPS Redirect"),
         new XAttribute("stopProcessing", "true"),
         new XElement("match", new XAttribute("url", "(.*)")),
         new XElement("conditions",
-            new XElement("add", new XAttribute("input", "{HTTPS}"), new XAttribute("pattern", "off"), new XAttribute("ignoreCase", "true"))),
+            new XElement("add", new XAttribute("input", "{HTTPS}"), new XAttribute("pattern", "off"), new XAttribute("ignoreCase", "true")),
+            new XElement("add", new XAttribute("input", "{HTTP_HOST}"),
+                new XAttribute("pattern", @"^(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9_.-]+)(?::[0-9]+)?$"))),
         new XElement("action", new XAttribute("type", "Redirect"),
-            new XAttribute("url", $"https://{httpsAuthority}{{REQUEST_URI}}"),
+            new XAttribute("url", "https://{C:1}" + (httpsPort == 443 ? string.Empty : $":{httpsPort}") + "{REQUEST_URI}"),
             new XAttribute("redirectType", "Permanent"),
             new XAttribute("appendQueryString", "false")));
 
@@ -455,10 +505,7 @@ public sealed class CustomWebsiteService
                 systemWebServer ??= GetOrAdd(root, "system.webServer");
                 rewrite ??= GetOrAdd(systemWebServer, "rewrite");
                 rules ??= GetOrAdd(rewrite, "rules");
-                var httpsAuthority = definition.HttpsPort == 443
-                    ? "{HTTP_HOST}"
-                    : $"{{HTTP_HOST}}:{definition.HttpsPort}";
-                rules.Add(BuildHttpsRedirectRule(httpsAuthority));
+                rules.Add(BuildHttpsRedirectRule(definition.HttpsPort));
             }
 
             var staticContent = systemWebServer?.Elements().FirstOrDefault(element =>
@@ -585,9 +632,13 @@ public sealed class CustomWebsiteService
         CancellationToken cancellationToken,
         Action? onStarted = null)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         using var process = ProcessRunner.StartPowerShellFile(scriptFile, elevated: true);
         onStarted?.Invoke();
-        await ProcessLifecycle.WaitForExitAsync(process, cancellationToken);
+        // Finish the elevated mutation before rollback; a cancelled wait cannot
+        // guarantee that a non-elevated parent can terminate the elevated child.
+        await ProcessLifecycle.WaitForExitAsync(process, CancellationToken.None);
+        cancellationToken.ThrowIfCancellationRequested();
         if (process.ExitCode != 0)
         {
             throw new InvalidOperationException($"IIS 网站管理脚本执行失败，退出码：{process.ExitCode}。");
@@ -646,25 +697,17 @@ public sealed class CustomWebsiteService
 
     private sealed class WebConfigTransaction
     {
-        private readonly Dictionary<string, string?> _snapshots = new(StringComparer.OrdinalIgnoreCase);
+        private readonly ConfigurationFileTransaction _transaction = new();
         private bool _completed;
         public void Capture(string file)
         {
-            if (!_snapshots.ContainsKey(file)) _snapshots[file] = File.Exists(file) ? File.ReadAllText(file, Encoding.UTF8) : null;
+            _transaction.Capture(file);
         }
         public void Complete() => _completed = true;
         public void Rollback()
         {
             if (_completed) return;
-            foreach (var snapshot in _snapshots)
-            {
-                try
-                {
-                    if (snapshot.Value is null) DeleteFile(snapshot.Key);
-                    else AtomicFile.WriteAllText(snapshot.Key, snapshot.Value, new UTF8Encoding(false));
-                }
-                catch { }
-            }
+            _transaction.Rollback();
         }
     }
 

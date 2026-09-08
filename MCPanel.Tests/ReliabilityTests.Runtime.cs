@@ -301,11 +301,11 @@ public sealed partial class ReliabilityTests
     [TestMethod]
     public void CustomHttpsRedirectDoesNotDuplicateQueryString()
     {
-        var rule = CustomWebsiteService.BuildHttpsRedirectRule("{HTTP_HOST}:8443");
+        var rule = CustomWebsiteService.BuildHttpsRedirectRule(8443);
         var action = rule.Element("action");
 
         Assert.IsNotNull(action);
-        Assert.AreEqual("https://{HTTP_HOST}:8443{REQUEST_URI}", action!.Attribute("url")?.Value);
+        Assert.AreEqual("https://{C:1}:8443{REQUEST_URI}", action!.Attribute("url")?.Value);
         Assert.AreEqual("false", action.Attribute("appendQueryString")?.Value);
     }
 

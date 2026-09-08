@@ -51,7 +51,10 @@ internal sealed class ProductWebsiteService
 
     public bool IsNginxInstalled() => FindNginxExe() is not null;
 
-    public static async Task RemoveForProductAsync(string productId, CancellationToken cancellationToken = default)
+    public static Task RemoveForProductAsync(string productId, CancellationToken cancellationToken = default) =>
+        NginxConfigurationCoordinator.RunAsync(() => RemoveForProductCoreAsync(productId, cancellationToken), cancellationToken);
+
+    private static async Task RemoveForProductCoreAsync(string productId, CancellationToken cancellationToken)
     {
         var runtimeService = new EnvironmentRuntimeService();
         var service = new ProductWebsiteService(runtimeService);
@@ -88,7 +91,10 @@ internal sealed class ProductWebsiteService
         DeleteManagedCertificatesFromKnownRoots(productId);
     }
 
-    public async Task<string> SaveAsync(
+    public Task<string> SaveAsync(string productId, ProductWebsiteSettings settings, CancellationToken cancellationToken = default) =>
+        NginxConfigurationCoordinator.RunAsync(() => SaveCoreAsync(productId, settings, cancellationToken), cancellationToken);
+
+    private async Task<string> SaveCoreAsync(
         string productId,
         ProductWebsiteSettings settings,
         CancellationToken cancellationToken = default)
@@ -180,7 +186,7 @@ internal sealed class ProductWebsiteService
         var scheme = settings.SslEnabled ? "https" : "http";
         var port = settings.SslEnabled ? settings.HttpsPort : settings.HttpPort;
         var portPart = (scheme == "https" && port == 443) || (scheme == "http" && port == 80) ? string.Empty : $":{port}";
-        return $"{productId} 的域名配置已生效：{scheme}://{domains[0]}{portPart}/。{result}" +
+        return $"{productId} 的域名配置已保存，访问地址：{scheme}://{domains[0]}{portPart}/。{result}" +
             (routeSynced ? string.Empty : " 但自动关联产品路由未完成，请在“环境”页面重新同步 Nginx。");
     }
 

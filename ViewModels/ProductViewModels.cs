@@ -17,27 +17,20 @@ public enum ProductSource
     Online
 }
 
-public sealed class CustomWebsiteItem
+public sealed class CustomWebsiteItem : INotifyPropertyChanged
 {
     public CustomWebsiteItem(CustomWebsiteDefinition definition)
     {
         Definition = definition;
         Url = CustomWebsiteService.BuildUrl(definition);
-        var ports = IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Select(endpoint => endpoint.Port).ToHashSet();
-        var expectedPort = definition.SslEnabled ? definition.HttpsPort : definition.HttpPort;
         if (!Directory.Exists(definition.PhysicalPath))
         {
             StatusText = "网站目录缺失";
             StatusBrush = Brushes.IndianRed;
         }
-        else if (ports.Contains(expectedPort))
-        {
-            StatusText = "运行中";
-            StatusBrush = Brushes.MediumSeaGreen;
-        }
         else
         {
-            StatusText = "已配置，未监听";
+            StatusText = "正在查询 IIS 状态";
             StatusBrush = Brushes.Goldenrod;
         }
     }
@@ -46,8 +39,18 @@ public sealed class CustomWebsiteItem
     public string Name => Definition.Name;
     public string PhysicalPath => Definition.PhysicalPath;
     public string Url { get; }
-    public string StatusText { get; }
-    public Brush StatusBrush { get; }
+    public string StatusText { get; private set; }
+    public Brush StatusBrush { get; private set; }
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    internal void RefreshStatus(IisWebsiteStatusProbe probe)
+    {
+        var status = Directory.Exists(PhysicalPath) ? probe.Get(Definition) : new IisWebsiteStatus("网站目录缺失", false);
+        StatusText = status.Text;
+        StatusBrush = status.Running ? Brushes.MediumSeaGreen : Brushes.Goldenrod;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusText)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusBrush)));
+    }
     public string DomainSummary => Definition.Domains.Count == 0
         ? $"所有主机 · HTTP :{Definition.HttpPort}"
         : $"{string.Join("、", Definition.Domains)} · HTTP :{Definition.HttpPort}";

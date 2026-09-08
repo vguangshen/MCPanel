@@ -10,11 +10,17 @@ internal static class AtomicFile
 
     public static void WriteAllText(string path, string contents, Encoding? encoding = null)
     {
+        encoding ??= new UTF8Encoding(false);
+        WriteAllBytes(path, encoding.GetPreamble().Concat(encoding.GetBytes(contents)).ToArray());
+    }
+
+    public static void WriteAllBytes(string path, byte[] contents)
+    {
         lock (WriteLock)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
             var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-            File.WriteAllText(temporary, contents, encoding ?? new UTF8Encoding(false));
+            File.WriteAllBytes(temporary, contents);
             try
             {
                 for (var attempt = 0; ; attempt++)

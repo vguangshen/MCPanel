@@ -69,7 +69,7 @@ public static class NginxRuntimeManager
         RegexOptions.Compiled);
 
     private static string StateDirectory => ComponentPaths.RuntimeStateRoot;
-    private static string StateFile => Path.Combine(StateDirectory, "nginx-runtime.json");
+    internal static string StateFile => Path.Combine(StateDirectory, "nginx-runtime.json");
 
     public static string? FindNginxExe(string runtimeRoot)
     {

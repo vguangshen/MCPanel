@@ -8,6 +8,7 @@ namespace MCPanel;
 public partial class NginxProxyDialog : PanelModalWindow
 {
     private readonly EnvironmentRuntimeService _runtimeService;
+    private readonly string _loadedRevision;
     private readonly ObservableCollection<NginxProxyRuleRow> _rules = [];
 
     public NginxProxyDialog(EnvironmentRuntimeService runtimeService)
@@ -16,6 +17,7 @@ public partial class NginxProxyDialog : PanelModalWindow
         _runtimeService = runtimeService;
 
         var options = NginxRuntimeManager.NormalizeOptions(runtimeService.GetNginxOptions());
+        _loadedRevision = NginxConfigurationCoordinator.Revision(options);
         foreach (var rule in options.Rules)
         {
             _rules.Add(NginxProxyRuleRow.FromRule(rule));
@@ -109,7 +111,7 @@ public partial class NginxProxyDialog : PanelModalWindow
             NginxRuntimeManager.ValidateOptions(options);
             IsEnabled = false;
             StatusText.Text = "正在保存并校验 Nginx 配置...";
-            ResultMessage = await _runtimeService.SaveNginxOptionsAsync(options);
+            ResultMessage = await _runtimeService.SaveNginxOptionsAsync(options, expectedRevision: _loadedRevision);
             await NginxProductProxyService.TrySyncAsync();
             DialogResult = true;
             Close();

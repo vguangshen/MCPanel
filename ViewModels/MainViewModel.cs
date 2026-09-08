@@ -568,6 +568,16 @@ public sealed class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(InstalledProductStatus));
         OnPropertyChanged(nameof(WebsiteEmptyVisibility));
         OnPropertyChanged(nameof(WebsiteContentVisibility));
+        _ = RefreshCustomWebsiteStatesAsync(CustomWebsites.ToArray());
+    }
+
+    private async Task RefreshCustomWebsiteStatesAsync(CustomWebsiteItem[] items)
+    {
+        if (items.Length == 0 || _disposed) return;
+        var probe = await Task.Run(IisWebsiteStatusProbe.Read);
+        if (_disposed) return;
+        foreach (var item in items)
+            if (CustomWebsites.Contains(item)) item.RefreshStatus(probe);
     }
 
     public void RecordProductInstalled(string productId)

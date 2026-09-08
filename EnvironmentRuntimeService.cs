@@ -215,7 +215,14 @@ public sealed class EnvironmentRuntimeService
         return NginxRuntimeManager.LoadOptions() ?? new NginxRuntimeOptions();
     }
 
-    public async Task<string> SaveNginxOptionsAsync(NginxRuntimeOptions options, CancellationToken cancellationToken = default)
+    public Task<string> SaveNginxOptionsAsync(NginxRuntimeOptions options, CancellationToken cancellationToken = default,
+        string? expectedRevision = null) => NginxConfigurationCoordinator.RunAsync(async () =>
+    {
+        NginxConfigurationCoordinator.EnsureUnchanged(expectedRevision, GetNginxOptions());
+        return await SaveNginxOptionsCoreAsync(options, cancellationToken);
+    }, cancellationToken);
+
+    private async Task<string> SaveNginxOptionsCoreAsync(NginxRuntimeOptions options, CancellationToken cancellationToken)
     {
         var normalized = NginxRuntimeManager.NormalizeOptions(options);
         NginxRuntimeManager.ValidateOptions(normalized);
@@ -244,20 +251,21 @@ public sealed class EnvironmentRuntimeService
             }
         }
 
-        var previousConfig = CaptureNginxConfig(nginxRoot);
+        var transaction = CaptureNginxTransaction(nginxRoot);
         try
         {
             NginxRuntimeManager.CleanConfigFiles(nginxRoot);
             NginxRuntimeManager.WriteManagedConfig(nginxRoot, normalized);
             await RunFileAsync(nginxExe, "-t", nginxRoot, false, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            NginxRuntimeManager.SaveOptions(normalized);
         }
         catch (Exception ex)
         {
-            RestoreNginxConfig(nginxRoot, previousConfig);
-            throw new InvalidOperationException($"Nginx 配置校验失败：{ex.Message}", ex);
+            try { transaction.Rollback(); }
+            catch (Exception rollbackError) { throw new AggregateException("Nginx 配置保存失败，且回滚未完成。", ex, rollbackError); }
+            throw new InvalidOperationException($"Nginx 配置保存失败，已恢复原配置：{ex.Message}", ex);
         }
-
-        NginxRuntimeManager.SaveOptions(normalized);
 
         if (isRunning)
         {
@@ -288,33 +296,16 @@ public sealed class EnvironmentRuntimeService
         return $"Nginx 配置已保存。{normalized.Summary}";
     }
 
-    private static string? CaptureNginxConfig(string nginxRoot)
+    private static ConfigurationFileTransaction CaptureNginxTransaction(string nginxRoot)
     {
-        var configPath = Path.Combine(nginxRoot, "conf", "nginx.conf");
-        return File.Exists(configPath) ? File.ReadAllText(configPath, Encoding.UTF8) : null;
-    }
-
-    private static void RestoreNginxConfig(string nginxRoot, string? previousConfig)
-    {
-        var configPath = Path.Combine(nginxRoot, "conf", "nginx.conf");
-        try
-        {
-            if (previousConfig is null)
-            {
-                if (File.Exists(configPath))
-                {
-                    File.Delete(configPath);
-                }
-
-                return;
-            }
-
-            AtomicFile.WriteAllText(configPath, previousConfig, new UTF8Encoding(false));
-        }
-        catch
-        {
-            // The original validation error remains the actionable message.
-        }
+        var transaction = new ConfigurationFileTransaction();
+        transaction.Capture(NginxRuntimeManager.StateFile);
+        var directory = Path.Combine(nginxRoot, "conf");
+        transaction.Capture(Path.Combine(directory, "nginx.conf"));
+        if (Directory.Exists(directory))
+            foreach (var path in Directory.EnumerateFiles(directory, "*.conf", SearchOption.AllDirectories))
+                transaction.Capture(path);
+        return transaction;
     }
 
     public async Task<string> StartAsync(EnvironmentKind kind, CancellationToken cancellationToken = default, Action<TomcatStartupProgress>? tomcatProgress = null)
@@ -843,9 +834,21 @@ public sealed class EnvironmentRuntimeService
         return "Nginx 已停止。";
     }
 
-    private static async Task<int> ConfigureAndTestNginxAsync(string nginxExe, string nginxRoot, CancellationToken cancellationToken)
+    private static Task<int> ConfigureAndTestNginxAsync(string nginxExe, string nginxRoot, CancellationToken cancellationToken) =>
+        NginxConfigurationCoordinator.RunAsync(async () =>
+        {
+            var transaction = CaptureNginxTransaction(nginxRoot);
+            try { return await ConfigureAndTestNginxCoreAsync(nginxExe, nginxRoot, cancellationToken); }
+            catch (Exception error)
+            {
+                try { transaction.Rollback(); }
+                catch (Exception rollbackError) { throw new AggregateException("Nginx 启动配置失败，且回滚未完成。", error, rollbackError); }
+                throw;
+            }
+        }, cancellationToken);
+
+    private static async Task<int> ConfigureAndTestNginxCoreAsync(string nginxExe, string nginxRoot, CancellationToken cancellationToken)
     {
-        var previousConfig = CaptureNginxConfig(nginxRoot);
         var savedOptions = NginxRuntimeManager.LoadOptions();
         if (savedOptions is { Rules.Count: > 0 })
         {
@@ -861,13 +864,11 @@ public sealed class EnvironmentRuntimeService
             }
             catch (Exception ex) when (NginxRuntimeManager.IsPortBindFailure(ex.Message))
             {
-                RestoreNginxConfig(nginxRoot, previousConfig);
                 var ports = string.Join("、", normalized.EnabledRules.Select(rule => rule.ListenPort).Distinct().OrderBy(port => port));
                 throw new InvalidOperationException($"Nginx 监听端口被占用，请在“管理”中调整端口后再启动。当前端口：{ports}。", ex);
             }
             catch (Exception ex)
             {
-                RestoreNginxConfig(nginxRoot, previousConfig);
                 throw new InvalidOperationException($"Nginx 配置校验失败：{ex.Message}", ex);
             }
         }
@@ -894,12 +895,10 @@ public sealed class EnvironmentRuntimeService
             }
             catch (Exception ex)
             {
-                RestoreNginxConfig(nginxRoot, previousConfig);
                 throw new InvalidOperationException($"Nginx 配置校验失败：{ex.Message}", ex);
             }
         }
 
-        RestoreNginxConfig(nginxRoot, previousConfig);
         throw new InvalidOperationException("Nginx 无法找到可用监听端口。请检查 72、80、8088、8080、8090、8099、18080 是否被占用。", lastError);
     }
 
