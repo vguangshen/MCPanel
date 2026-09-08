@@ -27,6 +27,9 @@ public partial class MainWindow : Window
     private const int DwmWindowCornerPreferenceAttribute = 33;
     private const int DwmCornerPreferenceDoNotRound = 1;
     private const int DwmCornerPreferenceRound = 2;
+    private static readonly TimeSpan EnvironmentRuntimeRefreshInterval = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan BackgroundRuntimeRefreshInterval = TimeSpan.FromSeconds(20);
+
     [DllImport("dwmapi.dll", EntryPoint = "DwmSetWindowAttribute")]
     private static extern int DwmSetWindowAttribute(
         IntPtr hwnd,
@@ -50,7 +53,7 @@ public partial class MainWindow : Window
     private bool _isDarkThemeActive;
     private bool _monitoringStarted;
     private bool _runtimeRefreshInFlight;
-    private int _runtimeRefreshTick;
+    private DateTime _nextRuntimeRefreshUtc = DateTime.MinValue;
     private int _runtimeRefreshGeneration;
     private bool _isClosed;
     private int _panelMemoryCleanupInProgress;
@@ -92,9 +95,13 @@ public partial class MainWindow : Window
                 new Action(FocusActiveNavigationItem),
                 DispatcherPriority.ApplicationIdle);
         };
-        Activated += (_, _) => Dispatcher.BeginInvoke(
-            new Action(FocusActiveNavigationItem),
-            DispatcherPriority.ApplicationIdle);
+        Activated += (_, _) =>
+        {
+            _nextRuntimeRefreshUtc = DateTime.MinValue;
+            Dispatcher.BeginInvoke(
+                new Action(FocusActiveNavigationItem),
+                DispatcherPriority.ApplicationIdle);
+        };
         UpdateWindowStateChrome();
         Closed += (_, _) =>
         {
@@ -123,14 +130,42 @@ public partial class MainWindow : Window
         RefreshPanelMemoryUsage();
         _timer.Tick += async (_, _) =>
         {
-            _model.TickSystemState();
+            // Keep queue supervision alive even when the window is hidden; it only
+            // reads tiny progress/heartbeat files and owns durable install recovery.
             _productInstallQueue.Tick();
             _model.InstallationProgress.Tick();
 
-            if (!_monitoringStarted || _runtimeRefreshInFlight || ++_runtimeRefreshTick % 2 != 0)
+            if (!_monitoringStarted)
             {
                 return;
             }
+
+            // CPU/memory/drive widgets are only visible on Home. Avoid sampling and
+            // raising bindings every second while another page is in front.
+            if (IsVisible && WindowState != WindowState.Minimized && HomePage.IsVisible)
+            {
+                _model.TickSystemState();
+            }
+
+            // Runtime discovery is intentionally much slower than visual telemetry:
+            // it scans services, ports, install roots and Tomcat/Java state. Suspend
+            // it completely while minimized/to-tray and use a faster cadence only
+            // while the Environment page is actually visible.
+            if (_runtimeRefreshInFlight || !IsVisible || WindowState == WindowState.Minimized)
+            {
+                return;
+            }
+
+            var now = DateTime.UtcNow;
+            if (now < _nextRuntimeRefreshUtc)
+            {
+                return;
+            }
+
+            var refreshInterval = EnvironmentPage.IsVisible
+                ? EnvironmentRuntimeRefreshInterval
+                : BackgroundRuntimeRefreshInterval;
+            _nextRuntimeRefreshUtc = now + refreshInterval;
 
             _runtimeRefreshInFlight = true;
             try
@@ -177,6 +212,7 @@ public partial class MainWindow : Window
                 _productInstallQueue.ResumePending();
                 await NginxProductProxyService.TrySyncAsync();
                 await RefreshEnvironmentStatesAsync();
+                _nextRuntimeRefreshUtc = DateTime.UtcNow + BackgroundRuntimeRefreshInterval;
                 RefreshPanelMemoryUsage();
             }
             catch (Exception ex)
@@ -509,7 +545,17 @@ public partial class MainWindow : Window
             AccountApiPageControl.Deactivate();
         }
 
-        if (page == "Sites")
+        if (page == "Home")
+        {
+            _model.RefreshSystemState();
+        }
+        else if (page == "Environment")
+        {
+            // The next one-second scheduler pulse performs an immediate snapshot,
+            // then switches to the 5-second Environment-page cadence.
+            _nextRuntimeRefreshUtc = DateTime.MinValue;
+        }
+        else if (page == "Sites")
         {
             _model.RefreshInstalledProducts();
             _model.RefreshCustomWebsites(_customWebsiteService.LoadAll());
