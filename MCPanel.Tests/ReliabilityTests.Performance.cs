@@ -11,20 +11,23 @@ public sealed partial class ReliabilityTests
     {
         var type = typeof(MainWindow);
         var flags = BindingFlags.NonPublic | BindingFlags.Static;
-        var environment = (TimeSpan?)type
+        var environmentValue = type
             .GetField("EnvironmentRuntimeRefreshInterval", flags)?
             .GetValue(null);
-        var background = (TimeSpan?)type
+        var backgroundValue = type
             .GetField("BackgroundRuntimeRefreshInterval", flags)?
             .GetValue(null);
 
-        Assert.IsNotNull(environment);
-        Assert.IsNotNull(background);
-        Assert.IsTrue(environment.Value >= TimeSpan.FromSeconds(5),
+        Assert.IsInstanceOfType(environmentValue, typeof(TimeSpan));
+        Assert.IsInstanceOfType(backgroundValue, typeof(TimeSpan));
+        var environment = (TimeSpan)environmentValue!;
+        var background = (TimeSpan)backgroundValue!;
+
+        Assert.IsTrue(environment >= TimeSpan.FromSeconds(5),
             "Environment runtime discovery must not return to high-frequency polling.");
-        Assert.IsTrue(background.Value >= TimeSpan.FromSeconds(15),
+        Assert.IsTrue(background >= TimeSpan.FromSeconds(15),
             "Background pages must use a substantially slower runtime discovery cadence.");
-        Assert.IsTrue(background.Value > environment.Value,
+        Assert.IsTrue(background > environment,
             "The Environment page may refresh faster than unrelated pages, not the other way around.");
     }
 }
