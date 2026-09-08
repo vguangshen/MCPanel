@@ -13,6 +13,78 @@ namespace MCPanel.Tests;
 public sealed partial class ReliabilityTests
 {
     [TestMethod]
+    public void AccountAndSettingsReflowAndRecoverAcrossRepeatedResize()
+    {
+        Exception? failure = null;
+        using var completed = new ManualResetEventSlim();
+        var thread = new Thread(() =>
+        {
+            MainWindow? window = null;
+            try
+            {
+                window = CreateUiTestWindow();
+                window.Show();
+                var account = (AccountApiPage)window.FindName("AccountApiPageControl");
+                var settings = (ScrollViewer)window.FindName("SettingsPage");
+                var appearance = (Border)window.FindName("AppearanceSettingsCard");
+                var updater = (Border)window.FindName("SoftwareUpdateCard");
+                var startup = (Border)window.FindName("StartupSettingsCard");
+                double? wideHeight = null;
+                foreach (var width in new[] { 1440d, 1024d, 1280d, 1024d, 1440d })
+                {
+                    window.Width = width;
+                    window.Height = 720d;
+                    account.Visibility = Visibility.Visible;
+                    settings.Visibility = Visibility.Visible;
+                    window.UpdateLayout();
+                    window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+                    window.UpdateLayout();
+
+                    var metrics = (Grid)account.FindName("MetricsGrid");
+                    var connection = (Grid)account.FindName("ConnectionGrid");
+                    var diagnostics = (Grid)account.FindName("DiagnosticsGrid");
+                    var scroll = (ScrollViewer)account.FindName("PageScroll");
+                    var narrow = width == 1024d;
+                    Assert.AreEqual(narrow ? 2 : 4, metrics.ColumnDefinitions.Count);
+                    Assert.AreEqual(narrow ? 1 : 2, connection.ColumnDefinitions.Count);
+                    Assert.AreEqual(narrow ? 1 : 2, diagnostics.ColumnDefinitions.Count);
+                    Assert.IsTrue(scroll.ExtentWidth <= scroll.ViewportWidth + 1d,
+                        "账号 API 不应产生横向溢出。");
+                    scroll.ScrollToBottom();
+                    window.UpdateLayout();
+                    var bottomCard = (FrameworkElement)diagnostics.Children[1];
+                    var bottom = bottomCard.TransformToAncestor(scroll)
+                        .Transform(new Point(0d, bottomCard.ActualHeight));
+                    Assert.IsTrue(bottom.Y <= scroll.ActualHeight + 1d,
+                        "日志卡片底部必须可以通过纵向滚动到达。");
+                    Assert.AreEqual(narrow ? 1 : 0, Grid.GetRow((Grid)updater.Parent));
+                    Assert.AreEqual(narrow ? 0 : 1, Grid.GetColumn((Grid)updater.Parent));
+                    Assert.AreEqual(228d, updater.MinHeight, 0.1d,
+                        "更新卡片不得累积上次布局的实际高度。");
+                    if (narrow)
+                    {
+                        Assert.IsTrue(double.IsNaN(appearance.Height));
+                        Assert.IsTrue(double.IsNaN(startup.Height));
+                    }
+                    if (width == 1440d)
+                    {
+                        if (wideHeight.HasValue)
+                            Assert.AreEqual(wideHeight.Value, appearance.ActualHeight, 1d,
+                                "反复缩放后应恢复原来的卡片高度。");
+                        wideHeight = appearance.ActualHeight;
+                    }
+                }
+            }
+            catch (Exception ex) { failure = ex; }
+            finally { window?.Close(); completed.Set(); }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.IsTrue(completed.Wait(TimeSpan.FromSeconds(30)), "页面重排测试超时。");
+        if (failure is not null) Assert.Fail(failure.ToString());
+    }
+
+    [TestMethod]
     public void MainWindowResponsiveSurfaceUsesNativeScaleAtEverySupportedSize()
     {
         Exception? failure = null;

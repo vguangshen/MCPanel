@@ -12,7 +12,7 @@ public partial class MainWindow
 {
     private const double ResponsiveLayoutEpsilon = 0.5d;
     private const double CompactShellBreakpoint = 1180d;
-    private const double CompactSettingsBreakpoint = 900d;
+    private const double CompactSettingsBreakpoint = 960d;
     private const double CompactShellHeightBreakpoint = 760d;
     private const double StandardNavWidth = 226d;
     private const double CompactNavWidth = 190d;
@@ -127,8 +127,14 @@ public partial class MainWindow
             var compactShell = compactWidth || responsiveHeight < CompactShellHeightBreakpoint;
             ApplyShellDensity(compactShell, compactWidth);
             ApplyProductsHeaderDensity(compactWidth);
-            ApplySettingsResponsiveColumns(responsiveWidth < CompactSettingsBreakpoint);
             ApplyResponsivePageDensity(responsiveWidth, responsiveHeight);
+            var navigationWidth = responsiveWidth < IconOnlyNavigationBreakpoint
+                ? IconOnlyNavigationWidth
+                : compactWidth ? CompactNavWidth : StandardNavWidth;
+            var contentWidth = responsiveWidth - navigationWidth - (compactShell ? 32d : 48d);
+            AppearanceSettingsCard.Height = double.NaN;
+            StartupSettingsCard.Height = double.NaN;
+            ApplySettingsResponsiveColumns(contentWidth < CompactSettingsBreakpoint);
         }
         finally
         {
@@ -337,20 +343,7 @@ public partial class MainWindow
             return;
         }
 
-        SoftwareUpdateCard.MinHeight = Math.Max(
-            SoftwareUpdateCard.MinHeight,
-            SoftwareUpdateStableMinHeight);
-
-        if (SoftwareUpdateCard.ActualHeight <= 1d ||
-            DataContext is MainViewModel { IsUpdateBusy: true })
-        {
-            return;
-        }
-
-        if (SoftwareUpdateCard.ActualHeight > SoftwareUpdateCard.MinHeight + ResponsiveLayoutEpsilon)
-        {
-            SoftwareUpdateCard.MinHeight = SoftwareUpdateCard.ActualHeight;
-        }
+        SoftwareUpdateCard.MinHeight = SoftwareUpdateStableMinHeight;
     }
 
     private void AlignSettingsCardBottoms()
@@ -372,6 +365,12 @@ public partial class MainWindow
         try
         {
             _aligningSettingsCards = true;
+
+            // Measure natural content again so a previous narrow layout cannot
+            // permanently inflate either card after the window grows.
+            AppearanceSettingsCard.Height = double.NaN;
+            StartupSettingsCard.Height = double.NaN;
+            columnsGrid.UpdateLayout();
 
             var appearanceTop = AppearanceSettingsCard.TransformToAncestor(columnsGrid).Transform(new Point(0d, 0d)).Y;
             var startupTop = StartupSettingsCard.TransformToAncestor(columnsGrid).Transform(new Point(0d, 0d)).Y;

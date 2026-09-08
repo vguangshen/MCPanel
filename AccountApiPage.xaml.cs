@@ -51,6 +51,39 @@ public partial class AccountApiPage : UserControl, INotifyPropertyChanged, IDisp
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    private void PageScroll_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        // Reserve scrollbar space consistently to avoid oscillating at a breakpoint.
+        var width = Math.Max(0d, e.NewSize.Width - SystemParameters.VerticalScrollBarWidth);
+        ArrangeCards(MetricsGrid, width < 600d ? 1 : width < 960d ? 2 : 4);
+        ArrangeCards(ConnectionGrid, width < 960d ? 1 : 2);
+        ArrangeCards(DiagnosticsGrid, width < 960d ? 1 : 2);
+    }
+
+    private static void ArrangeCards(Grid grid, int columns)
+    {
+        var rows = (grid.Children.Count + columns - 1) / columns;
+        if (grid.ColumnDefinitions.Count == columns && grid.RowDefinitions.Count == rows)
+        {
+            return;
+        }
+
+        grid.ColumnDefinitions.Clear();
+        grid.RowDefinitions.Clear();
+        for (var column = 0; column < columns; column++)
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1d, GridUnitType.Star) });
+        for (var row = 0; row < rows; row++)
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        for (var index = 0; index < grid.Children.Count; index++)
+        {
+            var card = (FrameworkElement)grid.Children[index];
+            Grid.SetRow(card, index / columns);
+            Grid.SetColumn(card, index % columns);
+            card.Margin = new Thickness(0d, 0d, index % columns < columns - 1 ? 8d : 0d,
+                index / columns < rows - 1 ? 8d : 0d);
+        }
+    }
+
     public ObservableCollection<AccountApiProviderViewModel> Providers { get; }
 
     public string RuntimeDirectoryText { get => _runtimeDirectoryText; private set => SetProperty(ref _runtimeDirectoryText, value); }

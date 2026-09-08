@@ -104,6 +104,10 @@
         </ResourceDictionary>
     </UserControl.Resources>
 
+    <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch" SizeChanged="PageScroll_SizeChanged">
+        <ScrollViewer.Resources>
+            <Style TargetType="ScrollBar" BasedOn="{StaticResource ModernVerticalScrollBar}" />
+        </ScrollViewer.Resources>
     <Grid Margin="0" MinHeight="0">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -157,7 +161,7 @@
             </Grid>
         </Border>
 
-        <Grid Grid.Row="1" Margin="0,0,0,8">
+        <Grid x:Name="MetricsGrid" Grid.Row="1" Margin="0,0,0,8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="*" />
@@ -210,7 +214,7 @@
             </Border>
         </Grid>
 
-        <Grid Grid.Row="2" Margin="0,0,0,4">
+        <Grid x:Name="ConnectionGrid" Grid.Row="2" Margin="0,0,0,8" MinHeight="230">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="*" />
@@ -291,7 +295,7 @@
                             </Ellipse>
                             <StackPanel Grid.Column="1">
                                 <TextBlock Text="{Binding OperationStatusText}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                <TextBlock Text="{Binding OperationHintText}" Style="{StaticResource AccountCaption}" FontSize="10" Margin="0,2,0,0" TextWrapping="Wrap" MaxHeight="32" />
+                                <TextBlock Text="{Binding OperationHintText}" Style="{StaticResource AccountCaption}" FontSize="10" Margin="0,2,0,0" TextWrapping="Wrap" />
                             </StackPanel>
                         </Grid>
                     </Border>
@@ -326,14 +330,14 @@
                     <StackPanel Grid.Row="5" Margin="0,6,0,0" VerticalAlignment="Top">
                         <TextBlock Text="生成新密钥会使网页后台旧密钥失效。" FontSize="10" Foreground="{DynamicResource WarningTextBrush}" TextTrimming="CharacterEllipsis" />
                         <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="6" Padding="8,5" Margin="0,5,0,0">
-                            <TextBlock Text="开机自启动跟随面板设置：面板开机启动时，内置 API 会随 MCPanel 自动运行。" Style="{StaticResource AccountCaption}" FontSize="10" TextWrapping="Wrap" MaxHeight="32" />
+                            <TextBlock Text="开机自启动跟随面板设置：面板开机启动时，内置 API 会随 MCPanel 自动运行。" Style="{StaticResource AccountCaption}" FontSize="10" TextWrapping="Wrap" />
                         </Border>
                     </StackPanel>
                 </Grid>
             </Border>
         </Grid>
 
-        <Grid Grid.Row="3" Margin="0,0,0,4">
+        <Grid x:Name="DiagnosticsGrid" Grid.Row="3" Margin="0,0,0,4" MinHeight="230">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="*" />
@@ -354,7 +358,7 @@
                             <Button Content="检测" Style="{DynamicResource RoundedRectTonalButton}" Height="27" Padding="10,0" Margin="6,0,0,0" Click="DetectDatabases_Click" IsEnabled="{Binding CanInteract}" />
                         </StackPanel>
                     </Grid>
-                    <ItemsControl ItemsSource="{Binding Providers}" ItemTemplate="{StaticResource ProviderStatusTemplate}" Margin="0,7,0,0" MaxHeight="50" ClipToBounds="True">
+                    <ItemsControl ItemsSource="{Binding Providers}" ItemTemplate="{StaticResource ProviderStatusTemplate}" Margin="0,7,0,0">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <WrapPanel />
@@ -392,7 +396,7 @@
                                   CanContentScroll="False"
                                   Background="{DynamicResource LogBackgroundBrush}"
                                   Padding="8"
-                                  MinHeight="110"
+                                  Height="160"
                                   Margin="0,7,0,0"
                                   VerticalAlignment="Stretch"
                                   HorizontalAlignment="Stretch">
@@ -419,4 +423,5 @@
             </Border>
         </Grid>
         </Grid>
-    </UserControl>
+    </ScrollViewer>
+</UserControl>
