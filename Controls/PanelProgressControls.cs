@@ -115,12 +115,23 @@ public sealed class CircularProgress : Control
     {
         Loaded += (_, _) =>
         {
-            if (IsIndeterminate)
+            if (IsIndeterminate && IsVisible)
             {
                 StartIndeterminateAnimation();
             }
         };
         Unloaded += (_, _) => StopIndeterminateAnimation();
+        IsVisibleChanged += (_, _) =>
+        {
+            if (!IsVisible)
+            {
+                StopIndeterminateAnimation();
+            }
+            else if (IsIndeterminate && IsLoaded)
+            {
+                StartIndeterminateAnimation();
+            }
+        };
     }
 
     public static readonly DependencyProperty ProgressBrushProperty =
@@ -231,7 +242,7 @@ public sealed class CircularProgress : Control
     private static void OnIsIndeterminateChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs args)
     {
         var control = (CircularProgress)dependencyObject;
-        if ((bool)args.NewValue && control.IsLoaded)
+        if ((bool)args.NewValue && control.IsLoaded && control.IsVisible)
         {
             control.StartIndeterminateAnimation();
         }
@@ -243,6 +254,11 @@ public sealed class CircularProgress : Control
 
     private void StartIndeterminateAnimation()
     {
+        if (!IsVisible)
+        {
+            return;
+        }
+
         var animation = new DoubleAnimation
         {
             From = 0d,
@@ -265,10 +281,14 @@ public sealed class CircularProgress : Control
         var control = (CircularProgress)dependencyObject;
         var target = NormalizeValue((double)args.NewValue);
 
-        // Values are normally sampled once per second. Keep the first value
-        // immediate, then interpolate subsequent samples at the compositor's
-        // frame rate so the ring does not jump between samples.
-        if (!control.IsLoaded || control.ActualWidth <= 0 || control.ActualHeight <= 0)
+        // Smooth interpolation is useful on a local hardware-composited desktop,
+        // but it becomes expensive under RDP/cloud-PC software composition. Hidden
+        // controls also do not need compositor work at all.
+        if (!control.IsLoaded ||
+            !control.IsVisible ||
+            control.ActualWidth <= 0 ||
+            control.ActualHeight <= 0 ||
+            !ShouldAnimateValueChanges())
         {
             control.BeginAnimation(AnimatedValueProperty, null);
             control.SetValue(AnimatedValueProperty, target);
@@ -293,6 +313,10 @@ public sealed class CircularProgress : Control
         };
         control.BeginAnimation(AnimatedValueProperty, animation, HandoffBehavior.SnapshotAndReplace);
     }
+
+    private static bool ShouldAnimateValueChanges() =>
+        (RenderCapability.Tier >> 16) >= 2 &&
+        !System.Windows.Forms.SystemInformation.TerminalServerSession;
 
     private static double NormalizeValue(double value)
     {
