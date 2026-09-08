@@ -3,6 +3,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
+using System.Windows.Threading;
 
 namespace MCPanel;
 
@@ -17,10 +19,15 @@ public partial class MainWindow
     private const double StartupCardResponsiveMinHeight = 84d;
     private const double SoftwareUpdateStableMinHeight = 228d;
 
+    private static readonly object LowTierShadowHandlerLock = new();
+    private static bool _lowTierShadowHandlerRegistered;
+
     private bool _applyingResponsiveLayout;
     private bool _nativeTextRenderingConfigured;
+    private bool _renderingPerformanceConfigured;
     private bool _settingsAlignmentHooked;
     private bool _aligningSettingsCards;
+    private bool _settingsMaintenanceQueued;
 
     protected override void OnContentRendered(EventArgs e)
     {
@@ -103,6 +110,7 @@ public partial class MainWindow
             DesignSurface.MinHeight = 0d;
 
             ConfigureNativeTextRendering();
+            ConfigureRenderingPerformancePolicy();
 
             var responsiveWidth = IsUsableDimension(requestedWidth)
                 ? requestedWidth
@@ -143,6 +151,56 @@ public partial class MainWindow
         TextOptions.SetTextRenderingMode(DesignSurface, TextRenderingMode.ClearType);
         TextOptions.SetTextHintingMode(DesignSurface, TextHintingMode.Fixed);
         RenderOptions.SetClearTypeHint(DesignSurface, ClearTypeHint.Enabled);
+    }
+
+    private void ConfigureRenderingPerformancePolicy()
+    {
+        if (_renderingPerformanceConfigured)
+        {
+            return;
+        }
+
+        _renderingPerformanceConfigured = true;
+        var renderingTier = RenderCapability.Tier >> 16;
+        var lowTierOrRemoteSession = renderingTier < 2 ||
+                                     System.Windows.Forms.SystemInformation.TerminalServerSession;
+        if (!lowTierOrRemoteSession)
+        {
+            return;
+        }
+
+        // WPF DropShadowEffect is disproportionately expensive when the desktop is
+        // rendered through RDP/cloud-PC software composition. Remove decorative
+        // shadows in that environment while keeping borders, spacing and colors.
+        foreach (var border in FindVisualChildren<Border>(DesignSurface))
+        {
+            if (border.Effect is DropShadowEffect)
+            {
+                border.Effect = null;
+            }
+        }
+
+        lock (LowTierShadowHandlerLock)
+        {
+            if (_lowTierShadowHandlerRegistered)
+            {
+                return;
+            }
+
+            EventManager.RegisterClassHandler(
+                typeof(Border),
+                FrameworkElement.LoadedEvent,
+                new RoutedEventHandler(RemoveLowTierDropShadowOnLoaded));
+            _lowTierShadowHandlerRegistered = true;
+        }
+    }
+
+    private static void RemoveLowTierDropShadowOnLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is Border { Effect: DropShadowEffect } border)
+        {
+            border.Effect = null;
+        }
     }
 
     private void ApplyShellDensity(bool compactShell, bool compactWidth)
@@ -237,15 +295,39 @@ public partial class MainWindow
         StartupSettingsCard.MinHeight = Math.Max(StartupSettingsCard.MinHeight, StartupCardResponsiveMinHeight);
         SoftwareUpdateCard.MinHeight = Math.Max(SoftwareUpdateCard.MinHeight, SoftwareUpdateStableMinHeight);
 
-        AppearanceSettingsCard.Loaded += (_, _) => AlignSettingsCardBottoms();
-        StartupSettingsCard.Loaded += (_, _) => AlignSettingsCardBottoms();
-        SoftwareUpdateCard.Loaded += (_, _) => StabilizeSoftwareUpdateCardHeight();
-
-        LayoutUpdated += (_, _) =>
+        AppearanceSettingsCard.Loaded += (_, _) => QueueSettingsCardMaintenance();
+        StartupSettingsCard.Loaded += (_, _) => QueueSettingsCardMaintenance();
+        SoftwareUpdateCard.Loaded += (_, _) => QueueSettingsCardMaintenance();
+        SettingsPage.IsVisibleChanged += (_, _) => QueueSettingsCardMaintenance();
+        _model.PropertyChanged += (_, args) =>
         {
-            StabilizeSoftwareUpdateCardHeight();
-            AlignSettingsCardBottoms();
+            if (args.PropertyName == nameof(MainViewModel.IsUpdateBusy) ||
+                args.PropertyName == nameof(MainViewModel.UpdateStatus))
+            {
+                QueueSettingsCardMaintenance();
+            }
         };
+    }
+
+    private void QueueSettingsCardMaintenance()
+    {
+        if (_settingsMaintenanceQueued ||
+            Dispatcher.HasShutdownStarted ||
+            SettingsPage is null ||
+            !SettingsPage.IsVisible)
+        {
+            return;
+        }
+
+        _settingsMaintenanceQueued = true;
+        Dispatcher.BeginInvoke(
+            new Action(() =>
+            {
+                _settingsMaintenanceQueued = false;
+                StabilizeSoftwareUpdateCardHeight();
+                AlignSettingsCardBottoms();
+            }),
+            DispatcherPriority.Loaded);
     }
 
     private void StabilizeSoftwareUpdateCardHeight()
