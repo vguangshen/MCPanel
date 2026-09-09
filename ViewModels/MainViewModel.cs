@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Net.NetworkInformation;
 using System.Windows;
+using System.Windows.Data;
 using System.Windows.Media;
 using System.Xml.Linq;
 
@@ -36,6 +37,7 @@ public sealed class MainViewModel : ObservableObject
     private double _updateProgress;
     private bool _isUpdateBusy;
     private string _productSearchKeyword = string.Empty;
+    private string _websiteSearchKeyword = string.Empty;
     private string _selectedProductCategory = "全部";
     private int _visibleProductCount;
     private CancellationTokenSource? _productIconCacheCancellation;
@@ -81,6 +83,12 @@ public sealed class MainViewModel : ObservableObject
     internal MainViewModel(bool initializeData, Func<CancellationToken, DriveSnapshotResult>? captureDrives = null)
     {
         _captureDrives = captureDrives ?? DriveSnapshotService.Capture;
+        VisibleInstalledWebsites = new ListCollectionView(InstalledProducts);
+        VisibleCustomWebsites = new ListCollectionView(CustomWebsites);
+        VisibleInstalledWebsites.Filter = item => MatchesWebsite((InstalledProductItem)item);
+        VisibleCustomWebsites.Filter = item => MatchesWebsite((CustomWebsiteItem)item);
+        InstalledProducts.CollectionChanged += (_, _) => NotifyWebsiteFilter();
+        CustomWebsites.CollectionChanged += (_, _) => NotifyWebsiteFilter();
         SummaryCounters =
         [
             new SummaryCounter("网站", 0),
@@ -147,6 +155,44 @@ public sealed class MainViewModel : ObservableObject
     public ObservableCollection<ProductItem> Products { get; }
     public ObservableCollection<InstalledProductItem> InstalledProducts { get; } = [];
     public ObservableCollection<CustomWebsiteItem> CustomWebsites { get; } = [];
+    public ICollectionView VisibleInstalledWebsites { get; }
+    public ICollectionView VisibleCustomWebsites { get; }
+    public string WebsiteSearchKeyword
+    {
+        get => _websiteSearchKeyword;
+        set
+        {
+            if (!SetProperty(ref _websiteSearchKeyword, value ?? string.Empty)) return;
+            VisibleInstalledWebsites.Refresh();
+            VisibleCustomWebsites.Refresh();
+            NotifyWebsiteFilter();
+        }
+    }
+    private int VisibleWebsiteCount => VisibleInstalledWebsites.Cast<object>().Count() + VisibleCustomWebsites.Cast<object>().Count();
+    public string WebsiteSearchCountText => string.IsNullOrWhiteSpace(WebsiteSearchKeyword)
+        ? InstalledProductCountText : $"找到 {VisibleWebsiteCount} / {InstalledProducts.Count + CustomWebsites.Count} 个网站";
+    public Visibility InstalledWebsiteGroupVisibility => VisibleInstalledWebsites.IsEmpty ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility CustomWebsiteGroupVisibility => VisibleCustomWebsites.IsEmpty ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility WebsiteNoResultsVisibility => VisibleWebsiteCount == 0 && InstalledProducts.Count + CustomWebsites.Count > 0
+        ? Visibility.Visible : Visibility.Collapsed;
+    private bool MatchesWebsite(InstalledProductItem item) => MatchesWebsiteText(item.DisplayName, item.ProductId,
+        item.InstallPath, item.EnvironmentSummary, item.Url, item.DomainDisplayText, item.SiteDisplayText);
+    private bool MatchesWebsite(CustomWebsiteItem item) => MatchesWebsiteText(item.Name, item.PhysicalPath,
+        item.Url, item.DomainSummary, item.PoolSummary, "IIS");
+    internal bool MatchesWebsiteText(params string[] fields)
+    {
+        var terms = WebsiteSearchKeyword.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        return terms.All(term => fields.Any(field => (field ?? string.Empty).IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0));
+    }
+    private void NotifyWebsiteFilter()
+    {
+        OnPropertyChanged(nameof(WebsiteSearchCountText));
+        OnPropertyChanged(nameof(InstalledWebsiteGroupVisibility));
+        OnPropertyChanged(nameof(CustomWebsiteGroupVisibility));
+        OnPropertyChanged(nameof(WebsiteNoResultsVisibility));
+        OnPropertyChanged(nameof(WebsiteEmptyVisibility));
+        OnPropertyChanged(nameof(WebsiteContentVisibility));
+    }
     public ObservableCollection<ProductRow> VisibleProductRows { get; } = [];
     public ObservableCollection<ProductCategoryFilter> ProductCategories { get; } = [];
     public ObservableCollection<DriveItem> Drives { get; } = [];

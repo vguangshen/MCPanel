@@ -24,6 +24,69 @@ namespace MCPanel;
 
 public partial class MainWindow
 {
+    private void WebsiteSearch_TextChanged(object sender, TextChangedEventArgs e) => WebsiteListScroll?.ScrollToTop();
+
+    private void ClearWebsiteSearch_Click(object sender, RoutedEventArgs e)
+    {
+        _model.WebsiteSearchKeyword = string.Empty;
+        WebsiteSearchBox.Focus();
+    }
+
+    private void WebsiteSearch_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape) return;
+        ClearWebsiteSearch_Click(sender, e);
+        e.Handled = true;
+    }
+
+    private async void BindJavaPlatform_Click(object sender, RoutedEventArgs e) => await BindPlatformAsync(true);
+    private async void BindIisPlatform_Click(object sender, RoutedEventArgs e) => await BindPlatformAsync(false);
+
+    private async Task BindPlatformAsync(bool java)
+    {
+        BindJavaPlatformButton.IsEnabled = BindIisPlatformButton.IsEnabled = false;
+        ProductItem? selectedProduct = null;
+        try
+        {
+            var kind = java ? EnvironmentKind.Tomcat : EnvironmentKind.Iis;
+            if (!_runtimeService.GetState(kind).IsInstalled)
+            {
+                MessageBox.Show($"请先在“环境”页面安装 {(java ? "Tomcat Server" : "Web Server / IIS")}。", "平台绑定", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            var products = _model.Products.ToArray();
+            var candidates = await Task.Run(() => PlatformBindingDialog.FindCandidates(products, java));
+            var dialog = new PlatformBindingDialog(candidates, java) { Owner = this };
+            PanelThemeService.Apply(_isDarkThemeActive, dialog.Resources);
+            if (dialog.ShowDialog() != true) return;
+            if (dialog.UseCustomIis)
+            {
+                await ShowCustomWebsiteDialogAsync(null);
+                return;
+            }
+            var candidate = dialog.SelectedCandidate;
+            if (candidate is null) return;
+            if (!candidate.Product.CanProductAction) throw new InvalidOperationException("该平台正在安装或更新，请等待任务完成后再绑定。");
+            selectedProduct = candidate.Product;
+            selectedProduct.IsBusy = true;
+            var result = java
+                ? await _deploymentService.RepairTomcatBindingAsync(selectedProduct, candidate.Path)
+                : await _deploymentService.RepairIisBindingAsync(selectedProduct, candidate.Path);
+            await _model.RefreshInstalledProductsAsync();
+            _model.WebsiteSearchKeyword = selectedProduct.ProductId;
+            MessageBox.Show(result.Message, "平台绑定", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"平台绑定失败：{ex.Message}", "平台绑定", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            if (selectedProduct is not null) selectedProduct.IsBusy = false;
+            BindJavaPlatformButton.IsEnabled = BindIisPlatformButton.IsEnabled = true;
+        }
+    }
+
 private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
         _model.ApplyProductFilter(SearchBox.Text);
 

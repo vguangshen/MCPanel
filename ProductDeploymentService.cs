@@ -184,7 +184,7 @@ public sealed class ProductDeploymentService
         }
     }
 
-    private static ProductRuntimeKind DetectRuntime(ProductItem product, string packagePath)
+    internal static ProductRuntimeKind DetectRuntime(ProductItem product, string packagePath)
     {
         var declaredRuntime = product.RunEnvironment?.Trim() ?? string.Empty;
         if (ContainsAny(declaredRuntime, "tomcat", "java web", "jsp", "servlet"))
@@ -1926,7 +1926,7 @@ public sealed class ProductDeploymentService
 
     private static string StoreDataRoot => ComponentPaths.StoreDataRoot;
 
-    private enum ProductRuntimeKind
+    internal enum ProductRuntimeKind
     {
         Unknown,
         Iis,
