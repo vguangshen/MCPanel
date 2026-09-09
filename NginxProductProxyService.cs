@@ -246,7 +246,7 @@ public static class NginxProductProxyService
     {
         productId = string.Empty;
         kind = ManagedProductRuleKind.Automatic;
-        var value = managedProductId?.Trim();
+        var value = managedProductId?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(value))
         {
             return false;

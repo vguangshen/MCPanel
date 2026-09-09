@@ -12,7 +12,7 @@ using System.Xml.Linq;
 
 namespace MCPanel;
 
-public sealed class MainViewModel : ObservableObject
+public sealed partial class MainViewModel : ObservableObject
 {
     private readonly DateTime _startedAt = DateTime.Now;
     private readonly CpuSampler _cpuSampler = new();
@@ -87,8 +87,9 @@ public sealed class MainViewModel : ObservableObject
         VisibleCustomWebsites = new ListCollectionView(CustomWebsites);
         VisibleInstalledWebsites.Filter = item => MatchesWebsite((InstalledProductItem)item);
         VisibleCustomWebsites.Filter = item => MatchesWebsite((CustomWebsiteItem)item);
-        InstalledProducts.CollectionChanged += (_, _) => NotifyWebsiteFilter();
-        CustomWebsites.CollectionChanged += (_, _) => NotifyWebsiteFilter();
+        InitializeWebsiteFeatures(initializeData);
+        InstalledProducts.CollectionChanged += (_, _) => SyncWebsiteRows();
+        CustomWebsites.CollectionChanged += (_, _) => SyncWebsiteRows();
         SummaryCounters =
         [
             new SummaryCounter("网站", 0),
@@ -163,9 +164,8 @@ public sealed class MainViewModel : ObservableObject
         set
         {
             if (!SetProperty(ref _websiteSearchKeyword, value ?? string.Empty)) return;
-            VisibleInstalledWebsites.Refresh();
-            VisibleCustomWebsites.Refresh();
-            NotifyWebsiteFilter();
+            _websiteSearchTerms = _websiteSearchKeyword.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            RefreshWebsiteFilter();
         }
     }
     private int VisibleWebsiteCount => VisibleInstalledWebsites.Cast<object>().Count() + VisibleCustomWebsites.Cast<object>().Count();
@@ -175,14 +175,13 @@ public sealed class MainViewModel : ObservableObject
     public Visibility CustomWebsiteGroupVisibility => VisibleCustomWebsites.IsEmpty ? Visibility.Collapsed : Visibility.Visible;
     public Visibility WebsiteNoResultsVisibility => VisibleWebsiteCount == 0 && InstalledProducts.Count + CustomWebsites.Count > 0
         ? Visibility.Visible : Visibility.Collapsed;
-    private bool MatchesWebsite(InstalledProductItem item) => MatchesWebsiteText(item.DisplayName, item.ProductId,
+    private bool MatchesWebsite(InstalledProductItem item) => MatchesWebsiteOptions(item.IsTomcatDeployment, item.CanBrowse) && MatchesWebsiteText(item.DisplayName, item.ProductId,
         item.InstallPath, item.EnvironmentSummary, item.Url, item.DomainDisplayText, item.SiteDisplayText);
-    private bool MatchesWebsite(CustomWebsiteItem item) => MatchesWebsiteText(item.Name, item.PhysicalPath,
+    private bool MatchesWebsite(CustomWebsiteItem item) => MatchesWebsiteOptions(false, item.IsRunning) && MatchesWebsiteText(item.Name, item.PhysicalPath,
         item.Url, item.DomainSummary, item.PoolSummary, "IIS");
     internal bool MatchesWebsiteText(params string[] fields)
     {
-        var terms = WebsiteSearchKeyword.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-        return terms.All(term => fields.Any(field => (field ?? string.Empty).IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0));
+        return _websiteSearchTerms.All(term => fields.Any(field => (field ?? string.Empty).IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0));
     }
     private void NotifyWebsiteFilter()
     {
@@ -506,7 +505,8 @@ public sealed class MainViewModel : ObservableObject
                 return;
             }
 
-            var installedById = installedProducts.ToDictionary(
+            WebsiteRecordError = installedProducts.Error;
+            var installedById = installedProducts.Items.ToDictionary(
                 item => item.Product.ProductId,
                 StringComparer.OrdinalIgnoreCase);
             foreach (var product in Products)
@@ -514,7 +514,7 @@ public sealed class MainViewModel : ObservableObject
                 product.IsInstalled = installedById.ContainsKey(product.ProductId);
             }
 
-            ApplyInstalledProducts(installedProducts);
+            ApplyInstalledProducts(installedProducts.Items);
         }
         catch (OperationCanceledException) when (linkedCancellation.IsCancellationRequested)
         {
@@ -531,7 +531,7 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    private static List<(ProductItem Product, string InstallPath, DateTime InstalledAtUtc)> DetectInstalledProducts(
+    private static (List<(ProductItem Product, string InstallPath, DateTime InstalledAtUtc)> Items, string Error) DetectInstalledProducts(
         IReadOnlyCollection<ProductItem> products,
         CancellationToken cancellationToken)
     {
@@ -559,12 +559,16 @@ public sealed class MainViewModel : ObservableObject
             }
         }
 
-        foreach (var definition in new ManualPlatformStore().Load())
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            installedProducts.Add((definition.ToProduct(), definition.Path, GetDirectoryCreationTimeUtc(definition.Path)));
+            foreach (var definition in new ManualPlatformStore().Load())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                installedProducts.Add((definition.ToProduct(), definition.Path, GetDirectoryCreationTimeUtc(definition.Path)));
+            }
         }
-        return installedProducts;
+        catch (IOException ex) { return (installedProducts, ex.Message); }
+        return (installedProducts, string.Empty);
     }
 
     private void ApplyInstalledProducts(
@@ -579,11 +583,15 @@ public sealed class MainViewModel : ObservableObject
                 : int.MaxValue;
         }
 
+        _updatingWebsiteRows = true;
         InstalledProducts.Clear();
         foreach (var item in installedProducts.OrderBy(item => item.Product.InstallSequence))
         {
             InstalledProducts.Add(new InstalledProductItem(item.Product, item.InstallPath));
         }
+        _updatingWebsiteRows = false;
+        SyncWebsiteRows();
+        _websiteRefreshSchedule.RequestRefresh();
 
         OnPropertyChanged(nameof(InstalledProductCountText));
         OnPropertyChanged(nameof(InstalledProductStatus));
@@ -609,26 +617,20 @@ public sealed class MainViewModel : ObservableObject
 
     public void RefreshCustomWebsites(IReadOnlyList<CustomWebsiteDefinition> definitions)
     {
+        _updatingWebsiteRows = true;
         CustomWebsites.Clear();
         foreach (var definition in definitions)
         {
             CustomWebsites.Add(new CustomWebsiteItem(definition));
         }
+        _updatingWebsiteRows = false;
+        SyncWebsiteRows();
+        _websiteRefreshSchedule.RequestRefresh();
 
         OnPropertyChanged(nameof(InstalledProductCountText));
         OnPropertyChanged(nameof(InstalledProductStatus));
         OnPropertyChanged(nameof(WebsiteEmptyVisibility));
         OnPropertyChanged(nameof(WebsiteContentVisibility));
-        _ = RefreshCustomWebsiteStatesAsync(CustomWebsites.ToArray());
-    }
-
-    private async Task RefreshCustomWebsiteStatesAsync(CustomWebsiteItem[] items)
-    {
-        if (items.Length == 0 || _disposed) return;
-        var probe = await Task.Run(IisWebsiteStatusProbe.Read);
-        if (_disposed) return;
-        foreach (var item in items)
-            if (CustomWebsites.Contains(item)) item.RefreshStatus(probe);
     }
 
     public void RecordProductInstalled(string productId)

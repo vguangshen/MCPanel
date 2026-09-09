@@ -1,0 +1,33 @@
+<local:PanelModalWindow x:Class="MCPanel.AiSettingsDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:MCPanel">
+    <local:PanelModalWindow.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="Resources/PanelDialogControls.xaml" />
+    </ResourceDictionary.MergedDictionaries></ResourceDictionary></local:PanelModalWindow.Resources>
+    <Border Style="{StaticResource PanelModalSurface}"><Grid>
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+        <StackPanel><TextBlock Text="AI 模型设置" Style="{StaticResource PanelModalTitle}" />
+            <TextBlock Text="设置兼容 Chat Completions 的模型服务，保存后即可开始分析。" Style="{StaticResource PanelModalSubtitle}" /></StackPanel>
+        <Border Grid.Row="1" Style="{StaticResource PanelModalContentCard}" Margin="0,18,0,16" Padding="16">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ScrollViewer.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ModernVerticalScrollBar}" /></ScrollViewer.Resources>
+                <StackPanel x:Name="FormPanel">
+                    <TextBlock Text="接口地址" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,6" />
+                    <TextBox x:Name="EndpointBox" AutomationProperties.Name="AI 接口地址" />
+                    <Grid Margin="0,12,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="16" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <StackPanel><TextBlock Text="服务名称" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,6" /><TextBox x:Name="ProviderBox" /></StackPanel>
+                        <StackPanel Grid.Column="2"><TextBlock Text="模型名称" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,6" /><TextBox x:Name="ModelBox" /></StackPanel>
+                    </Grid>
+                    <TextBlock Text="API Key" Foreground="{DynamicResource TextBrush}" Margin="0,12,0,6" />
+                    <PasswordBox x:Name="ApiKeyBox" AutomationProperties.Name="AI API Key" />
+                    <TextBlock Text="测试连接只发送一条简短测试消息，不发送软件日志。" Foreground="{DynamicResource MutedBrush}" Margin="0,12,0,0" TextWrapping="Wrap" />
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+        <TextBlock x:Name="StatusText" Grid.Row="2" Foreground="{DynamicResource DialogMutedBrush}" Margin="0,0,340,0" TextWrapping="Wrap" VerticalAlignment="Center" />
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="取消" IsCancel="True" /><Button x:Name="TestButton" Content="测试连接" Click="Test_Click" />
+            <Button x:Name="SaveButton" Content="保存" Style="{StaticResource PrimaryDialogButton}" Click="Save_Click" />
+        </StackPanel>
+    </Grid></Border>
+</local:PanelModalWindow>

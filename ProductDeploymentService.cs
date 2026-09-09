@@ -914,7 +914,7 @@ public sealed class ProductDeploymentService
             throw new InvalidOperationException($"Tomcat 产品目录必须位于产品安装根目录内：{appRoot}");
         }
 
-        var docBase = FindTomcatDocBase(preparedPath)
+        var docBase = product.ExternalJavaDocBase ?? FindTomcatDocBase(preparedPath)
             ?? throw new InvalidDataException("Tomcat 产品包中未找到 WAR 文件或 WEB-INF 目录，请重新下载完整产品包后重试。");
         DeleteDirectoryIfExists(Path.Combine(tomcatRoot, "webapps", contextName));
         DeleteFileIfExists(Path.Combine(tomcatRoot, "webapps", $"{contextName}.war"));
@@ -1212,7 +1212,7 @@ public sealed class ProductDeploymentService
         var port = SelectIisPort(appcmd, "MCPanel");
         var appPath = $"/{safeName}";
         var poolName = safeName;
-        var managedRuntimeVersion = DetectIisManagedRuntime(appRoot);
+        var managedRuntimeVersion = product.ExternalIisRuntime ?? DetectIisManagedRuntime(appRoot);
         var siteRoot = Path.Combine(ComponentPaths.RuntimeRoot, "IISRoot");
         Directory.CreateDirectory(siteRoot);
         var indexFile = Path.Combine(siteRoot, "index.html");
@@ -1548,21 +1548,6 @@ public sealed class ProductDeploymentService
             TomcatComponentRequirements.WebAppsDirectory);
     }
 
-    private static string? FindWar(string preparedPath)
-    {
-        if (File.Exists(preparedPath) && preparedPath.EndsWith(".war", StringComparison.OrdinalIgnoreCase))
-        {
-            return preparedPath;
-        }
-
-        if (!Directory.Exists(preparedPath))
-        {
-            return null;
-        }
-
-        return Directory.GetFiles(preparedPath, "*.war", SearchOption.AllDirectories).FirstOrDefault();
-    }
-
     private static void ExtractZipSafely(string archivePath, string targetDirectory)
     {
         var targetRoot = Path.GetFullPath(targetDirectory).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
@@ -1588,25 +1573,9 @@ public sealed class ProductDeploymentService
 
     internal static string? FindTomcatDocBase(string preparedPath)
     {
-        var war = FindWar(preparedPath);
-        if (!string.IsNullOrWhiteSpace(war))
-        {
-            return war;
-        }
-
-        if (!Directory.Exists(preparedPath))
-        {
-            return null;
-        }
-
-        if (Directory.Exists(Path.Combine(preparedPath, "WEB-INF")))
-        {
-            return preparedPath;
-        }
-
-        var webInf = Directory.EnumerateDirectories(preparedPath, "WEB-INF", SearchOption.AllDirectories).FirstOrDefault();
-
-        return webInf is null ? null : Directory.GetParent(webInf)?.FullName;
+        var targets = LocalPlatformInspection.FindJavaTargets(preparedPath);
+        if (targets.Count > 1) throw new InvalidDataException("发现多个 Java 应用，请通过手动绑定选择具体的软件目录和应用。");
+        return targets.FirstOrDefault();
     }
 
     private static string NormalizeProductRoot(string productRoot)

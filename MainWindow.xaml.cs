@@ -134,6 +134,8 @@ public partial class MainWindow : Window
             // reads tiny progress/heartbeat files and owns durable install recovery.
             _productInstallQueue.Tick();
             _model.InstallationProgress.Tick();
+            if (_monitoringStarted)
+                _ = _model.RefreshWebsiteStatesAsync(IsVisible && SitesPage.IsVisible, WindowState == WindowState.Minimized);
 
             if (!_monitoringStarted)
             {

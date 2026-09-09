@@ -24,7 +24,10 @@ namespace MCPanel;
 
 public partial class MainWindow
 {
-    private void WebsiteSearch_TextChanged(object sender, TextChangedEventArgs e) => WebsiteListScroll?.ScrollToTop();
+    private void WebsiteSearch_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (WebsiteListScroll?.Items.Count > 0) WebsiteListScroll.ScrollIntoView(WebsiteListScroll.Items[0]);
+    }
 
     private void ClearWebsiteSearch_Click(object sender, RoutedEventArgs e)
     {
@@ -54,7 +57,7 @@ public partial class MainWindow
         e.Handled = true;
     }
 
-    private async Task BindPlatformAsync(bool java)
+    private async Task BindPlatformAsync(bool java, ManualPlatformDefinition? existing = null)
     {
         PlatformBindingMenu.IsOpen = false;
         BindPlatformButton.IsEnabled = false;
@@ -62,25 +65,34 @@ public partial class MainWindow
         try
         {
             var kind = java ? EnvironmentKind.Tomcat : EnvironmentKind.Iis;
-            if (!_runtimeService.GetState(kind).IsInstalled)
+            if (existing is null && !(await Task.Run(() => _runtimeService.GetState(kind))).IsInstalled)
             {
                 MessageBox.Show($"请先在“环境”页面安装 {(java ? "Tomcat Server" : "Web Server / IIS")}。", "平台绑定", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
-            var dialog = new PlatformBindingDialog(java) { Owner = this };
+            var dialog = new PlatformBindingDialog(java, existing) { Owner = this };
+            dialog.BindOperation = async (definition, token) =>
+            {
+                await Task.Run(() => new ManualPlatformStore().Save(definition), token);
+                selectedProduct = definition.ToProduct();
+                selectedProduct.IsBusy = true;
+                if (existing is not null && definition.Path.Equals(existing.Path, StringComparison.OrdinalIgnoreCase) &&
+                    definition.JavaDocBase == existing.JavaDocBase && definition.Architecture == existing.Architecture &&
+                    definition.DetectedArchitecture == existing.DetectedArchitecture && definition.IisRuntime == existing.IisRuntime)
+                    return "平台名称已保存。";
+                var result = await Task.Run(async () => java
+                    ? await _deploymentService.RepairTomcatBindingAsync(selectedProduct, definition.Path, token)
+                    : await _deploymentService.RepairIisBindingAsync(selectedProduct, definition.Path, token), token);
+                return result.Message;
+            };
             PanelThemeService.Apply(_isDarkThemeActive, dialog.Resources);
             if (dialog.ShowDialog() != true) return;
             var definition = dialog.Definition;
             if (definition is null) return;
-            // Persist before deployment so a failed bind remains discoverable and repairable.
-            new ManualPlatformStore().Save(definition);
-            selectedProduct = definition.ToProduct();
-            selectedProduct.IsBusy = true;
-            var result = java
-                ? await _deploymentService.RepairTomcatBindingAsync(selectedProduct, definition.Path)
-                : await _deploymentService.RepairIisBindingAsync(selectedProduct, definition.Path);
-            _model.WebsiteSearchKeyword = selectedProduct.ProductId;
-            MessageBox.Show(result.Message, "平台绑定", MessageBoxButton.OK, MessageBoxImage.Information);
+            _model.WebsiteSearchKeyword = definition.Name;
+            _model.WebsiteOperationText = "已完成绑定：" + definition.Name;
+            if (!string.IsNullOrWhiteSpace(dialog.ResultMessage))
+                MessageBox.Show(dialog.ResultMessage!, "平台绑定", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {

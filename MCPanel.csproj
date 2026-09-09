@@ -6,15 +6,16 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <DefaultItemExcludes>$(DefaultItemExcludes);artifacts\**</DefaultItemExcludes>
     <UseWPF>true</UseWPF>
     <ApplicationIcon>Assets\AppIcon\mcpanel-logo.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <NoWarn>$(NoWarn);SYSLIB0039</NoWarn>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
-    <Version>1.3.34</Version>
-    <FileVersion>1.3.34.0</FileVersion>
-    <AssemblyVersion>1.3.34.0</AssemblyVersion>
+    <Version>1.3.35</Version>
+    <FileVersion>1.3.35.0</FileVersion>
+    <AssemblyVersion>1.3.35.0</AssemblyVersion>
   </PropertyGroup>
 
   <ItemGroup>

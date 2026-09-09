@@ -707,6 +707,7 @@
                                         <RadioButton Content="浅色" Tag="Light" GroupName="ThemeMode" Style="{StaticResource ThemeSegmentButton}" Margin="0,0,8,0" IsChecked="{Binding IsThemeLightSelected, Mode=OneWay}" Click="ThemeMode_Click" />
                                         <RadioButton Content="夜间" Tag="Dark" GroupName="ThemeMode" Style="{StaticResource ThemeSegmentButton}" IsChecked="{Binding IsThemeDarkSelected, Mode=OneWay}" Click="ThemeMode_Click" />
                                     </UniformGrid>
+                                    <Button Content="AI 模型设置" HorizontalAlignment="Left" Margin="0,12,0,0" Height="32" Style="{StaticResource RoundedRectTonalButton}" Click="AiSettings_Click" />
                                 </StackPanel>
                             </Border>
                         </Grid>
@@ -890,6 +891,7 @@
                       KeyboardNavigation.TabNavigation="Local">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
                     <Border Style="{StaticResource Card}" Padding="18,14">
@@ -938,31 +940,47 @@
                             </Grid>
                         </Grid>
                     </Border>
-                    <ScrollViewer x:Name="WebsiteListScroll" Grid.Row="1" Margin="0,12,0,0" VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Disabled"
-                                  Visibility="{Binding WebsiteContentVisibility}">
-                        <ScrollViewer.Resources>
+                    <StackPanel Grid.Row="1" Margin="0,10,0,0">
+                        <Grid>
+                            <Grid.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries>
+                                <ResourceDictionary Source="Resources/PanelDialogControls.xaml" />
+                            </ResourceDictionary.MergedDictionaries></ResourceDictionary></Grid.Resources>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="132" /><ColumnDefinition Width="142" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <ComboBox SelectedIndex="{Binding WebsiteTypeFilter}" Height="32" Margin="0,0,8,0" AutomationProperties.Name="网站类型筛选">
+                                <ComboBoxItem Content="全部平台" /><ComboBoxItem Content="Java 平台" /><ComboBoxItem Content=".NET / IIS" />
+                            </ComboBox>
+                            <ComboBox Grid.Column="1" SelectedIndex="{Binding WebsiteStateFilter}" Height="32" Margin="0,0,12,0" AutomationProperties.Name="网站状态筛选">
+                                <ComboBoxItem Content="全部状态" /><ComboBoxItem Content="服务运行中" /><ComboBoxItem Content="停止或待检查" />
+                            </ComboBox>
+                            <CheckBox Grid.Column="2" Content="紧凑视图" IsChecked="{Binding CompactWebsites}" VerticalAlignment="Center" />
+                            <Button Grid.Column="4" Content="刷新状态" Height="32" Click="RefreshWebsiteStates_Click" ToolTip="批量更新服务状态，不扫描软件目录或访问网页" />
+                        </Grid>
+                        <TextBlock Text="{Binding WebsiteOperationText}" Foreground="{DynamicResource MutedBrush}" FontSize="11" TextTrimming="CharacterEllipsis" Margin="2,6,0,0" />
+                        <Border Visibility="{Binding WebsiteRecordErrorVisibility}" Background="{DynamicResource WarningBrush}" CornerRadius="6" Padding="10" Margin="0,8,0,0">
+                            <DockPanel><Button DockPanel.Dock="Right" Content="恢复平台记录备份" Style="{StaticResource WebsiteActionButton}" Click="RestorePlatformRecords_Click" Margin="12,0,0,0" />
+                                <TextBlock Text="{Binding WebsiteRecordError}" Foreground="{DynamicResource WarningTextBrush}" TextWrapping="Wrap" /></DockPanel>
+                        </Border>
+                    </StackPanel>
+                    <ListBox x:Name="WebsiteListScroll" Grid.Row="2" Margin="0,10,0,0" ItemsSource="{Binding WebsiteView}" ItemTemplate="{StaticResource WebsiteRowTemplate}"
+                        BorderThickness="0" Background="Transparent" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                        ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                        VirtualizingPanel.ScrollUnit="Pixel" VirtualizingPanel.CacheLength="1" Visibility="{Binding WebsiteContentVisibility}">
+                        <ListBox.Resources>
                             <Style TargetType="ScrollBar" BasedOn="{StaticResource ModernVerticalScrollBar}" />
-                        </ScrollViewer.Resources>
-                        <StackPanel>
-                            <TextBlock Text="自定义 IIS 网站" Visibility="{Binding CustomWebsiteGroupVisibility}" Foreground="{DynamicResource TextBrush}" FontSize="14" FontWeight="SemiBold" Margin="2,0,0,9" />
-                            <ItemsControl ItemsSource="{Binding VisibleCustomWebsites}" ItemTemplate="{StaticResource CustomWebsiteCardTemplate}">
-                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-                            </ItemsControl>
-                            <TextBlock Text="已安装产品网站" Visibility="{Binding InstalledWebsiteGroupVisibility}" Foreground="{DynamicResource TextBrush}" FontSize="14" FontWeight="SemiBold" Margin="2,8,0,9" />
-                            <ItemsControl ItemsSource="{Binding VisibleInstalledWebsites}" ItemTemplate="{StaticResource InstalledProductCardTemplate}">
-                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-                            </ItemsControl>
-                        </StackPanel>
-                    </ScrollViewer>
-                    <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,12,0,0" Padding="24" Visibility="{Binding WebsiteNoResultsVisibility}">
+                        </ListBox.Resources>
+                        <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem">
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" /><Setter Property="Padding" Value="0" />
+                            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><ContentPresenter /></ControlTemplate></Setter.Value></Setter>
+                        </Style></ListBox.ItemContainerStyle>
+                    </ListBox>
+                    <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,12,0,0" Padding="24" Visibility="{Binding WebsiteNoResultsVisibility}">
                         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                             <TextBlock Text="没有找到匹配的网站" Foreground="{DynamicResource TextBrush}" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center" />
                             <TextBlock Text="试试软件名称、编号或域名的一部分，或清除搜索查看全部网站。" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" TextAlignment="Center" Margin="0,10,0,16" />
                             <Button Content="清除搜索" Style="{StaticResource WebsitePrimaryActionButton}" HorizontalAlignment="Center" Click="ClearWebsiteSearch_Click" />
                         </StackPanel>
                     </Border>
-                    <Border Grid.Row="1"
+                    <Border Grid.Row="2"
                             Margin="0,12,0,0"
                             Padding="28"
                             Style="{StaticResource Card}"

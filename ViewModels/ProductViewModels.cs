@@ -41,15 +41,19 @@ public sealed class CustomWebsiteItem : INotifyPropertyChanged
     public string Url { get; }
     public string StatusText { get; private set; }
     public Brush StatusBrush { get; private set; }
+    public bool IsRunning { get; private set; }
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    internal void RefreshStatus(IisWebsiteStatusProbe probe)
+    internal void RefreshStatus(IisWebsiteStatusProbe probe, bool? directoryExists = null)
     {
-        var status = Directory.Exists(PhysicalPath) ? probe.Get(Definition) : new IisWebsiteStatus("网站目录缺失", false);
+        var status = (directoryExists ?? Directory.Exists(PhysicalPath)) ? probe.Get(Definition) : new IisWebsiteStatus("网站目录缺失", false);
+        if (StatusText == status.Text && IsRunning == status.Running) return;
         StatusText = status.Text;
+        IsRunning = status.Running;
         StatusBrush = status.Running ? Brushes.MediumSeaGreen : Brushes.Goldenrod;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusText)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusBrush)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsRunning)));
     }
     public string DomainSummary => Definition.Domains.Count == 0
         ? $"所有主机 · HTTP :{Definition.HttpPort}"
@@ -72,6 +76,10 @@ public sealed class InstalledProductItem : ObservableObject
     private bool _isTomcatDeployment;
     private bool _isManagementExpanded;
     private TomcatProductRuntimeMode _tomcatRuntimeMode = TomcatProductRuntimeMode.Stopped;
+    private int _tomcatPort;
+    private IisProductDeploymentInfo? _iisInfo;
+    internal int RuntimePort => _tomcatPort;
+    internal IisProductDeploymentInfo? IisInfo => _iisInfo;
 
     public InstalledProductItem(ProductItem product, string installPath)
     {
@@ -144,7 +152,7 @@ public sealed class InstalledProductItem : ObservableObject
                 return "IIS 部署";
             }
 
-            var port = GetTomcatDeploymentPort();
+            var port = _tomcatPort;
             return port is > 0 and <= 65535
                 ? $"Tomcat 独立端口 :{port}"
                 : "Tomcat 端口待自动修复";
@@ -170,10 +178,13 @@ public sealed class InstalledProductItem : ObservableObject
             DomainDisplayText = "独立域名：配置状态不可读";
         }
 
-        var tomcatDeployment = FindTomcatDeployment();
+        _iisInfo = ProductDeploymentService.LoadIisDeploymentInfo(ProductId);
+        var tomcatDeployment = _iisInfo is null || Product.RunEnvironment?.IndexOf("Tomcat", StringComparison.OrdinalIgnoreCase) >= 0
+            ? FindTomcatDeployment() : null;
         if (tomcatDeployment is not null)
         {
             IsTomcatDeployment = true;
+            _tomcatPort = tomcatDeployment.Value.Port;
             if (tomcatDeployment.Value.Port is <= 0 or > 65535)
             {
                 SiteDisplayText = $"Tomcat / {ProductId}";
@@ -185,7 +196,8 @@ public sealed class InstalledProductItem : ObservableObject
                 return;
             }
 
-            var runtime = TomcatProductInstanceManager.GetRuntimeInfo(ProductId);
+            var runtime = WebsiteRuntimeSnapshot.Latest.Tomcat.TryGetValue(ProductId, out var cachedRuntime) ? cachedRuntime
+                : new TomcatProductRuntimeInfo(TomcatProductRuntimeMode.Stopped, _tomcatPort, false);
             TomcatRuntimeMode = runtime.Mode;
 
             SiteDisplayText = $"Tomcat / {ProductId}";
@@ -217,7 +229,7 @@ public sealed class InstalledProductItem : ObservableObject
             return;
         }
         TomcatRuntimeMode = TomcatProductRuntimeMode.Stopped;
-        var info = ProductDeploymentService.LoadIisDeploymentInfo(ProductId);
+        var info = _iisInfo;
         if (info is null)
         {
             RuntimeStatusText = "未绑定";
@@ -229,17 +241,34 @@ public sealed class InstalledProductItem : ObservableObject
             return;
         }
 
-        var properties = IPGlobalProperties.GetIPGlobalProperties();
-        var listening = properties.GetActiveTcpListeners().Any(endpoint => endpoint.Port == info.Port);
-
         SiteDisplayText = $"{info.SiteName} {info.ApplicationPath}";
         PoolDisplayText = $"应用程序池：{info.ApplicationPool}";
         Url = info.Url;
 
-        RuntimeStatusText = listening ? "运行中" : "已绑定，未运行";
-        RuntimeStatusBrush = listening ? Brushes.MediumSeaGreen : Brushes.Goldenrod;
+        ApplyRuntimeSnapshot(WebsiteRuntimeSnapshot.Latest);
+    }
 
-        CanBrowse = listening;
+    internal void ApplyRuntimeSnapshot(WebsiteRuntimeSnapshot snapshot)
+    {
+        if (Product.IsBusy) return;
+        if (snapshot.Directories.TryGetValue(InstallPath, out var exists) && !exists)
+        {
+            RuntimeStatusText = "软件目录缺失"; RuntimeStatusBrush = Brushes.IndianRed; CanBrowse = false; return;
+        }
+        if (IsTomcatDeployment && snapshot.Tomcat.TryGetValue(ProductId, out var runtime))
+        {
+            TomcatRuntimeMode = runtime.Mode;
+            CanBrowse = runtime.IsRunning && runtime.PortListening;
+            RuntimeStatusText = TomcatProductInstanceManager.FormatRuntimeStatus(runtime);
+            RuntimeStatusBrush = CanBrowse ? Brushes.MediumSeaGreen : Brushes.Goldenrod;
+        }
+        else if (_iisInfo is not null)
+        {
+            var state = snapshot.Iis.Get(_iisInfo.SiteName, _iisInfo.ApplicationPool, _iisInfo.ApplicationPath);
+            RuntimeStatusText = state.Running ? "服务运行中" : state.Text;
+            CanBrowse = state.Running;
+            RuntimeStatusBrush = state.Running ? Brushes.MediumSeaGreen : Brushes.Goldenrod;
+        }
     }
 
     public string? GetTomcatDeploymentPath() => FindTomcatDeployment()?.Path;
@@ -1048,6 +1077,8 @@ public sealed class ProductItem(string productId, string name, string level, str
     /// <summary>Original catalog Url: an optional product installation root, not a package URL.</summary>
     public string? InstallRoot { get; init; }
     public string? ExternalInstallPath { get; init; }
+    public string? ExternalJavaDocBase { get; init; }
+    public string? ExternalIisRuntime { get; init; }
     public bool IsExternalPlatform => !string.IsNullOrWhiteSpace(ExternalInstallPath);
     /// <summary>Original catalog SysType, normally 32 or 64.</summary>
     public string? SysType { get; init; }

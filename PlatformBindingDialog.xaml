@@ -17,7 +17,7 @@
             <Border Grid.Row="1" Style="{StaticResource PanelModalContentCard}" Margin="0,20,0,18" Padding="18">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <ScrollViewer.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ModernVerticalScrollBar}" /></ScrollViewer.Resources>
-                    <StackPanel>
+                    <StackPanel x:Name="FormPanel">
                         <TextBlock Text="平台名称" Foreground="{DynamicResource DialogMutedBrush}" Margin="0,0,0,6" />
                         <TextBox x:Name="NameBox" MaxLength="100" TextChanged="Input_Changed" AutomationProperties.Name="平台名称" ToolTip="自定义显示在网站列表中的名称" />
                         <TextBlock Text="软件目录" Foreground="{DynamicResource DialogMutedBrush}" Margin="0,18,0,6" />
@@ -26,16 +26,35 @@
                             <TextBox x:Name="PathBox" TextChanged="Input_Changed" AutomationProperties.Name="软件目录" ToolTip="输入完整路径，或点击右侧按钮选择文件夹" />
                             <Button x:Name="BrowseButton" Grid.Column="1" Content="选择文件夹" Margin="10,0,0,0" Click="Browse_Click" />
                         </Grid>
+                        <StackPanel x:Name="JavaTargetPanel" Visibility="Collapsed" Margin="0,14,0,0">
+                            <TextBlock Text="部署的 Java 应用" Foreground="{DynamicResource DialogMutedBrush}" Margin="0,0,0,6" />
+                            <ComboBox x:Name="JavaTargetBox" AutomationProperties.Name="部署的 Java 应用" />
+                        </StackPanel>
+                        <Expander x:Name="DotNetOptions" Header="高级设置" Foreground="{DynamicResource TextBrush}" Margin="0,14,0,0">
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="16" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <StackPanel><TextBlock Text="运行架构" Margin="0,0,0,6" />
+                                    <ComboBox x:Name="ArchitectureBox" SelectedIndex="0" SelectedValuePath="Tag">
+                                        <ComboBoxItem Content="自动识别（推荐）" Tag="Auto" /><ComboBoxItem Content="64 位（x64）" Tag="64" /><ComboBoxItem Content="32 位（x86）" Tag="32" />
+                                    </ComboBox>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2"><TextBlock Text="IIS 运行时" Margin="0,0,0,6" />
+                                    <ComboBox x:Name="IisRuntimeBox" SelectedIndex="0" SelectedValuePath="Tag">
+                                        <ComboBoxItem Content="自动识别（推荐）" Tag="Auto" /><ComboBoxItem Content=".NET Framework 4.x" Tag="v4.0" /><ComboBoxItem Content=".NET Framework 2.0 / 3.5" Tag="v2.0" /><ComboBoxItem Content="ASP.NET Core / 无托管代码" Tag="" />
+                                    </ComboBox>
+                                </StackPanel>
+                            </Grid>
+                        </Expander>
                         <TextBlock x:Name="HintText" Foreground="{DynamicResource DialogMutedBrush}" TextWrapping="Wrap" Margin="0,16,0,0" />
                         <TextBlock Text="直接使用所选目录，不搬移软件文件。解除绑定时保留原目录；绑定信息会保存到面板。" Foreground="{DynamicResource DialogMutedBrush}" TextWrapping="Wrap" Margin="0,8,0,0" />
-                        <TextBlock x:Name="StatusText" Foreground="{DynamicResource DangerTextBrush}" TextWrapping="Wrap" Margin="0,10,0,0" />
                     </StackPanel>
                 </ScrollViewer>
             </Border>
             <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Content="取消" IsCancel="True" />
+                <Button x:Name="CancelButton" Content="取消" Click="Cancel_Click" />
                 <Button x:Name="BindButton" Content="确认绑定" IsEnabled="False" IsDefault="True" Style="{StaticResource PrimaryDialogButton}" Click="Bind_Click" />
             </StackPanel>
+            <TextBlock x:Name="StatusText" Grid.Row="2" Foreground="{DynamicResource DialogMutedBrush}" TextWrapping="Wrap" Margin="0,0,280,0" VerticalAlignment="Center" />
         </Grid>
     </Border>
 </local:PanelModalWindow>

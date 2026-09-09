@@ -100,6 +100,10 @@ public partial class MainWindowTemplates : ResourceDictionary
 
     private void InstalledProductManageToggle_Click(object sender, RoutedEventArgs e) =>
         GetOwner(sender)?.InstalledProductManageToggle_Click(sender, e);
+    private void EditLocalPlatform_Click(object sender, RoutedEventArgs e) => GetOwner(sender)?.EditLocalPlatform_Click(sender, e);
+    private void ProbeWebsite_Click(object sender, RoutedEventArgs e) => GetOwner(sender)?.ProbeWebsite_Click(sender, e);
+    private void PinWebsite_Click(object sender, RoutedEventArgs e) => GetOwner(sender)?.PinWebsite_Click(sender, e);
+    private void ExpandWebsite_Click(object sender, RoutedEventArgs e) => GetOwner(sender)?.ExpandWebsite_Click(sender, e);
 
     private void InstalledProductTomcatAction_Click(object sender, RoutedEventArgs e) =>
         GetOwner(sender)?.InstalledProductTomcatAction_Click(sender, e);

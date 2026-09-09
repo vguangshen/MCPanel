@@ -10,6 +10,8 @@ internal sealed class IisWebsiteStatusProbe
     private readonly Dictionary<string, string> _sites;
     private readonly Dictionary<string, string> _pools;
     private readonly bool _available;
+    private HashSet<string>? _applications;
+    internal static IisWebsiteStatusProbe Unavailable => new(new(StringComparer.OrdinalIgnoreCase), new(StringComparer.OrdinalIgnoreCase), false);
 
     private IisWebsiteStatusProbe(Dictionary<string, string> sites, Dictionary<string, string> pools, bool available)
     {
@@ -30,7 +32,10 @@ internal sealed class IisWebsiteStatusProbe
                 if (result.ExitCode != 0) throw new IOException(result.CombinedOutput);
                 return result.StandardOutput;
             }
-            return Parse(Query("site"), Query("apppool"));
+            var probe = Parse(Query("site"), Query("apppool"));
+            probe._applications = XDocument.Parse(Query("app")).Descendants("APP")
+                .Select(node => (string?)node.Attribute("APP.NAME") ?? string.Empty).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            return probe;
         }
         catch
         {
@@ -53,10 +58,15 @@ internal sealed class IisWebsiteStatusProbe
     }
 
     internal IisWebsiteStatus Get(CustomWebsiteDefinition definition)
+        => Get(definition.Name, definition.ApplicationPoolName);
+
+    internal IisWebsiteStatus Get(string siteName, string poolName, string? applicationPath = null)
     {
         if (!_available) return new("状态未知（无法查询 IIS）", false);
-        if (!_sites.TryGetValue(definition.Name, out var site)) return new("IIS 网站不存在", false);
-        if (!_pools.TryGetValue(definition.ApplicationPoolName, out var pool)) return new("应用程序池不存在", false);
+        if (!_sites.TryGetValue(siteName, out var site)) return new("IIS 网站不存在", false);
+        if (!_pools.TryGetValue(poolName, out var pool)) return new("应用程序池不存在", false);
+        if (applicationPath is not null && _applications is not null &&
+            !_applications.Contains(siteName + "/" + applicationPath.Trim('/'))) return new("IIS 应用不存在", false);
         if (site.Equals("Stopped", StringComparison.OrdinalIgnoreCase)) return new("网站已停止", false);
         if (pool.Equals("Stopped", StringComparison.OrdinalIgnoreCase)) return new("应用程序池已停止", false);
         return site.Equals("Started", StringComparison.OrdinalIgnoreCase) && pool.Equals("Started", StringComparison.OrdinalIgnoreCase)

@@ -9,6 +9,13 @@ namespace MCPanel;
 
 public partial class AiAnalysisPage : UserControl, INotifyPropertyChanged, IDisposable
 {
+    private void AiSettings_Click(object sender, RoutedEventArgs e)
+    {
+        var owner = Window.GetWindow(this);
+        var dialog = new AiSettingsDialog { Owner = owner };
+        if (owner is MainWindow main) PanelThemeService.Apply(main.IsDarkThemeActive, dialog.Resources);
+        dialog.ShowDialog();
+    }
     private readonly AiAnalysisService _analysisService = new();
     private readonly LogCollectorService _logCollector = new();
     private CancellationTokenSource? _operationCancellation;

@@ -133,6 +133,43 @@ public sealed class TomcatProductInstanceManager
         return new TomcatProductRuntimeInfo(TomcatProductRuntimeMode.Stopped, port, false);
     }
 
+    // One process/port snapshot for the entire website page, not one WMI/netstat per card.
+    internal static IReadOnlyDictionary<string, TomcatProductRuntimeInfo> CaptureWebsiteRuntime(
+        IReadOnlyList<(string Id, int Port)> products, CancellationToken token)
+    {
+        var result = new Dictionary<string, TomcatProductRuntimeInfo>(StringComparer.OrdinalIgnoreCase);
+        if (products.Count == 0) return result;
+        token.ThrowIfCancellationRequested();
+        var ports = GetActiveTcpPorts();
+        var java = EnumerateJavaProcesses().ToArray();
+        var home = FindTomcatRoot();
+        var shared = home is not null && (TomcatWindowsServiceManager.IsRunningForRoot(home) ||
+            java.Any(process => ContainsJavaOptionPath(process.CommandLine, "-Dcatalina.base", home)));
+        string netstat = string.Empty;
+        if (products.Any(product => ports.Contains(product.Port)))
+        {
+            try { netstat = ProcessRunner.RunSynchronously(Path.Combine(Environment.SystemDirectory, "netstat.exe"),
+                "-ano -p tcp", captureOutput: true, timeout: TimeSpan.FromSeconds(4)).StandardOutput; }
+            catch { }
+        }
+        foreach (var product in products)
+        {
+            token.ThrowIfCancellationRequested();
+            var listening = ports.Contains(product.Port);
+            var root = GetInstanceRoot(product.Id);
+            var process = java.FirstOrDefault(item => ContainsJavaOptionPath(item.CommandLine, "-Dcatalina.base", root));
+            var owners = ParseNetstatListeningProcessIds(netstat, new[] { product.Port });
+            var recorded = ReadInstanceProcessId(root);
+            var pid = process?.ProcessId ?? (recorded.HasValue && owners.Contains(recorded.Value) &&
+                java.Any(item => item.ProcessId == recorded.Value) ? recorded : null);
+            var mode = pid.HasValue ? (ReadInstanceRunMode(root) == "Catalina" ? TomcatProductRuntimeMode.Catalina : TomcatProductRuntimeMode.Independent)
+                : shared && listening ? TomcatProductRuntimeMode.Shared
+                : listening ? TomcatProductRuntimeMode.PortConflict : TomcatProductRuntimeMode.Stopped;
+            result[product.Id] = new TomcatProductRuntimeInfo(mode, product.Port, listening, pid);
+        }
+        return result;
+    }
+
     public static IReadOnlyList<string> GetRunningProductIds() =>
         ProductDeploymentService.LoadTomcatDeploymentInfos()
             .Select(info => info.ProductId)
@@ -951,6 +988,7 @@ public sealed class TomcatProductInstanceManager
         {
             using var searcher = new ManagementObjectSearcher(
                 "SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name='java.exe' OR Name='javaw.exe'");
+            searcher.Options.Timeout = TimeSpan.FromSeconds(4);
             using var results = searcher.Get();
             return results.Cast<ManagementObject>()
                 .Select(item => new

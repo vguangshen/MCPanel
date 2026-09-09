@@ -162,9 +162,7 @@
                     <TextBlock Text="采集真实组件日志，由已配置的大模型定位故障根因并生成可执行的修复步骤。"
                                FontSize="13" Margin="0,7,0,0"
                                Foreground="{DynamicResource MutedBrush}" />
-                    <TextBlock Text="模型配置读取自 MCPanel.exe.config，修改后重新开始分析即可生效。"
-                               FontSize="12" Margin="0,5,0,0"
-                               Foreground="{DynamicResource MutedBrush}" />
+                    <Button Content="模型设置" Click="AiSettings_Click" HorizontalAlignment="Left" Margin="0,6,0,0" Padding="12,5" />
                     <TextBlock Text="开始分析前请检查左侧脱敏后的日志预览；点击分析后，日志会发送到已配置的模型服务。"
                                FontSize="12" Margin="0,5,0,0" TextWrapping="Wrap"
                                Foreground="{DynamicResource MutedBrush}" />
