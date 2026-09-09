@@ -86,6 +86,7 @@ public sealed class InstalledProductItem : ObservableObject
     public string IconPath => Product.IconPath;
     public string EnvironmentSummary => Product.EnvironmentSummary;
     public string InstallPath { get; }
+    public string RemoveActionText => Product.IsExternalPlatform ? "解除绑定" : "卸载";
     public string RuntimeStatusText { get => _runtimeStatusText; private set => SetProperty(ref _runtimeStatusText, value); }
     public Brush RuntimeStatusBrush { get => _runtimeStatusBrush; private set => SetProperty(ref _runtimeStatusBrush, value); }
     public string SiteDisplayText { get => _siteDisplayText; private set => SetProperty(ref _siteDisplayText, value); }
@@ -204,7 +205,17 @@ public sealed class InstalledProductItem : ObservableObject
             return;
         }
 
-        IsTomcatDeployment = false;
+        IsTomcatDeployment = Product.IsExternalPlatform && Product.RunEnvironment == "Tomcat";
+        if (IsTomcatDeployment)
+        {
+            RuntimeStatusText = Directory.Exists(InstallPath) ? "尚未完成绑定" : "软件目录缺失";
+            RuntimeStatusBrush = Brushes.IndianRed;
+            SiteDisplayText = $"Tomcat / {ProductId}";
+            PoolDisplayText = "可通过管理菜单修复绑定";
+            Url = string.Empty;
+            CanBrowse = false;
+            return;
+        }
         TomcatRuntimeMode = TomcatProductRuntimeMode.Stopped;
         var info = ProductDeploymentService.LoadIisDeploymentInfo(ProductId);
         if (info is null)
@@ -1036,6 +1047,8 @@ public sealed class ProductItem(string productId, string name, string level, str
     public string? DevLanguage { get; init; }
     /// <summary>Original catalog Url: an optional product installation root, not a package URL.</summary>
     public string? InstallRoot { get; init; }
+    public string? ExternalInstallPath { get; init; }
+    public bool IsExternalPlatform => !string.IsNullOrWhiteSpace(ExternalInstallPath);
     /// <summary>Original catalog SysType, normally 32 or 64.</summary>
     public string? SysType { get; init; }
     /// <summary>Whether the catalog source came from the original SVN field.</summary>
@@ -1047,7 +1060,9 @@ public sealed class ProductItem(string productId, string name, string level, str
     public string FamilyAndIdText { get; } = ResolveDisplayName(name, level, source).Equals(name, StringComparison.OrdinalIgnoreCase)
         ? productId
         : $"{name} · {productId}";
-    public string SourceText => Source == ProductSource.Online ? "来源：在线产品库" : "来源：旧包内置清单";
+    public string SourceText => IsExternalPlatform
+        ? "来源：本地手动绑定"
+        : Source == ProductSource.Online ? "来源：在线产品库" : "来源：旧包内置清单";
     public string InstallActionText => IsBusy
         ? "安装中"
         : QueueState == ProductInstallQueueStatus.Pending ? $"排队中 #{QueuePosition}" : "安装";

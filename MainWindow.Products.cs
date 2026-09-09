@@ -67,25 +67,18 @@ public partial class MainWindow
                 MessageBox.Show($"请先在“环境”页面安装 {(java ? "Tomcat Server" : "Web Server / IIS")}。", "平台绑定", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
-            var products = _model.Products.ToArray();
-            var candidates = await Task.Run(() => PlatformBindingDialog.FindCandidates(products, java));
-            var dialog = new PlatformBindingDialog(candidates, java) { Owner = this };
+            var dialog = new PlatformBindingDialog(java) { Owner = this };
             PanelThemeService.Apply(_isDarkThemeActive, dialog.Resources);
             if (dialog.ShowDialog() != true) return;
-            if (dialog.UseCustomIis)
-            {
-                await ShowCustomWebsiteDialogAsync(null);
-                return;
-            }
-            var candidate = dialog.SelectedCandidate;
-            if (candidate is null) return;
-            if (!candidate.Product.CanProductAction) throw new InvalidOperationException("该平台正在安装或更新，请等待任务完成后再绑定。");
-            selectedProduct = candidate.Product;
+            var definition = dialog.Definition;
+            if (definition is null) return;
+            // Persist before deployment so a failed bind remains discoverable and repairable.
+            new ManualPlatformStore().Save(definition);
+            selectedProduct = definition.ToProduct();
             selectedProduct.IsBusy = true;
             var result = java
-                ? await _deploymentService.RepairTomcatBindingAsync(selectedProduct, candidate.Path)
-                : await _deploymentService.RepairIisBindingAsync(selectedProduct, candidate.Path);
-            await _model.RefreshInstalledProductsAsync();
+                ? await _deploymentService.RepairTomcatBindingAsync(selectedProduct, definition.Path)
+                : await _deploymentService.RepairIisBindingAsync(selectedProduct, definition.Path);
             _model.WebsiteSearchKeyword = selectedProduct.ProductId;
             MessageBox.Show(result.Message, "平台绑定", MessageBoxButton.OK, MessageBoxImage.Information);
         }
@@ -97,6 +90,11 @@ public partial class MainWindow
         {
             if (selectedProduct is not null) selectedProduct.IsBusy = false;
             BindPlatformButton.IsEnabled = true;
+            if (selectedProduct is not null)
+            {
+                try { await _model.RefreshInstalledProductsAsync(); }
+                catch (Exception ex) { MessageBox.Show($"刷新平台列表失败：{ex.Message}", "平台绑定", MessageBoxButton.OK, MessageBoxImage.Warning); }
+            }
         }
     }
 
@@ -414,7 +412,7 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
         }
 
         if (MessageBox.Show(
-                $"确定卸载“{displayName}”吗？\n将移除 IIS/Tomcat/Nginx 绑定、端口、安装记录、SVN 工作副本和下载缓存，不保留该产品目录。",
+                product.IsExternalPlatform ? $"确定解除“{displayName}”的绑定吗？\n将移除平台运行绑定和面板记录，保留所选目录及软件文件。" : $"确定卸载“{displayName}”吗？\n将移除 IIS/Tomcat/Nginx 绑定、端口、安装记录、SVN 工作副本和下载缓存，不保留该产品目录。",
                 "卸载产品",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Question) != MessageBoxResult.Yes)

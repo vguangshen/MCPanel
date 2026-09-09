@@ -531,15 +531,18 @@ public sealed class ProductDeploymentService
                 var expectedTomcatPort = tomcatState?.Port ?? tomcatService?.Port;
                 await new TomcatProductInstanceManager().RemoveAsync(safeName, expectedTomcatPort, cancellationToken);
                 DeleteFileIfExists(GetTomcatContextFile(tomcatRoot, safeName));
-                DeleteDirectoryIfExists(Path.Combine(tomcatRoot, "webapps", safeName));
-                DeleteFileIfExists(Path.Combine(tomcatRoot, "webapps", $"{safeName}.war"));
+                if (!product.IsExternalPlatform)
+                {
+                    DeleteDirectoryIfExists(Path.Combine(tomcatRoot, "webapps", safeName));
+                    DeleteFileIfExists(Path.Combine(tomcatRoot, "webapps", $"{safeName}.war"));
+                }
                 await RemoveTomcatProductServiceAsync(tomcatRoot, safeName, cancellationToken);
 
                 // Each product Service uses a private webapps<port> appBase.
                 // It is not part of the SVN product root and therefore needs an
                 // explicit removal as well.
                 var appBase = tomcatState?.HostAppBase ?? tomcatService?.HostAppBase;
-                if (!string.IsNullOrWhiteSpace(appBase) && IsSafeTomcatAppBase(appBase!))
+                if (!product.IsExternalPlatform && !string.IsNullOrWhiteSpace(appBase) && IsSafeTomcatAppBase(appBase!))
                 {
                     DeleteDirectoryIfExists(Path.Combine(tomcatRoot, appBase));
                 }
@@ -553,7 +556,13 @@ public sealed class ProductDeploymentService
 
             ReportUninstallProgress(progress, 78, "正在删除产品目录、SVN 元数据、下载缓存和临时文件...");
             cancellationToken.ThrowIfCancellationRequested();
-            DeleteProductFiles(product, safeName);
+            if (product.IsExternalPlatform)
+            {
+                DeleteFileIfExists(GetIisStateFile(safeName));
+                DeleteFileIfExists(GetTomcatStateFile(safeName));
+                new ManualPlatformStore().Remove(product.ProductId);
+            }
+            else DeleteProductFiles(product, safeName);
             new ProductInstallOrderStore().Remove(product.ProductId);
             TomcatProductStartupManager.RefreshRegistration();
             ReportUninstallProgress(progress, 92, "正在同步剩余产品的 Nginx 路由和运行状态...");
@@ -589,6 +598,12 @@ public sealed class ProductDeploymentService
 
     public async Task<ProductDeploymentResult> RepairIisBindingAsync(ProductItem product, string installedPath, CancellationToken cancellationToken = default)
     {
+        if (product.IsExternalPlatform)
+        {
+            var externalResult = await DeployToIisAsync(product, installedPath, cancellationToken);
+            await NginxProductProxyService.TrySyncAsync(cancellationToken);
+            return externalResult;
+        }
         if (!Directory.Exists(installedPath))
         {
             throw new DirectoryNotFoundException($"产品安装目录不存在：{installedPath}");
@@ -606,6 +621,12 @@ public sealed class ProductDeploymentService
 
     public async Task<ProductDeploymentResult> RepairTomcatBindingAsync(ProductItem product, string installedPath, CancellationToken cancellationToken = default)
     {
+        if (product.IsExternalPlatform)
+        {
+            var externalResult = await DeployToTomcatAsync(product, installedPath, installedPath, cancellationToken);
+            await NginxProductProxyService.TrySyncAsync(cancellationToken);
+            return externalResult;
+        }
         if (!Directory.Exists(installedPath))
         {
             throw new DirectoryNotFoundException($"产品安装目录不存在：{installedPath}");
@@ -1565,7 +1586,7 @@ public sealed class ProductDeploymentService
         }
     }
 
-    private static string? FindTomcatDocBase(string preparedPath)
+    internal static string? FindTomcatDocBase(string preparedPath)
     {
         var war = FindWar(preparedPath);
         if (!string.IsNullOrWhiteSpace(war))
@@ -1827,6 +1848,7 @@ public sealed class ProductDeploymentService
 
     private static void DeleteProductFiles(ProductItem product, string safeName)
     {
+        if (product.IsExternalPlatform) throw new InvalidOperationException("本地平台仅允许解除绑定，不能删除用户软件目录。");
         var directories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             ProductInstallPathResolver.ResolveProductDirectory(product),

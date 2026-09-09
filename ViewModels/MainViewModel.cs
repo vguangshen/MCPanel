@@ -559,6 +559,11 @@ public sealed class MainViewModel : ObservableObject
             }
         }
 
+        foreach (var definition in new ManualPlatformStore().Load())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            installedProducts.Add((definition.ToProduct(), definition.Path, GetDirectoryCreationTimeUtc(definition.Path)));
+        }
         return installedProducts;
     }
 

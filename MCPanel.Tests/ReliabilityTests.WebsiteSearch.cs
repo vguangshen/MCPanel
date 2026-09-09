@@ -52,28 +52,6 @@ public sealed partial class ReliabilityTests
     }
 
     [TestMethod]
-    public void PlatformBindingCandidatesIncludeUnboundDownloadsAndExcludeWrongRuntimeAndBusyProducts()
-    {
-        var root = CreateTemporaryDirectory();
-        try
-        {
-            var java = new ProductItem("JAVA01", "Java 平台", "", "", ProductSource.Online) { InstallRoot = root, RunEnvironment = "Tomcat" };
-            var iis = new ProductItem("IIS01", "IIS 平台", "", "", ProductSource.Online) { InstallRoot = root, RunEnvironment = "Framework4.5" };
-            foreach (var product in new[] { java, iis })
-            {
-                var path = ProductInstallPathResolver.ResolveProductDirectory(product);
-                Directory.CreateDirectory(path);
-                File.WriteAllText(Path.Combine(path, "sample.txt"), "sample");
-            }
-            Assert.AreSame(java, PlatformBindingDialog.FindCandidates(new[] { java, iis }, true).Single().Product);
-            Assert.AreSame(iis, PlatformBindingDialog.FindCandidates(new[] { java, iis }, false).Single().Product);
-            java.IsBusy = true;
-            Assert.AreEqual(0, PlatformBindingDialog.FindCandidates(new[] { java, iis }, true).Count);
-        }
-        finally { Directory.Delete(root, true); }
-    }
-
-    [TestMethod]
     public void WebsiteToolbarAndBindingDialogRenderAcrossThemesAndWindowSizes()
     {
         RunWebsiteUiTest(() =>
@@ -141,14 +119,18 @@ public sealed partial class ReliabilityTests
                     }
                     foreach (var java in new[] { false, true })
                     {
-                        var dialog = new PlatformBindingDialog(Array.Empty<PlatformBindingCandidate>(), java) { Owner = window };
+                        var dialog = new PlatformBindingDialog(java) { Owner = window };
                         try
                         {
                             PanelThemeService.Apply(dark, dialog.Resources);
                             dialog.Show();
                             dialog.UpdateLayout();
                             Assert.IsFalse(((Button)dialog.FindName("BindButton")).IsEnabled);
-                            Assert.AreEqual(java ? Visibility.Collapsed : Visibility.Visible, ((Button)dialog.FindName("CustomIisButton")).Visibility);
+                            Assert.IsNull(dialog.FindName("ProductBox"));
+                            Assert.IsNotNull(dialog.FindName("BrowseButton"));
+                            ((TextBox)dialog.FindName("NameBox")).Text = "我的本地平台";
+                            ((TextBox)dialog.FindName("PathBox")).Text = @"D:\LocalSoftware";
+                            Assert.IsTrue(((Button)dialog.FindName("BindButton")).IsEnabled);
                         }
                         finally { dialog.Close(); }
                     }
@@ -156,6 +138,60 @@ public sealed partial class ReliabilityTests
             }
             finally { window.Close(); }
         });
+    }
+
+    [TestMethod]
+    public void ManualPlatformStorePersistsCustomNameAndKeepsUserDirectoryOnRemoval()
+    {
+        var root = CreateTemporaryDirectory();
+        var storeFile = Path.Combine(root, "state", "manual-platforms.json");
+        var software = Path.Combine(root, "My Local Shop");
+        Directory.CreateDirectory(Path.Combine(software, "WEB-INF"));
+        File.WriteAllText(Path.Combine(software, "index.html"), "local");
+        try
+        {
+            var store = new ManualPlatformStore(storeFile);
+            var definition = store.Prepare("我的本地 Java 平台", software, true);
+            store.Save(definition);
+
+            var loaded = new ManualPlatformStore(storeFile).Load();
+            Assert.AreEqual(1, loaded.Count);
+            Assert.AreEqual("我的本地 Java 平台", loaded[0].Name);
+            Assert.AreEqual(Path.GetFullPath(software), loaded[0].Path);
+            var product = loaded[0].ToProduct();
+            Assert.IsTrue(product.IsExternalPlatform);
+            Assert.AreEqual(loaded[0].Path, ProductInstallPathResolver.ResolveProductDirectory(product));
+
+            store.Remove(definition.Id);
+            Assert.AreEqual(0, new ManualPlatformStore(storeFile).Load().Count);
+            Assert.IsTrue(File.Exists(Path.Combine(software, "index.html")), "解除绑定不得删除用户软件目录。");
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
+    public void ManualPlatformStoreRejectsEmptyDirectoryAndInvalidJavaDirectory()
+    {
+        var root = CreateTemporaryDirectory();
+        try
+        {
+            var empty = Path.Combine(root, "empty");
+            Directory.CreateDirectory(empty);
+            var store = new ManualPlatformStore(Path.Combine(root, "state.json"));
+            Assert.ThrowsException<InvalidDataException>(() => store.Prepare("空目录", empty, false));
+
+            var nonJava = Path.Combine(root, "static");
+            Directory.CreateDirectory(nonJava);
+            File.WriteAllText(Path.Combine(nonJava, "index.html"), "static");
+            Assert.ThrowsException<InvalidDataException>(() => store.Prepare("错误 Java 目录", nonJava, true));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
     }
 
     private static void RunWebsiteUiTest(Action action)
@@ -174,3 +210,4 @@ public sealed partial class ReliabilityTests
         if (failure is not null) Assert.Fail(failure.ToString());
     }
 }
+

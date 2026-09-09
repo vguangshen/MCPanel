@@ -456,7 +456,7 @@
                             <Button Content="域名与 SSL" Style="{DynamicResource WebsiteActionButton}" Margin="0,0,8,0"
                                     VerticalAlignment="Center"
                                     Click="InstalledProductDomain_Click" />
-                            <Button Content="卸载" Style="{DynamicResource WebsiteDangerActionButton}" MinWidth="76"
+                            <Button Content="{Binding RemoveActionText}" Style="{DynamicResource WebsiteDangerActionButton}" MinWidth="76"
                                     VerticalAlignment="Center"
                                     Click="InstalledProductUninstall_Click" />
                         </WrapPanel>

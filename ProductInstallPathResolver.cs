@@ -14,6 +14,7 @@ internal static class ProductInstallPathResolver
     public static string ResolveProductDirectory(ProductItem product)
     {
         if (product is null) throw new ArgumentNullException(nameof(product));
+        if (product.IsExternalPlatform) return Path.GetFullPath(product.ExternalInstallPath!);
         return Path.Combine(ResolveProductRoot(product.InstallRoot), SafeName(product.ProductId));
     }
 
@@ -41,6 +42,7 @@ internal static class ProductInstallPathResolver
     public static bool IsInsideProductRoot(string path, ProductItem product)
     {
         var fullPath = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (product.IsExternalPlatform) return fullPath.Equals(Path.GetFullPath(product.ExternalInstallPath!).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar), StringComparison.OrdinalIgnoreCase);
         var root = ResolveProductRoot(product.InstallRoot)
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         return fullPath.Equals(root, StringComparison.OrdinalIgnoreCase) ||

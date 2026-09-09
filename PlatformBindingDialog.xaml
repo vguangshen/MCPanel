@@ -12,26 +12,30 @@
             <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
             <StackPanel>
                 <TextBlock x:Name="TitleText" Style="{StaticResource PanelModalTitle}" />
-                <TextBlock Text="选择已下载的平台，创建或修复运行环境绑定。" Style="{StaticResource PanelModalSubtitle}" />
+                <TextBlock Text="为本地软件命名并选择目录，即可添加到网站列表。" Style="{StaticResource PanelModalSubtitle}" />
             </StackPanel>
             <Border Grid.Row="1" Style="{StaticResource PanelModalContentCard}" Margin="0,20,0,18" Padding="18">
-                <StackPanel>
-                    <TextBlock Text="平台软件（输入名称或编号筛选）" Foreground="{DynamicResource DialogMutedBrush}" Margin="0,0,0,6" />
-                    <TextBox x:Name="SearchBox" TextChanged="Search_TextChanged" AutomationProperties.Name="筛选待绑定平台" />
-                    <ComboBox x:Name="ProductBox" Margin="0,8,0,0" DisplayMemberPath="Label" SelectionChanged="Product_SelectionChanged" AutomationProperties.Name="选择待绑定平台" />
-                    <TextBlock Text="软件目录" Foreground="{DynamicResource DialogMutedBrush}" Margin="0,16,0,6" />
-                    <TextBox x:Name="PathBox" IsReadOnly="True" AutomationProperties.Name="待绑定软件目录" />
-                    <TextBlock x:Name="HintText" Foreground="{DynamicResource DialogMutedBrush}" TextWrapping="Wrap" Margin="0,14,0,0" />
-                    <TextBlock x:Name="StatusText" Foreground="{DynamicResource DialogMutedBrush}" TextWrapping="Wrap" Margin="0,10,0,0" />
-                </StackPanel>
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <ScrollViewer.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ModernVerticalScrollBar}" /></ScrollViewer.Resources>
+                    <StackPanel>
+                        <TextBlock Text="平台名称" Foreground="{DynamicResource DialogMutedBrush}" Margin="0,0,0,6" />
+                        <TextBox x:Name="NameBox" MaxLength="100" TextChanged="Input_Changed" AutomationProperties.Name="平台名称" ToolTip="自定义显示在网站列表中的名称" />
+                        <TextBlock Text="软件目录" Foreground="{DynamicResource DialogMutedBrush}" Margin="0,18,0,6" />
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <TextBox x:Name="PathBox" TextChanged="Input_Changed" AutomationProperties.Name="软件目录" ToolTip="输入完整路径，或点击右侧按钮选择文件夹" />
+                            <Button x:Name="BrowseButton" Grid.Column="1" Content="选择文件夹" Margin="10,0,0,0" Click="Browse_Click" />
+                        </Grid>
+                        <TextBlock x:Name="HintText" Foreground="{DynamicResource DialogMutedBrush}" TextWrapping="Wrap" Margin="0,16,0,0" />
+                        <TextBlock Text="直接使用所选目录，不搬移软件文件。解除绑定时保留原目录；绑定信息会保存到面板。" Foreground="{DynamicResource DialogMutedBrush}" TextWrapping="Wrap" Margin="0,8,0,0" />
+                        <TextBlock x:Name="StatusText" Foreground="{DynamicResource DangerTextBrush}" TextWrapping="Wrap" Margin="0,10,0,0" />
+                    </StackPanel>
+                </ScrollViewer>
             </Border>
-            <Grid Grid.Row="2">
-                <Button x:Name="CustomIisButton" Content="绑定其他 IIS 目录" HorizontalAlignment="Left" Click="CustomIis_Click" />
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <Button Content="取消" IsCancel="True" />
-                    <Button x:Name="BindButton" Content="确认绑定" IsDefault="True" Style="{StaticResource PrimaryDialogButton}" Click="Bind_Click" />
-                </StackPanel>
-            </Grid>
+            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="取消" IsCancel="True" />
+                <Button x:Name="BindButton" Content="确认绑定" IsEnabled="False" IsDefault="True" Style="{StaticResource PrimaryDialogButton}" Click="Bind_Click" />
+            </StackPanel>
         </Grid>
     </Border>
 </local:PanelModalWindow>
