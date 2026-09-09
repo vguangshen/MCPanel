@@ -105,12 +105,25 @@ public sealed partial class ReliabilityTests
                             Assert.AreEqual(keyword, model.WebsiteSearchKeyword, "每次输入或删除都应立即更新搜索词，无需回车或失焦。");
                             Assert.AreEqual(keyword == "不存在" ? 0 : 1, model.VisibleInstalledWebsites.Cast<object>().Count());
                         }
-                        foreach (var name in new[] { "BindJavaPlatformButton", "BindIisPlatformButton", "WebsiteSearchBox" })
+                        foreach (var name in new[] { "BindPlatformButton", "WebsiteSearchBox" })
                         {
                             var element = (FrameworkElement)window.FindName(name);
                             var right = element.TransformToAncestor(page).Transform(new Point(element.ActualWidth, 0)).X;
                             Assert.IsTrue(right <= page.ActualWidth + 1, name + " 不应超出页面。");
                         }
+                        var bindButton = (Button)window.FindName("BindPlatformButton");
+                        var searchCenter = search.TransformToAncestor(page).Transform(new Point(0, search.ActualHeight / 2));
+                        var buttonCenter = bindButton.TransformToAncestor(page).Transform(new Point(0, bindButton.ActualHeight / 2));
+                        Assert.AreEqual(searchCenter.Y, buttonCenter.Y, 1, "搜索框和绑定按钮必须保持同一行。");
+                        Assert.IsTrue(searchCenter.X + search.ActualWidth < buttonCenter.X, "搜索框必须位于绑定按钮左侧。");
+                        var menu = (System.Windows.Controls.Primitives.Popup)window.FindName("PlatformBindingMenu");
+                        Assert.IsFalse(menu.IsOpen);
+                        bindButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        window.UpdateLayout();
+                        Assert.IsTrue(menu.IsOpen, "点击后才展开平台选项。");
+                        Assert.AreEqual("绑定 Java 平台", ((Button)window.FindName("BindJavaPlatformOption")).Content);
+                        Assert.AreEqual("绑定 .NET 平台", ((Button)window.FindName("BindDotNetPlatformOption")).Content);
+                        menu.IsOpen = false;
                         search.Text = "无匹配软件";
                         window.UpdateLayout();
                         Assert.AreEqual(Visibility.Visible, model.WebsiteNoResultsVisibility);

@@ -41,10 +41,23 @@ public partial class MainWindow
 
     private async void BindJavaPlatform_Click(object sender, RoutedEventArgs e) => await BindPlatformAsync(true);
     private async void BindIisPlatform_Click(object sender, RoutedEventArgs e) => await BindPlatformAsync(false);
+    private void BindPlatformMenu_Click(object sender, RoutedEventArgs e)
+    {
+        PlatformBindingMenu.IsOpen = !PlatformBindingMenu.IsOpen;
+        if (PlatformBindingMenu.IsOpen) BindJavaPlatformOption.Focus();
+    }
+    private void PlatformBindingMenu_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape) return;
+        PlatformBindingMenu.IsOpen = false;
+        BindPlatformButton.Focus();
+        e.Handled = true;
+    }
 
     private async Task BindPlatformAsync(bool java)
     {
-        BindJavaPlatformButton.IsEnabled = BindIisPlatformButton.IsEnabled = false;
+        PlatformBindingMenu.IsOpen = false;
+        BindPlatformButton.IsEnabled = false;
         ProductItem? selectedProduct = null;
         try
         {
@@ -83,7 +96,7 @@ public partial class MainWindow
         finally
         {
             if (selectedProduct is not null) selectedProduct.IsBusy = false;
-            BindJavaPlatformButton.IsEnabled = BindIisPlatformButton.IsEnabled = true;
+            BindPlatformButton.IsEnabled = true;
         }
     }
 

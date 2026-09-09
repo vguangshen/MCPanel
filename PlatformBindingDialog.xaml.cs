@@ -12,7 +12,7 @@ public partial class PlatformBindingDialog : PanelModalWindow
     {
         _candidates = candidates.ToList();
         InitializeComponent();
-        TitleText.Text = java ? "手动绑定 Java 平台" : "绑定 IIS 平台";
+        TitleText.Text = java ? "绑定 Java 平台" : "绑定 .NET 平台";
         CustomIisButton.Visibility = java ? Visibility.Collapsed : Visibility.Visible;
         HintText.Text = java
             ? "使用已配置的软件目录创建 Tomcat 绑定并分配独立端口。绑定后可在网站列表中管理启动和停止。"

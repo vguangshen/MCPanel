@@ -894,24 +894,31 @@
                     </Grid.RowDefinitions>
                     <Border Style="{StaticResource Card}" Padding="18,14">
                         <Grid>
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <StackPanel>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="320" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center">
                                 <TextBlock Text="已安装网站" Style="{StaticResource SectionTitle}" />
-                                <TextBlock Text="管理平台绑定、域名和运行状态，输入关键词快速定位软件。" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap"
+                                <TextBlock Text="{Binding WebsiteSearchCountText}" Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis"
+                                           ToolTip="管理平台绑定、域名和运行状态，输入关键词快速定位软件。"
                                            FontSize="13" Margin="0,6,0,0" />
                             </StackPanel>
-                            <WrapPanel Grid.Column="1" Margin="18,0,0,0" VerticalAlignment="Center">
-                                <Button x:Name="BindJavaPlatformButton" Content="手动绑定 Java 平台" Style="{StaticResource WebsitePrimaryActionButton}"
-                                        MinWidth="160" Margin="0,0,10,0" Click="BindJavaPlatform_Click" />
-                                <Button x:Name="BindIisPlatformButton" Content="绑定 IIS 平台" Style="{StaticResource WebsitePrimaryActionButton}"
-                                        MinWidth="140" Click="BindIisPlatform_Click" />
-                            </WrapPanel>
-                            <Grid Grid.Row="1" Grid.ColumnSpan="2" Margin="0,14,0,0" Width="500" MaxWidth="{Binding ActualWidth, ElementName=SitesPage}" HorizontalAlignment="Left">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" MaxWidth="360" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <Button x:Name="BindPlatformButton" Grid.Column="2" Style="{StaticResource WebsitePrimaryActionButton}"
+                                    Height="40" MinWidth="150" Margin="12,0,0,0" VerticalAlignment="Center"
+                                    AutomationProperties.Name="手动绑定平台" Click="BindPlatformMenu_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="手动绑定平台" VerticalAlignment="Center" />
+                                    <TextBlock Text="&#xE70D;" FontFamily="Segoe MDL2 Assets" FontSize="10" Margin="10,0,0,0" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                            <Popup x:Name="PlatformBindingMenu" Grid.Column="2" Placement="Bottom" PlacementTarget="{Binding ElementName=BindPlatformButton}"
+                                   StaysOpen="False" AllowsTransparency="True" VerticalOffset="6">
+                                <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="8" Padding="6" MinWidth="180">
+                                    <StackPanel KeyboardNavigation.TabNavigation="Cycle" KeyDown="PlatformBindingMenu_KeyDown">
+                                        <Button x:Name="BindJavaPlatformOption" Content="绑定 Java 平台" Style="{StaticResource RoundedRectTonalButton}" Height="36" Margin="0,0,0,4" Click="BindJavaPlatform_Click" />
+                                        <Button x:Name="BindDotNetPlatformOption" Content="绑定 .NET 平台" Style="{StaticResource RoundedRectTonalButton}" Height="36" Click="BindIisPlatform_Click" />
+                                    </StackPanel>
+                                </Border>
+                            </Popup>
+                            <Grid Grid.Column="1" Margin="18,0,0,0" VerticalAlignment="Center">
                                 <Border Height="40" Background="{DynamicResource InputBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="6">
                                     <Grid>
                                         <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="14,0,0,0" IsHitTestVisible="False" />
@@ -928,8 +935,6 @@
                                         </TextBlock>
                                     </Grid>
                                 </Border>
-                                <TextBlock Grid.Column="1" Text="{Binding WebsiteSearchCountText}" Foreground="{DynamicResource MutedBrush}"
-                                           VerticalAlignment="Center" Margin="12,0,0,0" FontSize="13" />
                             </Grid>
                         </Grid>
                     </Border>
