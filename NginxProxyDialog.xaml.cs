@@ -10,6 +10,7 @@ public partial class NginxProxyDialog : PanelModalWindow
     private readonly EnvironmentRuntimeService _runtimeService;
     private readonly string _loadedRevision;
     private readonly ObservableCollection<NginxProxyRuleRow> _rules = [];
+    private readonly List<NginxProxyRule> _suppressedRules = [];
 
     public NginxProxyDialog(EnvironmentRuntimeService runtimeService)
     {
@@ -18,8 +19,14 @@ public partial class NginxProxyDialog : PanelModalWindow
 
         var options = NginxRuntimeManager.NormalizeOptions(runtimeService.GetNginxOptions());
         _loadedRevision = NginxConfigurationCoordinator.Revision(options);
-        foreach (var rule in options.Rules)
+        foreach (var rule in options.Rules.Select(NginxRuntimeManager.NormalizeRule))
         {
+            if (NginxProductProxyService.IsSuppressedManagedProductId(rule.ManagedProductId))
+            {
+                _suppressedRules.Add(rule);
+                continue;
+            }
+
             _rules.Add(NginxProxyRuleRow.FromRule(rule));
         }
 
@@ -85,6 +92,21 @@ public partial class NginxProxyDialog : PanelModalWindow
             return;
         }
 
+        if (NginxProductProxyService.TryParseManagedProductId(
+                selected.ManagedProductId,
+                out var productId,
+                out _))
+        {
+            var tombstone = selected.ToRule();
+            tombstone.Enabled = false;
+            tombstone.ManagedProductId = NginxProductProxyService.CreateSuppressedId(productId);
+            tombstone = NginxRuntimeManager.NormalizeRule(tombstone);
+            _suppressedRules.RemoveAll(rule =>
+                NginxProductProxyService.TryParseManagedProductId(rule.ManagedProductId, out var existingId, out _) &&
+                string.Equals(existingId, productId, StringComparison.OrdinalIgnoreCase));
+            _suppressedRules.Add(tombstone);
+        }
+
         var index = _rules.IndexOf(selected);
         _rules.Remove(selected);
         RulesGrid.SelectedIndex = Math.Min(index, _rules.Count - 1);
@@ -99,6 +121,24 @@ public partial class NginxProxyDialog : PanelModalWindow
             RulesGrid.CommitEdit(DataGridEditingUnit.Row, true);
 
             var rules = _rules.Select(row => row.ToRule()).ToList();
+            var visibleProductIds = rules
+                .Select(rule => NginxProductProxyService.TryParseManagedProductId(
+                    rule.ManagedProductId,
+                    out var productId,
+                    out _)
+                    ? productId
+                    : null)
+                .Where(productId => !string.IsNullOrWhiteSpace(productId))
+                .Cast<string>()
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            rules.AddRange(_suppressedRules
+                .Where(rule => !NginxProductProxyService.TryParseManagedProductId(
+                                   rule.ManagedProductId,
+                                   out var productId,
+                                   out _) ||
+                               !visibleProductIds.Contains(productId))
+                .Select(NginxRuntimeManager.NormalizeRule));
+
             var firstEnabled = rules.FirstOrDefault(rule => rule.Enabled) ?? rules.First();
             var options = new NginxRuntimeOptions
             {
@@ -112,7 +152,11 @@ public partial class NginxProxyDialog : PanelModalWindow
             IsEnabled = false;
             StatusText.Text = "正在保存并校验 Nginx 配置...";
             ResultMessage = await _runtimeService.SaveNginxOptionsAsync(options, expectedRevision: _loadedRevision);
-            await NginxProductProxyService.TrySyncAsync();
+            var synced = await NginxProductProxyService.TrySyncAsync();
+            if (!synced)
+            {
+                ResultMessage += " 自动关联产品规则未完全同步，请重新打开本窗口确认配置。";
+            }
             DialogResult = true;
             Close();
         }
@@ -137,6 +181,8 @@ public partial class NginxProxyDialog : PanelModalWindow
 
     public sealed class NginxProxyRuleRow
     {
+        private NginxProxyRule? _originalRule;
+
         public bool Enabled { get; set; }
         public string Name { get; set; } = string.Empty;
         public string ListenPort { get; set; } = string.Empty;
@@ -156,7 +202,7 @@ public partial class NginxProxyDialog : PanelModalWindow
         public static NginxProxyRuleRow FromRule(NginxProxyRule rule)
         {
             var normalized = NginxRuntimeManager.NormalizeRule(rule);
-            return new NginxProxyRuleRow
+            var row = new NginxProxyRuleRow
             {
                 Enabled = normalized.Enabled,
                 Name = normalized.Name,
@@ -174,6 +220,8 @@ public partial class NginxProxyDialog : PanelModalWindow
                 RedirectHttpToHttps = normalized.RedirectHttpToHttps,
                 MaxRateKbps = normalized.MaxRateKbps
             };
+            row._originalRule = normalized;
+            return row;
         }
 
         public NginxProxyRule ToRule()
@@ -183,7 +231,7 @@ public partial class NginxProxyDialog : PanelModalWindow
                 throw new InvalidOperationException($"规则“{Name}”的监听端口必须是数字。");
             }
 
-            return NginxRuntimeManager.NormalizeRule(new NginxProxyRule
+            var normalized = NginxRuntimeManager.NormalizeRule(new NginxProxyRule
             {
                 Enabled = Enabled,
                 Name = Name,
@@ -201,6 +249,38 @@ public partial class NginxProxyDialog : PanelModalWindow
                 RedirectHttpToHttps = RedirectHttpToHttps,
                 MaxRateKbps = MaxRateKbps
             });
+
+            if (_originalRule is not null &&
+                NginxProductProxyService.TryParseManagedProductId(
+                    _originalRule.ManagedProductId,
+                    out var productId,
+                    out var ownership) &&
+                ownership == NginxProductProxyService.ManagedProductRuleKind.Automatic &&
+                !HasSameEditableConfiguration(normalized, _originalRule))
+            {
+                normalized.ManagedProductId = NginxProductProxyService.CreateUserOverrideId(productId);
+            }
+
+            return normalized;
+        }
+
+        private static bool HasSameEditableConfiguration(NginxProxyRule left, NginxProxyRule right)
+        {
+            var a = NginxRuntimeManager.NormalizeRule(left);
+            var b = NginxRuntimeManager.NormalizeRule(right);
+            return a.Enabled == b.Enabled &&
+                   a.ListenPort == b.ListenPort &&
+                   a.WebSocket == b.WebSocket &&
+                   string.Equals(a.Name, b.Name, StringComparison.Ordinal) &&
+                   string.Equals(a.ServerName, b.ServerName, StringComparison.OrdinalIgnoreCase) &&
+                   string.Equals(a.LocationPath, b.LocationPath, StringComparison.OrdinalIgnoreCase) &&
+                   string.Equals(a.ProxyTarget, b.ProxyTarget, StringComparison.OrdinalIgnoreCase) &&
+                   a.SslEnabled == b.SslEnabled &&
+                   a.HttpsPort == b.HttpsPort &&
+                   string.Equals(a.SslCertificatePath, b.SslCertificatePath, StringComparison.OrdinalIgnoreCase) &&
+                   string.Equals(a.SslCertificateKeyPath, b.SslCertificateKeyPath, StringComparison.OrdinalIgnoreCase) &&
+                   a.RedirectHttpToHttps == b.RedirectHttpToHttps &&
+                   a.MaxRateKbps == b.MaxRateKbps;
         }
 
         public int TryGetPort()
@@ -233,4 +313,3 @@ public partial class NginxProxyDialog : PanelModalWindow
         }
     }
 }
-
