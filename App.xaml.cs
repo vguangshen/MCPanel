@@ -17,7 +17,8 @@ public partial class App : Application
     private EventWaitHandle? _activationEvent;
     private RegisteredWaitHandle? _activationRegistration;
     private TrayIconService? _trayIcon;
-    private MainWindow? _mainWindow;
+    private readonly WindowActivationController _windowActivation = new();
+    private MainWindow? _mainWindow => _windowActivation.CurrentWindow as MainWindow;
     private bool _isExiting;
     private int _uiGeneration;
 
@@ -255,43 +256,38 @@ public partial class App : Application
             return;
         }
 
-        Interlocked.Increment(ref _uiGeneration);
-        if (_mainWindow is not null)
+        if (!Dispatcher.CheckAccess())
         {
-            RestoreAndActivate(_mainWindow);
+            Dispatcher.BeginInvoke((Action)ShowMainWindow);
             return;
         }
 
-        MainWindow? window = null;
-        try
-        {
-            window = new MainWindow();
-            _mainWindow = window;
-            MainWindow = window;
-            window.Closed += MainWindow_Closed;
-            window.Show();
-            RestoreAndActivate(window);
-        }
-        catch (Exception ex)
-        {
-            if (window is not null)
+        Interlocked.Increment(ref _uiGeneration);
+        _windowActivation.Show(
+            () =>
             {
+                var window = new MainWindow();
+                MainWindow = window;
+                window.Closed += MainWindow_Closed;
+                return window;
+            },
+            RestoreAndActivate,
+            window =>
+            {
+                // Failed windows must really close, bypassing close-to-tray.
                 window.Closed -= MainWindow_Closed;
-            }
-
-            _mainWindow = null;
-            if (ReferenceEquals(MainWindow, window))
+                if (ReferenceEquals(MainWindow, window)) MainWindow = null;
+                ((MainWindow)window).CloseAfterActivationFailure();
+            },
+            ex =>
             {
-                MainWindow = null;
-            }
-
-            WriteLifecycleError("打开主窗口失败", ex);
-            MessageBox.Show(
-                $"无法打开 MCPanel 主窗口。\n\n{ex.Message}",
-                "MCPanel",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
-        }
+                WriteLifecycleError("打开主窗口失败", ex);
+                MessageBox.Show(
+                    $"无法打开 MCPanel 主窗口。\n\n{ex.Message}",
+                    "MCPanel",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            });
     }
 
     private void MainWindow_Closed(object? sender, EventArgs e)
@@ -302,11 +298,6 @@ public partial class App : Application
         }
 
         window.Closed -= MainWindow_Closed;
-        if (ReferenceEquals(_mainWindow, window))
-        {
-            _mainWindow = null;
-        }
-
         if (ReferenceEquals(MainWindow, window))
         {
             MainWindow = null;
@@ -392,7 +383,7 @@ public partial class App : Application
         }
     }
 
-    private static void RestoreAndActivate(Window window)
+    internal static void RestoreAndActivate(Window window)
     {
         if (!window.IsVisible)
         {
@@ -407,7 +398,6 @@ public partial class App : Application
         var handle = new WindowInteropHelper(window).Handle;
         if (handle != IntPtr.Zero)
         {
-            ShowWindow(handle, 9);
             SetForegroundWindow(handle);
         }
 
@@ -463,9 +453,6 @@ public partial class App : Application
 
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr windowHandle);
-
-    [DllImport("user32.dll")]
-    private static extern bool ShowWindow(IntPtr windowHandle, int command);
 
 }
 

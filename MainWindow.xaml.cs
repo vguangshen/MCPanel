@@ -56,6 +56,7 @@ public partial class MainWindow : Window
     private DateTime _nextRuntimeRefreshUtc = DateTime.MinValue;
     private int _runtimeRefreshGeneration;
     private bool _isClosed;
+    private bool _closeAfterActivationFailure;
     private int _panelMemoryCleanupInProgress;
     private bool _productUninstallInProgress;
     private CancellationTokenSource? _productUninstallCancellation;
@@ -481,9 +482,17 @@ public partial class MainWindow : Window
         Hide();
     }
 
+    internal void CloseAfterActivationFailure()
+    {
+        _closeAfterActivationFailure = true;
+        // Remove a partially displayed shell even if resource cleanup fails.
+        try { Hide(); }
+        finally { Close(); }
+    }
+
     private void MainWindow_Closing(object? sender, CancelEventArgs e)
     {
-        if (Dispatcher.HasShutdownStarted ||
+        if (_closeAfterActivationFailure || Dispatcher.HasShutdownStarted ||
             Application.Current is not App app ||
             app.IsExiting ||
             !app.HasTrayIcon)

@@ -402,6 +402,7 @@ public sealed class InstallationProgressViewModel : ObservableObject
     private string _transferText = string.Empty;
     private double _downloadProgress;
     private bool _downloadTotalKnown;
+    private bool _isUninstall;
     private bool _showCompletedQueue;
     private readonly HashSet<ProductInstallQueueItemViewModel> _subscribedQueueItems = new();
     private IReadOnlyList<ProductInstallQueueItemViewModel> _activeQueueItems = Array.Empty<ProductInstallQueueItemViewModel>();
@@ -530,6 +531,7 @@ public sealed class InstallationProgressViewModel : ObservableObject
             {
                 OnPropertyChanged(nameof(ProgressText));
                 OnPropertyChanged(nameof(IsProgressIndeterminate));
+                OnPropertyChanged(nameof(DisplayDownloadProgress));
             }
         }
     }
@@ -546,6 +548,7 @@ public sealed class InstallationProgressViewModel : ObservableObject
             {
                 OnPropertyChanged(nameof(ProgressText));
                 OnPropertyChanged(nameof(IsProgressIndeterminate));
+                OnPropertyChanged(nameof(DisplayDownloadProgress));
             }
         }
     }
@@ -602,15 +605,18 @@ public sealed class InstallationProgressViewModel : ObservableObject
         }
     }
 
-    public double DisplayDownloadProgress => _downloadTotalKnown ? DownloadProgress : 0d;
+    public double DisplayDownloadProgress => StageText == "处理完成" ? 100d
+        : _isUninstall ? Progress : _downloadTotalKnown ? DownloadProgress : 0d;
     public string ProgressText => StageText == "处理完成"
         ? "完成"
         : IsPaused
             ? "已暂停"
+            : _isUninstall ? $"{Progress:0}%"
             : StageText == "下载产品文件" && _downloadTotalKnown
                 ? $"{DownloadProgress:0}%"
                 : "处理中";
     public bool IsProgressIndeterminate => IsVisible &&
+        !_isUninstall &&
         !IsPaused &&
         StageText != "处理完成" &&
         (StageText != "下载产品文件" || !_downloadTotalKnown);
@@ -628,6 +634,7 @@ public sealed class InstallationProgressViewModel : ObservableObject
 
     public void Begin(ProductItem product, bool isUpdate, bool show = true)
     {
+        SetUninstallMode(false);
         _startedAt = DateTime.Now;
         OperationTitle = isUpdate ? "正在更新产品" : "正在安装产品";
         ProductName = product.DisplayName;
@@ -651,6 +658,7 @@ public sealed class InstallationProgressViewModel : ObservableObject
 
     public void BeginQueued(ProductItem product, bool isUpdate, int queuePosition, bool show = true)
     {
+        SetUninstallMode(false);
         _startedAt = DateTime.Now;
         OperationTitle = isUpdate ? "等待更新产品" : "等待安装产品";
         ProductName = product.DisplayName;
@@ -675,6 +683,7 @@ public sealed class InstallationProgressViewModel : ObservableObject
 
     public void BeginUninstall(ProductItem product)
     {
+        SetUninstallMode(true);
         _startedAt = DateTime.Now;
         OperationTitle = "正在卸载产品";
         ProductName = product.DisplayName;
@@ -697,6 +706,14 @@ public sealed class InstallationProgressViewModel : ObservableObject
         CanCancel = false;
         IsVisible = true;
         Tick();
+    }
+
+    private void SetUninstallMode(bool uninstall)
+    {
+        _isUninstall = uninstall;
+        OnPropertyChanged(nameof(DisplayDownloadProgress));
+        OnPropertyChanged(nameof(ProgressText));
+        OnPropertyChanged(nameof(IsProgressIndeterminate));
     }
 
     public void SetDownloadStage()

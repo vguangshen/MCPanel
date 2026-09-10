@@ -437,10 +437,14 @@ public sealed class ProductDeploymentService
         }
     }
 
-    public async Task UninstallAsync(
+    public Task UninstallAsync(
         ProductItem product,
         CancellationToken cancellationToken = default,
         IProgress<ProductUninstallProgress>? progress = null)
+        => Task.Run(() => UninstallCoreAsync(product, cancellationToken, progress), cancellationToken);
+
+    private async Task UninstallCoreAsync(ProductItem product,
+        CancellationToken cancellationToken, IProgress<ProductUninstallProgress>? progress)
     {
         var safeName = SafeName(product.ProductId);
         ReportUninstallProgress(progress, 0, "正在准备卸载，读取现有绑定和运行状态...");
@@ -523,6 +527,7 @@ public sealed class ProductDeploymentService
             await TomcatProductInstanceManager.StopAllTomcatProcessesAsync(cancellationToken);
         }
 
+        var routeSynced = false;
         try
         {
             if (tomcatArtifactsExist && tomcatRoot is not null)
@@ -566,13 +571,7 @@ public sealed class ProductDeploymentService
             new ProductInstallOrderStore().Remove(product.ProductId);
             TomcatProductStartupManager.RefreshRegistration();
             ReportUninstallProgress(progress, 92, "正在同步剩余产品的 Nginx 路由和运行状态...");
-            var routeSynced = await NginxProductProxyService.TrySyncAsync(CancellationToken.None);
-            ReportUninstallProgress(
-                progress,
-                100,
-                routeSynced
-                    ? "卸载完成，产品目录和安装记录已清理。"
-                    : "卸载完成，但 Nginx 剩余产品路由未自动同步；请在“环境”页面重新同步 Nginx。");
+            routeSynced = await NginxProductProxyService.TrySyncAsync(CancellationToken.None);
         }
         finally
         {
@@ -580,6 +579,7 @@ public sealed class ProductDeploymentService
             {
                 try
                 {
+                    ReportUninstallProgress(progress, 96, "正在恢复 Tomcat 全部应用模式，请稍候...");
                     await new EnvironmentRuntimeService().StartAsync(EnvironmentKind.Tomcat, CancellationToken.None);
                 }
                 catch (Exception restartError)
@@ -594,6 +594,9 @@ public sealed class ProductDeploymentService
                 }
             }
         }
+        ReportUninstallProgress(progress, 100, routeSynced
+            ? "卸载完成，产品目录和安装记录已清理。"
+            : "卸载完成，但 Nginx 剩余产品路由未自动同步；请在“环境”页面重新同步 Nginx。");
     }
 
     public async Task<ProductDeploymentResult> RepairIisBindingAsync(ProductItem product, string installedPath, CancellationToken cancellationToken = default)

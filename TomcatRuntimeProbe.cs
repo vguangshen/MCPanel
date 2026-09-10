@@ -47,7 +47,8 @@ internal static class TomcatRuntimeProbe
         string tomcatRoot,
         IReadOnlyCollection<int> ports,
         CancellationToken cancellationToken,
-        TimeSpan? timeout = null)
+        TimeSpan? timeout = null,
+        Action<int, int>? progress = null)
     {
         if (ports.Count == 0)
         {
@@ -58,7 +59,10 @@ internal static class TomcatRuntimeProbe
         while (DateTime.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (ArePortsListening(ports))
+            var active = GetActiveTcpPorts();
+            var ready = ports.Count(active.Contains);
+            progress?.Invoke(ready, ports.Count);
+            if (ready == ports.Count)
             {
                 await EnsureStableAsync(ports, TimeSpan.FromSeconds(1), cancellationToken);
                 return;

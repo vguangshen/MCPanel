@@ -255,7 +255,8 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
 
         try
         {
-            var isTomcatStartup = item.Kind == EnvironmentKind.Tomcat && action == "Start";
+            var isTomcatStartup = item.Kind == EnvironmentKind.Tomcat &&
+                                  (action is "Start" or "Restart" or "CatalinaRun");
             item.SetBusyState(
                 RuntimeBusyBadgeText(action),
                 $"{item.Title} 正在{RuntimeActionText(action)}...",
@@ -269,10 +270,14 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
                         tomcatProgress: update => Dispatcher.Invoke(() => item.ApplyTomcatStartupProgress(update))),
                     "Start" => await _runtimeService.StartAsync(item.Kind),
                     "Stop" => await _runtimeService.StopAsync(item.Kind),
+                    "Restart" when item.Kind == EnvironmentKind.Tomcat => await _runtimeService.RestartAsync(
+                        item.Kind,
+                        tomcatProgress: update => Dispatcher.Invoke(() => item.ApplyTomcatStartupProgress(update))),
                     "Restart" => await _runtimeService.RestartAsync(item.Kind),
                     "Uninstall" => await _runtimeService.UninstallAsync(item.Kind),
                     "OpenIis" => OpenIisManager(),
-                    "CatalinaRun" => _runtimeService.StartTomcatInCatalinaConsole(),
+                    "CatalinaRun" => await _runtimeService.StartTomcatInCatalinaConsoleAsync(
+                        tomcatProgress: update => Dispatcher.Invoke(() => item.ApplyTomcatStartupProgress(update))),
                     _ => throw new NotSupportedException("未知环境操作。")
                 };
 

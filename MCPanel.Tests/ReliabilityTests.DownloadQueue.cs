@@ -520,8 +520,16 @@ public sealed partial class ReliabilityTests
         progress.ReportUninstallProgress(new ProductUninstallProgress(42, "正在移除 IIS 应用、应用池和共享站点端口..."));
         Assert.AreEqual(42, progress.Progress, 0.001);
         Assert.AreEqual("清理 IIS 绑定", progress.StageText);
+        Assert.AreEqual(42d, progress.DisplayDownloadProgress);
+        Assert.AreEqual("42%", progress.ProgressText);
+        Assert.IsFalse(progress.IsProgressIndeterminate);
         progress.ReportUninstallProgress(new ProductUninstallProgress(20, "旧阶段消息不应倒退进度"));
         Assert.AreEqual(42, progress.Progress, 0.001);
+        progress.Complete();
+        Assert.AreEqual(100d, progress.DisplayDownloadProgress);
+        progress.Begin(product, false);
+        Assert.AreEqual(0d, progress.DisplayDownloadProgress);
+        Assert.IsTrue(progress.IsProgressIndeterminate);
     }
 
     [TestMethod]

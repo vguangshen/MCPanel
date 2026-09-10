@@ -167,14 +167,21 @@ public sealed class EnvironmentRuntimeService
             windowStyle: ProcessWindowStyle.Normal);
     }
 
-    public string StartTomcatInCatalinaConsole()
+    public async Task<string> StartTomcatInCatalinaConsoleAsync(
+        CancellationToken cancellationToken = default, Action<TomcatStartupProgress>? tomcatProgress = null)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var tomcatRoot = RequireTomcatRoot();
         if (IsRunning(EnvironmentKind.Tomcat))
         {
             throw new InvalidOperationException("Tomcat 已经在运行。请先停止后台 Tomcat，再使用 Catalina 诊断模式启动。");
         }
 
+        var ports = TomcatRuntimeProbe.ReadHttpPorts(tomcatRoot).ToArray();
+        if (ports.Length == 0)
+            throw new InvalidDataException("Tomcat server.xml 中没有可用的 HTTP 端口。请先修复产品绑定。");
+        tomcatProgress?.Invoke(new TomcatStartupProgress(5, "正在准备 Catalina 诊断启动...", 0, 0));
+        await Task.Yield();
         var binDirectory = Path.Combine(tomcatRoot, "bin");
         var catalina = Path.Combine(binDirectory, "catalina.bat");
         if (!File.Exists(catalina))
@@ -207,7 +214,14 @@ public sealed class EnvironmentRuntimeService
             binDirectory,
             windowStyle: ProcessWindowStyle.Normal);
 
-        return "已打开 Catalina 前台诊断窗口。Tomcat 的启动日志和错误会保留在该窗口中。";
+        tomcatProgress?.Invoke(new TomcatStartupProgress(15, "已打开 Catalina 控制台，正在等待端口就绪...", 0, 0));
+        await TomcatRuntimeProbe.WaitForStartupAsync(tomcatRoot, ports, cancellationToken,
+            progress: (ready, total) => tomcatProgress?.Invoke(new TomcatStartupProgress(
+                ready == total ? 96 : 15d + 75d * ready / total,
+                ready == total ? "正在验证 Catalina 端口稳定监听..." : $"Catalina 端口就绪：{ready}/{total}",
+                0, 0)));
+        tomcatProgress?.Invoke(new TomcatStartupProgress(100, "Catalina 启动完成，全部配置端口已稳定监听。", 0, 0));
+        return "Catalina 已启动，全部配置端口已确认稳定监听。启动日志和错误保留在前台诊断窗口中。";
     }
 
     public NginxRuntimeOptions GetNginxOptions()
@@ -424,7 +438,7 @@ public sealed class EnvironmentRuntimeService
                 var tomcatRoot = RequireTomcatRoot();
                 if (TomcatWindowsServiceManager.IsRegisteredForRoot(tomcatRoot))
                 {
-                    TomcatWindowsServiceManager.Stop();
+                    await Task.Run(() => TomcatWindowsServiceManager.Stop(), cancellationToken);
                     return "Tomcat Server Windows 服务已停止；单应用 Tomcat 实例不受影响。";
                 }
 
@@ -461,7 +475,8 @@ public sealed class EnvironmentRuntimeService
         }
     }
 
-    public async Task<string> RestartAsync(EnvironmentKind kind, CancellationToken cancellationToken = default)
+    public async Task<string> RestartAsync(EnvironmentKind kind, CancellationToken cancellationToken = default,
+        Action<TomcatStartupProgress>? tomcatProgress = null)
     {
         if (kind == EnvironmentKind.Iis)
         {
@@ -482,6 +497,8 @@ public sealed class EnvironmentRuntimeService
             return $"SQL Server 已重启。{FormatSqlServerConnectionText()}";
         }
 
+        if (kind == EnvironmentKind.Tomcat)
+            tomcatProgress?.Invoke(new TomcatStartupProgress(5, "正在停止 Tomcat Server...", 0, 0));
         try
         {
             await StopAsync(kind, cancellationToken);
@@ -499,10 +516,15 @@ public sealed class EnvironmentRuntimeService
         }
 
         await Task.Delay(1200, cancellationToken);
-        await StartAsync(kind, cancellationToken);
+        await StartAsync(kind, cancellationToken, tomcatProgress: kind == EnvironmentKind.Tomcat
+            ? update => tomcatProgress?.Invoke(update with { Percent = 10d + update.Percent * 0.9d })
+            : null);
         return $"{DisplayName(kind)} 已重启。";
     }
-    public async Task<string> UninstallAsync(EnvironmentKind kind, CancellationToken cancellationToken = default)
+    public Task<string> UninstallAsync(EnvironmentKind kind, CancellationToken cancellationToken = default)
+        => Task.Run(() => UninstallCoreAsync(kind, cancellationToken), cancellationToken);
+
+    private async Task<string> UninstallCoreAsync(EnvironmentKind kind, CancellationToken cancellationToken)
     {
         switch (kind)
         {
@@ -2823,7 +2845,10 @@ public sealed class EnvironmentRuntimeService
         throw new TimeoutException($"MySQL 服务已启动，但端口 {port} 在等待时间内没有开始监听。", lastError);
     }
 
-    private static async Task RunNginxServiceActionAsync(string action, CancellationToken cancellationToken)
+    private static Task RunNginxServiceActionAsync(string action, CancellationToken cancellationToken)
+        => Task.Run(() => RunNginxServiceActionCoreAsync(action, cancellationToken), cancellationToken);
+
+    private static async Task RunNginxServiceActionCoreAsync(string action, CancellationToken cancellationToken)
     {
         try
         {

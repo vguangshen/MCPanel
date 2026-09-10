@@ -330,7 +330,10 @@ public sealed class FrpManager : IDisposable
 
     }
 
-    public async Task<string> UninstallAsync(CancellationToken cancellationToken = default)
+    public Task<string> UninstallAsync(CancellationToken cancellationToken = default)
+        => Task.Run(() => UninstallCoreAsync(cancellationToken), cancellationToken);
+
+    private async Task<string> UninstallCoreAsync(CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
         await _operationLock.WaitAsync(cancellationToken);
