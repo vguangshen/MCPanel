@@ -135,7 +135,8 @@ internal static class ManagedWindowsServiceController
         string description,
         string executablePath,
         string serviceArgument,
-        string componentRoot)
+        string componentRoot,
+        bool configureRecovery = true)
     {
         var imagePath = BuildServiceImagePath(executablePath, serviceArgument, componentRoot);
         if (IsInstalled(serviceName) && !IsRegisteredForRoot(serviceName, serviceArgument, componentRoot))
@@ -162,13 +163,26 @@ internal static class ManagedWindowsServiceController
             BuildScArguments("description", serviceName, description),
             $"写入 {displayName} Windows 服务说明",
             elevated: true);
-        ConfigureRecovery(serviceName, displayName);
+        if (configureRecovery)
+        {
+            ConfigureRecovery(serviceName, displayName);
+        }
+        else
+        {
+            DisableRecovery(serviceName, displayName);
+        }
     }
 
     public static void ConfigureRecovery(string serviceName, string displayName)
     {
         RunScOrThrow(BuildRecoveryPolicyArguments(serviceName), $"配置 {displayName} Windows 服务自动恢复", elevated: true);
         RunScOrThrow(BuildFailureFlagArguments(serviceName), $"启用 {displayName} Windows 服务失败恢复", elevated: true);
+    }
+
+    public static void DisableRecovery(string serviceName, string displayName)
+    {
+        RunScOrThrow(BuildDisableRecoveryPolicyArguments(serviceName), $"清除 {displayName} Windows 服务自动恢复", elevated: true);
+        RunScOrThrow(BuildFailureFlagArguments(serviceName, enabled: false), $"禁用 {displayName} Windows 服务失败恢复", elevated: true);
     }
 
     internal static string BuildRecoveryPolicyArguments(string serviceName) =>
@@ -180,8 +194,17 @@ internal static class ManagedWindowsServiceController
             "actions=",
             "restart/5000/restart/15000/restart/30000");
 
-    internal static string BuildFailureFlagArguments(string serviceName) =>
-        BuildScArguments("failureflag", serviceName, "1");
+    internal static string BuildDisableRecoveryPolicyArguments(string serviceName) =>
+        BuildScArguments(
+            "failure",
+            serviceName,
+            "reset=",
+            "0",
+            "actions=",
+            string.Empty);
+
+    internal static string BuildFailureFlagArguments(string serviceName, bool enabled = true) =>
+        BuildScArguments("failureflag", serviceName, enabled ? "1" : "0");
 
     public static void Start(string serviceName, string displayName)
     {
@@ -313,7 +336,7 @@ internal static class TomcatWindowsServiceManager
 {
     public const string ServiceName = "MCPanelTomcat";
     public const string ServiceDisplayName = "Tomcat Server (MCPanel)";
-    public const string ServiceDescription = "Tomcat 8.5.57 Web 服务器（由 MCPanel 管理）。";
+    public const string ServiceDescription = "Tomcat 8.5.57 Web 服务器（由 MCPanel 管理；不自动恢复崩溃实例）。";
 
     public static bool IsInstalled() => ManagedWindowsServiceController.IsInstalled(ServiceName);
     public static bool IsRunning() => ManagedWindowsServiceController.IsRunning(ServiceName);
@@ -344,13 +367,19 @@ internal static class TomcatWindowsServiceManager
             ServiceDescription,
             executablePath,
             TomcatWindowsServiceHost.ServiceArgument,
-            tomcatRoot);
+            tomcatRoot,
+            configureRecovery: false);
 
-    public static void Start() => ManagedWindowsServiceController.Start(ServiceName, ServiceDisplayName);
+    public static void Start()
+    {
+        // Clear recovery on every start as well, so machines upgraded from older
+        // builds cannot retain an SCM restart policy that masks a Tomcat crash.
+        ManagedWindowsServiceController.DisableRecovery(ServiceName, ServiceDisplayName);
+        ManagedWindowsServiceController.Start(ServiceName, ServiceDisplayName);
+    }
+
     public static void Stop() => ManagedWindowsServiceController.Stop(ServiceName, ServiceDisplayName);
     public static void Delete() => ManagedWindowsServiceController.Delete(ServiceName, ServiceDisplayName);
-    internal static string BuildRecoveryPolicyArguments() => ManagedWindowsServiceController.BuildRecoveryPolicyArguments(ServiceName);
-    internal static string BuildFailureFlagArguments() => ManagedWindowsServiceController.BuildFailureFlagArguments(ServiceName);
 }
 
 internal static class FrpWindowsServiceManager
@@ -451,20 +480,7 @@ internal static class FrpWindowsServiceHost
 
 internal sealed class TomcatWindowsService : ServiceBase
 {
-    internal const int MaxRecoveriesPerWindow = 5;
-    internal static readonly TimeSpan RecoveryWindow = TimeSpan.FromMinutes(10);
-    private static readonly TimeSpan[] RecoveryDelays =
-    [
-        TimeSpan.FromSeconds(1),
-        TimeSpan.FromSeconds(3),
-        TimeSpan.FromSeconds(10),
-        TimeSpan.FromSeconds(30),
-        TimeSpan.FromSeconds(60)
-    ];
-
     private readonly string _tomcatRoot;
-    private CancellationTokenSource? _watchdogCancellation;
-    private Task? _watchdogTask;
     private int _stopStarted;
 
     public TomcatWindowsService(string tomcatRoot)
@@ -476,32 +492,14 @@ internal sealed class TomcatWindowsService : ServiceBase
         AutoLog = true;
     }
 
-    internal static TimeSpan GetRecoveryDelay(int previousAttempts) =>
-        RecoveryDelays[Math.Min(Math.Max(previousAttempts, 0), RecoveryDelays.Length - 1)];
-
-    internal static bool ShouldEscalate(int attemptsInWindow) => attemptsInWindow >= MaxRecoveriesPerWindow;
     internal static string GetServiceLogPath(string tomcatRoot) => Path.Combine(tomcatRoot, "logs", "mcpanel-service.log");
 
     protected override void OnStart(string[] args)
     {
         Interlocked.Exchange(ref _stopStarted, 0);
         RequestAdditionalTime(120000);
-        _watchdogCancellation?.Dispose();
-        _watchdogCancellation = new CancellationTokenSource();
-        try
-        {
-            StartTomcatAndVerify(CancellationToken.None, "service start");
-            WriteServiceLog("Tomcat Windows service started; watchdog active.");
-            var token = _watchdogCancellation.Token;
-            _watchdogTask = Task.Run(() => WatchdogLoop(token), token);
-        }
-        catch
-        {
-            _watchdogCancellation.Cancel();
-            _watchdogCancellation.Dispose();
-            _watchdogCancellation = null;
-            throw;
-        }
+        StartTomcatAndVerify(CancellationToken.None, "service start");
+        WriteServiceLog("Tomcat Windows service started; automatic recovery disabled.");
     }
 
     protected override void OnStop() => StopTomcat();
@@ -510,80 +508,6 @@ internal sealed class TomcatWindowsService : ServiceBase
     {
         StopTomcat();
         base.OnShutdown();
-    }
-
-    private void WatchdogLoop(CancellationToken cancellationToken)
-    {
-        var recoveryHistory = new Queue<DateTime>();
-        var unhealthySamples = 0;
-
-        while (!cancellationToken.WaitHandle.WaitOne(TimeSpan.FromSeconds(3)))
-        {
-            if (IsHealthy())
-            {
-                unhealthySamples = 0;
-                continue;
-            }
-
-            unhealthySamples++;
-            if (unhealthySamples < 3)
-            {
-                continue;
-            }
-            unhealthySamples = 0;
-
-            var now = DateTime.UtcNow;
-            while (recoveryHistory.Count > 0 && now - recoveryHistory.Peek() > RecoveryWindow)
-            {
-                recoveryHistory.Dequeue();
-            }
-
-            if (ShouldEscalate(recoveryHistory.Count))
-            {
-                WriteServiceLog("Tomcat repeatedly became unhealthy; escalating to SCM recovery.");
-                ExitCode = 1;
-                try { Stop(); } catch { }
-                return;
-            }
-
-            var delay = GetRecoveryDelay(recoveryHistory.Count);
-            recoveryHistory.Enqueue(now);
-            WriteServiceLog($"Tomcat watchdog detected unhealthy runtime; recovery in {delay.TotalSeconds:0}s.");
-            if (cancellationToken.WaitHandle.WaitOne(delay))
-            {
-                return;
-            }
-
-            try
-            {
-                StopSharedTomcatBestEffort();
-                StartTomcatAndVerify(cancellationToken, "watchdog recovery");
-                WriteServiceLog("Tomcat watchdog recovery succeeded.");
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-            catch (Exception ex)
-            {
-                WriteServiceLog("Tomcat watchdog recovery failed: " + ex.Message);
-            }
-        }
-    }
-
-    private bool IsHealthy()
-    {
-        try
-        {
-            var ports = TomcatRuntimeProbe.ReadHttpPorts(_tomcatRoot).ToArray();
-            return ports.Length > 0 &&
-                   TomcatProductInstanceManager.IsSharedTomcatRunning() &&
-                   TomcatRuntimeProbe.ArePortsListening(ports);
-        }
-        catch
-        {
-            return false;
-        }
     }
 
     private void StartTomcatAndVerify(CancellationToken cancellationToken, string reason)
@@ -635,16 +559,6 @@ internal sealed class TomcatWindowsService : ServiceBase
         {
             return;
         }
-
-        var cancellation = _watchdogCancellation;
-        if (cancellation is not null)
-        {
-            try { cancellation.Cancel(); } catch { }
-        }
-        try { _watchdogTask?.Wait(TimeSpan.FromSeconds(15)); } catch { }
-        _watchdogTask = null;
-        _watchdogCancellation?.Dispose();
-        _watchdogCancellation = null;
 
         StopSharedTomcatBestEffort();
         WriteServiceLog("Tomcat Windows service stopped.");
