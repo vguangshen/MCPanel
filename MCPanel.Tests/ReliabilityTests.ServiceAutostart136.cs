@@ -31,38 +31,50 @@ public sealed partial class ReliabilityTests
     }
 
     [TestMethod]
-    public void TomcatAndFrpServicesUseScmRecovery()
+    public void TomcatDisablesScmRecoveryWhileFrpKeepsIt()
     {
-        var tomcatRecovery = TomcatWindowsServiceManager.BuildRecoveryPolicyArguments();
-        var tomcatFlag = TomcatWindowsServiceManager.BuildFailureFlagArguments();
+        var tomcatRecovery = ManagedWindowsServiceController.BuildDisableRecoveryPolicyArguments(
+            TomcatWindowsServiceManager.ServiceName);
+        var tomcatFlag = ManagedWindowsServiceController.BuildFailureFlagArguments(
+            TomcatWindowsServiceManager.ServiceName,
+            enabled: false);
         var frpRecovery = FrpWindowsServiceManager.BuildRecoveryPolicyArguments();
         var frpFlag = FrpWindowsServiceManager.BuildFailureFlagArguments();
 
-        foreach (var command in new[] { tomcatRecovery, frpRecovery })
-        {
-            StringAssert.Contains(command, "reset=");
-            StringAssert.Contains(command, "86400");
-            StringAssert.Contains(command, "restart/5000/restart/15000/restart/30000");
-        }
+        StringAssert.Contains(tomcatRecovery, "reset=");
+        StringAssert.Contains(tomcatRecovery, "actions=");
+        Assert.IsFalse(tomcatRecovery.Contains("restart/", StringComparison.OrdinalIgnoreCase));
         StringAssert.Contains(tomcatFlag, "failureflag");
         StringAssert.Contains(tomcatFlag, "MCPanelTomcat");
+        Assert.IsTrue(tomcatFlag.TrimEnd().EndsWith("0", StringComparison.Ordinal));
+
+        StringAssert.Contains(frpRecovery, "reset=");
+        StringAssert.Contains(frpRecovery, "86400");
+        StringAssert.Contains(frpRecovery, "restart/5000/restart/15000/restart/30000");
         StringAssert.Contains(frpFlag, "failureflag");
         StringAssert.Contains(frpFlag, "MCPanelFrp");
     }
 
     [TestMethod]
-    public void ServiceWatchdogsUseBoundedBackoffAndEscalation()
+    public void TomcatServiceContainsNoWatchdogOrAutomaticRestartLoop()
     {
-        Assert.AreEqual(TimeSpan.FromSeconds(1), TomcatWindowsService.GetRecoveryDelay(0));
-        Assert.AreEqual(TimeSpan.FromSeconds(3), TomcatWindowsService.GetRecoveryDelay(1));
-        Assert.AreEqual(TimeSpan.FromSeconds(10), TomcatWindowsService.GetRecoveryDelay(2));
-        Assert.AreEqual(TimeSpan.FromSeconds(30), TomcatWindowsService.GetRecoveryDelay(3));
-        Assert.AreEqual(TimeSpan.FromSeconds(60), TomcatWindowsService.GetRecoveryDelay(4));
-        Assert.AreEqual(TimeSpan.FromSeconds(60), TomcatWindowsService.GetRecoveryDelay(99));
-        Assert.IsFalse(TomcatWindowsService.ShouldEscalate(TomcatWindowsService.MaxRecoveriesPerWindow - 1));
-        Assert.IsTrue(TomcatWindowsService.ShouldEscalate(TomcatWindowsService.MaxRecoveriesPerWindow));
-        Assert.AreEqual(TimeSpan.FromMinutes(10), TomcatWindowsService.RecoveryWindow);
+        var source = ReadRepositoryFile("ManagedComponentWindowsServices.cs");
+        var tomcatStart = source.IndexOf("internal sealed class TomcatWindowsService", StringComparison.Ordinal);
+        var frpStart = source.IndexOf("internal sealed class FrpWindowsService", StringComparison.Ordinal);
+        Assert.IsTrue(tomcatStart >= 0 && frpStart > tomcatStart);
 
+        var tomcatSection = source.Substring(tomcatStart, frpStart - tomcatStart);
+        Assert.IsFalse(tomcatSection.Contains("WatchdogLoop", StringComparison.Ordinal));
+        Assert.IsFalse(tomcatSection.Contains("_watchdog", StringComparison.Ordinal));
+        Assert.IsFalse(tomcatSection.Contains("watchdog recovery", StringComparison.OrdinalIgnoreCase));
+        Assert.IsFalse(tomcatSection.Contains("RecoveryDelays", StringComparison.Ordinal));
+        Assert.IsFalse(tomcatSection.Contains("MaxRecoveriesPerWindow", StringComparison.Ordinal));
+        StringAssert.Contains(tomcatSection, "automatic recovery disabled");
+    }
+
+    [TestMethod]
+    public void FrpServiceWatchdogStillUsesBoundedBackoffAndEscalation()
+    {
         Assert.AreEqual(TimeSpan.FromSeconds(1), FrpWindowsService.GetRecoveryDelay(0));
         Assert.AreEqual(TimeSpan.FromSeconds(60), FrpWindowsService.GetRecoveryDelay(99));
         Assert.IsFalse(FrpWindowsService.ShouldEscalate(FrpWindowsService.MaxRecoveriesPerWindow - 1));
