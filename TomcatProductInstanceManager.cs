@@ -263,7 +263,7 @@ public sealed class TomcatProductInstanceManager
                 SaveInstanceProcessId(instanceRoot, info.Port, process.Id);
                 WriteInstanceRunMode(instanceRoot, "Catalina");
                 WriteOperationLog(productId, $"Catalina 方式启动，端口 {info.Port}，PID {process.Id}。");
-                return $"已打开 {productId} 的 Catalina 诊断窗口，仅加载该应用，端口 {info.Port}。";
+                return $"已打开 {productId} 的 Catalina 窗口，仅加载该应用，端口 {info.Port}。";
             }
 
             await StartTomcatAsync(tomcatHome, instanceRoot, productId, cancellationToken);
@@ -981,7 +981,7 @@ public sealed class TomcatProductInstanceManager
             useInstanceLocalErrorFile: true);
         var startInfo = BuildTomcatJavaStartInfo(tomcatHome, instanceRoot, redirectOutput: false);
         return Process.Start(startInfo)
-            ?? throw new InvalidOperationException($"无法打开 {SafeName(productId)} 的 Tomcat Catalina 诊断窗口。");
+            ?? throw new InvalidOperationException($"无法打开 {SafeName(productId)} 的 Tomcat Catalina 窗口。");
     }
 
     private static async Task<bool> IsJavaProcessForBaseAsync(string catalinaBase, CancellationToken cancellationToken)
@@ -1537,3 +1537,4 @@ public sealed class TomcatProductInstanceManager
         Path.Combine(ComponentPaths.RuntimeRoot, "TomcatProductRuns");
 
 }
+
