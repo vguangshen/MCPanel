@@ -6,3 +6,4 @@
 - “环境 → Tomcat Server”现在只表示共享/总 Tomcat Server 的状态；单应用独立/Catalina 实例继续在“网站”页各自管理，不再让环境页的“停止”按钮看起来无效。
 - Tomcat 停止链移除 Windows Service Stop 后最多 20 秒的冗余等待，发送 SCM 停止请求后直接按真实 CATALINA_BASE Java 进程清理并验证。
 - Windows Service 的普通 OnStop 不再重复执行 shutdown.bat；运行时停止统一交给 MCPanel 控制器，避免重复 shutdown、长时间无响应和旧停止动作打到新实例的竞态。系统关机路径仍保留强制清理。
+- 完整回归测试与 Win-x64 发布验证已通过。
