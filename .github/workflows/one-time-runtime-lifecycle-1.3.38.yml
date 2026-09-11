@@ -44,31 +44,13 @@ jobs:
           $mysqlStart = $text.IndexOf($mysqlMarker, [StringComparison]::Ordinal)
           if ($sqlStart -lt 0 -or $mysqlStart -le $sqlStart) { throw 'Unable to locate SQL/MySQL service action sections.' }
 
-          $bad = @'
-          try
-          {
-              await RunElevatedPowerShellFileAsync(script, cancellationToken, log);
-              var detail = ReadTextFileBestEffort(result);
-              return string.IsNullOrWhiteSpace(detail)
-                  ? $"MySQL {action} 操作已完成。"
-                  : detail.Trim();
-          }
-          catch (Exception ex)
-          '@
-          $good = @'
-          try
-          {
-              await RunElevatedPowerShellFileAsync(script, cancellationToken, log);
-          }
-          catch (Exception ex)
-          '@
-
           $prefix = $text.Substring(0, $sqlStart)
           $sqlSection = $text.Substring($sqlStart, $mysqlStart - $sqlStart)
           $tail = $text.Substring($mysqlStart)
-          if (-not $sqlSection.Contains($bad)) { throw 'SQL Server section does not contain the accidental MySQL return block.' }
-          $sqlSection = $sqlSection.Replace($bad, $good)
-          $text = $prefix + $sqlSection + $tail
+          $pattern = '(?ms)\r?\n\s*var detail = ReadTextFileBestEffort\(result\);\r?\n\s*return string\.IsNullOrWhiteSpace\(detail\)\r?\n\s*\? \$"MySQL \{action\} 操作已完成。"\r?\n\s*: detail\.Trim\(\);'
+          $fixedSqlSection = [regex]::Replace($sqlSection, $pattern, '', 1)
+          if ($fixedSqlSection -eq $sqlSection) { throw 'SQL Server section does not contain the accidental MySQL result block.' }
+          $text = $prefix + $fixedSqlSection + $tail
           [IO.File]::WriteAllText((Resolve-Path $path), $text, (New-Object Text.UTF8Encoding($false)))
 
       - name: Full regression tests
