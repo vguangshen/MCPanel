@@ -50,7 +50,11 @@ $text = [regex]::Replace($text,
 $text = [regex]::Replace($text,
     '(?s)\s*<Border Width="20" Height="20" CornerRadius="10".*?<Ellipse Width="8" Height="8" Fill="\{Binding StatusBrush\}" />\s*</Border>\s*<TextBlock Text="\{Binding StatusText\}"[^>]*/>',
     '')
-if ($text.Contains('ToolTip="{Binding RuntimeStatusText}"')) { throw 'Installed-product runtime status dot still exists.' }
+if ($text.Contains('ToolTip="{Binding RuntimeStatusText}"') -or
+    $text.Contains('Fill="{Binding RuntimeStatusBrush}"') -or
+    $text.Contains('Fill="{Binding StatusBrush}"')) {
+    throw 'Website card runtime status indicators still exist.'
+}
 Write-Utf8 $path $text
 
 # Stop the one-second UI timer from launching website runtime snapshots.
@@ -75,22 +79,30 @@ if ($text.Contains('RefreshWebsiteStates_Click')) { throw 'RefreshWebsiteStates_
 Write-Utf8 $path $text
 
 # Remove the actual website runtime refresh path and the status filter. Keep the
-# generic WebsiteOperationText property because other configuration actions still
-# write human-readable operation feedback, although it is no longer shown as a
-# permanent status-monitoring line on the page.
+# generic WebsiteOperationText property because configuration actions still write
+# short operation feedback, although it is no longer used as a status-monitor line.
 $path = 'ViewModels/MainViewModel.Websites.cs'
 $text = Read-Utf8 $path
 $text = [regex]::Replace($text, '(?m)^\s*private int _websiteStateFilter;\r?\n', '')
 $text = [regex]::Replace($text, '(?m)^\s*private readonly WebsiteRefreshSchedule _websiteRefreshSchedule = new\(\);\r?\n', '')
 $text = [regex]::Replace($text, '(?m)^\s*public int WebsiteStateFilter \{[^\r\n]*\}\r?\n', '')
+$optionsReplacement = @'
+    private bool MatchesWebsiteOptions(bool java) =>
+        _websiteTypeFilter == 0 || (_websiteTypeFilter == 1 ? java : !java);
+'@
 $text = [regex]::Replace($text,
     '(?s)    private bool MatchesWebsiteOptions\(bool java, bool running\) =>\s*\(_websiteTypeFilter == 0 \|\| \(_websiteTypeFilter == 1 \? java : !java\)\) &&\s*\(_websiteStateFilter == 0 \|\| \(_websiteStateFilter == 1 \? running : !running\)\);',
-    '    private bool MatchesWebsiteOptions(bool java) =>`r`n        _websiteTypeFilter == 0 || (_websiteTypeFilter == 1 ? java : !java);')
+    $optionsReplacement,
+    1)
 $text = [regex]::Replace($text,
     '(?s)\r?\n    internal async Task RefreshWebsiteStatesAsync\(bool visible, bool minimized, bool force = false\).*?\r?\n    private sealed class WebsiteRowCollection',
-    "`r`n    private sealed class WebsiteRowCollection")
+    "`r`n    private sealed class WebsiteRowCollection",
+    1)
 if ($text.Contains('WebsiteStateFilter') -or $text.Contains('RefreshWebsiteStatesAsync') -or $text.Contains('_websiteRefreshSchedule')) {
     throw 'Website status refresh implementation was not fully removed.'
+}
+if (-not $text.Contains('private bool MatchesWebsiteOptions(bool java)')) {
+    throw 'Website platform-only filter was not installed.'
 }
 Write-Utf8 $path $text
 
@@ -112,9 +124,13 @@ Write-Utf8 $path $text
 # Extend release notes produced by the first script.
 $path = 'RELEASE-NOTES.md'
 $text = Read-Utf8 $path
-$text = $text.Replace(
-    '- 删除“已安装网站”里的“检测访问”按钮以及对应的临时 HTTP GET 探测代码；网站页继续使用运行时快照刷新服务/进程状态。',
-    '- 删除“已安装网站”里的“检测访问”按钮以及对应的临时 HTTP GET 探测代码。`r`n- 删除“已安装网站”的服务状态检测功能：移除状态筛选、刷新状态按钮、30 秒自动状态刷新、状态提示行以及卡片运行状态点；网站页只负责搜索、平台绑定、域名/SSL 和显式运行操作。')
+$oldNote = '- 删除“已安装网站”里的“检测访问”按钮以及对应的临时 HTTP GET 探测代码；网站页继续使用运行时快照刷新服务/进程状态。'
+$newNote = @'
+- 删除“已安装网站”里的“检测访问”按钮以及对应的临时 HTTP GET 探测代码。
+- 删除“已安装网站”的服务状态检测功能：移除状态筛选、刷新状态按钮、30 秒自动状态刷新、状态提示行以及卡片运行状态点；网站页只负责搜索、平台绑定、域名/SSL 和显式运行操作。
+'@
+if (-not $text.Contains($oldNote)) { throw 'Expected 1.3.42 website release-note line not found.' }
+$text = $text.Replace($oldNote, $newNote.TrimEnd())
 Write-Utf8 $path $text
 
 # Regression guards for the UI and background timer.
@@ -143,6 +159,7 @@ public sealed partial class ReliabilityTests
         Assert.IsFalse(viewModel.Contains("RefreshWebsiteStatesAsync", StringComparison.Ordinal));
         Assert.IsFalse(viewModel.Contains("WebsiteStateFilter", StringComparison.Ordinal));
         Assert.IsFalse(templates.Contains("RuntimeStatusText", StringComparison.Ordinal));
+        Assert.IsFalse(templates.Contains("RuntimeStatusBrush", StringComparison.Ordinal));
     }
 
     [TestMethod]
