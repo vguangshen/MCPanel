@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   validate-and-commit:
-    if: github.event.head_commit.message == 'Retry one-time website Catalina blank fix 1.3.40'
+    if: github.event.head_commit.message == 'Retry 2 website Catalina blank fix 1.3.40'
     runs-on: windows-latest
     timeout-minutes: 45
 
