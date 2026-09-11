@@ -30,3 +30,14 @@ if ($updated -eq $raw) { throw 'Unable to patch the XAML replacement block in th
 Set-Content -LiteralPath $scriptPath -Value $updated -Encoding UTF8
 
 & .\tools\Fix-WebsiteCatalinaBlank-1.3.40.ps1
+
+# Make the narrow-view regression token deterministic. CustomWebsiteDefinition generates other
+# searchable fields, so a plain numeric token such as "43" can accidentally match those fields.
+$testPath = 'MCPanel.Tests/ReliabilityTests.WebsiteCatalinaBlank140.cs'
+$test = Get-Content -LiteralPath $testPath -Raw
+$oldName = '                        Name = $"平台 {index:D2}",'
+$newName = '                        Name = index == 43 ? "ONLY_TARGET_43" : $"平台 {index:D2}",'
+if (-not $test.Contains($oldName)) { throw 'Unable to find deterministic test-name marker.' }
+$test = $test.Replace($oldName, $newName)
+$test = $test.Replace('                model.WebsiteSearchKeyword = "平台 43";', '                model.WebsiteSearchKeyword = "ONLY_TARGET_43";')
+Set-Content -LiteralPath $testPath -Value $test -Encoding UTF8
