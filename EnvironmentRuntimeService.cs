@@ -347,22 +347,31 @@ public sealed class EnvironmentRuntimeService
                 TomcatProductStartupManager.RemoveRegistration();
                 if (!TomcatProductInstanceManager.IsSharedTomcatRunning())
                 {
-                    try
+                    // A restart can arrive while SCM is still finishing the previous
+                    // service stop. Retry the control request a few times, but keep
+                    // the real shared CATALINA_BASE process as the runtime truth.
+                    for (var controlAttempt = 0;
+                         controlAttempt < 3 && !TomcatProductInstanceManager.IsSharedTomcatRunning();
+                         controlAttempt++)
                     {
-                        // Best effort only: SCM acknowledgement is not runtime truth.
-                        TomcatWindowsServiceManager.Start();
-                    }
-                    catch (Exception serviceError)
-                    {
-                        EnvironmentOperationDiagnostics.RecordFailure(
-                            "环境管理",
-                            "发送 Tomcat Windows Service 启动请求",
-                            serviceError);
-                    }
+                        try
+                        {
+                            TomcatWindowsServiceManager.Start();
+                        }
+                        catch (Exception serviceError)
+                        {
+                            EnvironmentOperationDiagnostics.RecordFailure(
+                                "环境管理",
+                                $"发送 Tomcat Windows Service 启动请求（第 {controlAttempt + 1} 次）",
+                                serviceError);
+                        }
 
-                    for (var attempt = 0; attempt < 10 && !TomcatProductInstanceManager.IsSharedTomcatRunning(); attempt++)
-                    {
-                        await Task.Delay(200, cancellationToken);
+                        for (var processAttempt = 0;
+                             processAttempt < 10 && !TomcatProductInstanceManager.IsSharedTomcatRunning();
+                             processAttempt++)
+                        {
+                            await Task.Delay(200, cancellationToken);
+                        }
                     }
                 }
 
@@ -389,15 +398,25 @@ public sealed class EnvironmentRuntimeService
                     {
                         throw new InvalidOperationException($"Tomcat startup.bat 退出码：{startResult.ExitCode}");
                     }
+
+                    for (var processAttempt = 0;
+                         processAttempt < 20 && !TomcatProductInstanceManager.IsSharedTomcatRunning();
+                         processAttempt++)
+                    {
+                        await Task.Delay(250, cancellationToken);
+                    }
+                    if (!TomcatProductInstanceManager.IsSharedTomcatRunning())
+                    {
+                        throw new InvalidOperationException(
+                            $"Tomcat startup.bat 已返回成功，但未检测到共享 Java 进程。请检查日志目录：{Path.Combine(tomcatRoot, "logs")}");
+                    }
                 }
 
                 return $"Tomcat Server 启动请求已发送；运行状态按实际 Java 进程判断，不再等待 Windows 服务状态或读取启动进度。日志目录：{Path.Combine(tomcatRoot, "logs")}";
             case EnvironmentKind.Nginx:
                 return await StartNginxAsync(cancellationToken);
             case EnvironmentKind.MySql:
-                await RunMySqlServiceActionAsync("start", cancellationToken);
-                var mysqlCredentials = LoadEffectiveMySqlCredentials();
-                return $"MySQL80 服务已启动。连接信息：{mysqlCredentials.Host}:{mysqlCredentials.Port}，账号 {mysqlCredentials.UserName}。";
+                return await RunMySqlServiceActionAsync("start", cancellationToken);
             case EnvironmentKind.SqlServer:
                 await RunSqlServerServiceActionAsync("start", cancellationToken);
                 return $"SQL Server 服务已启动。{FormatSqlServerConnectionText()}";
@@ -432,26 +451,17 @@ public sealed class EnvironmentRuntimeService
 
                 if (TomcatProductInstanceManager.IsSharedTomcatRunning())
                 {
-                    var shutdown = Path.Combine(tomcatRoot, "bin", "shutdown.bat");
-                    if (File.Exists(shutdown))
-                    {
-                        await RunFileAsync(shutdown, string.Empty, Path.Combine(tomcatRoot, "bin"), false, cancellationToken);
-                    }
-                    for (var attempt = 0; attempt < 80 && TomcatProductInstanceManager.IsSharedTomcatRunning(); attempt++)
-                    {
-                        await Task.Delay(250, cancellationToken);
-                    }
+                    await TomcatProductInstanceManager.StopSharedTomcatAsync(cancellationToken);
                     if (TomcatProductInstanceManager.IsSharedTomcatRunning())
                     {
-                        throw new InvalidOperationException("Tomcat Server 共享进程未能停止；为避免影响单应用实例，已取消强制结束全部 Java 进程。");
+                        throw new InvalidOperationException("Tomcat Server 共享进程未能停止；单应用实例未受影响。请检查共享 Tomcat Java 进程。");
                     }
                 }
                 return "Tomcat Server 已停止；单应用 Tomcat 实例不受影响。";
             case EnvironmentKind.Nginx:
                 return await StopNginxAsync(cancellationToken);
             case EnvironmentKind.MySql:
-                await RunMySqlServiceActionAsync("stop", cancellationToken);
-                return "MySQL80 服务已停止。";
+                return await RunMySqlServiceActionAsync("stop", cancellationToken);
             case EnvironmentKind.SqlServer:
                 await RunSqlServerServiceActionAsync("stop", cancellationToken);
                 return "SQL Server 服务已停止。";
@@ -474,9 +484,7 @@ public sealed class EnvironmentRuntimeService
 
         if (kind == EnvironmentKind.MySql)
         {
-            await RunMySqlServiceActionAsync("restart", cancellationToken);
-            var mysqlCredentials = LoadEffectiveMySqlCredentials();
-            return $"MySQL 已重启。连接信息：{mysqlCredentials.Host}:{mysqlCredentials.Port}，账号 {mysqlCredentials.UserName}。";
+            return await RunMySqlServiceActionAsync("restart", cancellationToken);
         }
 
         if (kind == EnvironmentKind.SqlServer)
@@ -1759,7 +1767,7 @@ public sealed class EnvironmentRuntimeService
             """;
     }
 
-    private static async Task RunMySqlServiceActionAsync(string action, CancellationToken cancellationToken)
+    private static async Task<string> RunMySqlServiceActionAsync(string action, CancellationToken cancellationToken)
     {
         var workDirectory = ComponentPaths.WorkRoot;
         var operationId = Guid.NewGuid().ToString("N");
@@ -1776,6 +1784,10 @@ public sealed class EnvironmentRuntimeService
         try
         {
             await RunElevatedPowerShellFileAsync(script, cancellationToken, log);
+            var detail = ReadTextFileBestEffort(result);
+            return string.IsNullOrWhiteSpace(detail)
+                ? $"MySQL {action} 操作已完成。"
+                : detail.Trim();
         }
         catch (Exception ex)
         {
@@ -1967,14 +1979,33 @@ public sealed class EnvironmentRuntimeService
                 Fail ('MySQL80 启动失败：' + $lastError)
             }
 
+            function Invoke-RootQuery($paths, $sql) {
+                $mysqlArgs = @('--protocol=TCP', '--connect-timeout=3', '--get-server-public-key', '-h127.0.0.1', "-P$port", '-uroot', "-p$rootPassword", '-e', $sql)
+                $code = Invoke-NativeQuiet $paths.Mysql $mysqlArgs
+                if ($code -eq 0) { return 0 }
+
+                # Older MySQL clients may not understand --get-server-public-key.
+                # Retry without it for backward compatibility.
+                $legacyArgs = @('--protocol=TCP', '--connect-timeout=3', '-h127.0.0.1', "-P$port", '-uroot', "-p$rootPassword", '-e', $sql)
+                return Invoke-NativeQuiet $paths.Mysql $legacyArgs
+            }
+
             function Test-RootPassword($paths) {
-                $code = Invoke-NativeQuiet $paths.Mysql @('-h127.0.0.1', "-P$port", '-uroot', "-p$rootPassword", '-e', 'SELECT 1;')
-                return $code -eq 0
+                return (Invoke-RootQuery $paths 'SELECT 1;') -eq 0
+            }
+
+            function Wait-RootPasswordReady($paths, $seconds) {
+                $deadline = (Get-Date).AddSeconds($seconds)
+                while ((Get-Date) -lt $deadline) {
+                    if (Test-RootPassword $paths) { return $true }
+                    Start-Sleep -Milliseconds 750
+                }
+                return $false
             }
 
             function Stop-TemporaryMySqlProcess($process, $paths) {
                 if (!$process -or $process.HasExited) { return }
-                Invoke-NativeQuiet $paths.Mysql @('-h127.0.0.1', "-P$port", '-uroot', "-p$rootPassword", '-e', 'SHUTDOWN;') | Out-Null
+                Invoke-RootQuery $paths 'SHUTDOWN;' | Out-Null
                 for ($i = 0; $i -lt 30; $i++) {
                     if ($process.HasExited) { return }
                     Start-Sleep -Milliseconds 500
@@ -2007,7 +2038,7 @@ public sealed class EnvironmentRuntimeService
                     for ($i = 0; $i -lt 30; $i++) {
                         Start-Sleep -Seconds 1
                         if ($proc.HasExited) { break }
-                        $code = Invoke-NativeQuiet $paths.Mysql @('-h127.0.0.1', "-P$port", '-uroot', "-p$rootPassword", '-e', 'SELECT 1;')
+                        $code = Invoke-RootQuery $paths 'SELECT 1;'
                         if ($code -eq 0) {
                             $updated = $true
                             break
@@ -2037,15 +2068,23 @@ public sealed class EnvironmentRuntimeService
                     }
                     'start' {
                         $paths = Start-MySqlService
-                        if (!(Test-RootPassword $paths)) { Fail 'MySQL 已启动，但保存的 root 凭据无法验证。为避免意外修改数据库密码，MCPanel 已停止自动重置；请恢复正确的凭据文件后重试。' }
-                        Set-Result ('MySQL80 服务已启动。连接信息：127.0.0.1:' + $port + '，账号 root。')
+                        $message = 'MySQL80 服务已启动。连接信息：127.0.0.1:' + $port + '，账号 root。'
+                        if (!(Wait-RootPasswordReady $paths 20)) {
+                            $message += ' 注意：服务运行正常，但保存的 root 凭据验证未通过。为避免意外修改数据库密码，MCPanel 已停止自动重置；不会修改现有数据库密码。'
+                            Write-Output $message
+                        }
+                        Set-Result $message
                     }
                     'restart' {
                         Stop-MySqlService
                         Start-Sleep -Seconds 2
                         $paths = Start-MySqlService
-                        if (!(Test-RootPassword $paths)) { Fail 'MySQL 已启动，但保存的 root 凭据无法验证。为避免意外修改数据库密码，MCPanel 已停止自动重置；请恢复正确的凭据文件后重试。' }
-                        Set-Result ('MySQL80 服务已重启。连接信息：127.0.0.1:' + $port + '，账号 root。')
+                        $message = 'MySQL80 服务已重启。连接信息：127.0.0.1:' + $port + '，账号 root。'
+                        if (!(Wait-RootPasswordReady $paths 20)) {
+                            $message += ' 注意：服务运行正常，但保存的 root 凭据验证未通过。为避免意外修改数据库密码，MCPanel 已停止自动重置；不会修改现有数据库密码。'
+                            Write-Output $message
+                        }
+                        Set-Result $message
                     }
                     default {
                         Fail ('未知 MySQL 操作：' + $action)

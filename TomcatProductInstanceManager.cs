@@ -419,6 +419,24 @@ public sealed class TomcatProductInstanceManager
         }
     }
 
+    public static async Task StopSharedTomcatAsync(CancellationToken cancellationToken = default)
+    {
+        var tomcatHome = FindTomcatRoot();
+        if (tomcatHome is null)
+        {
+            return;
+        }
+
+        await RuntimeLock.WaitAsync(cancellationToken);
+        try
+        {
+            await StopCatalinaBaseAsync(tomcatHome, cancellationToken, Array.Empty<int>());
+        }
+        finally
+        {
+            RuntimeLock.Release();
+        }
+    }
     public static async Task StopAllTomcatProcessesAsync(
         CancellationToken cancellationToken = default,
         bool throwOnFailure = true)

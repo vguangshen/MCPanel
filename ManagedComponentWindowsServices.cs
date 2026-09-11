@@ -528,11 +528,11 @@ internal sealed class TomcatWindowsService : ServiceBase
         WriteServiceLog("Tomcat Windows service started; automatic recovery disabled.");
     }
 
-    protected override void OnStop() => StopTomcat();
+    protected override void OnStop() => StopTomcat(waitForExitAndForce: false);
 
     protected override void OnShutdown()
     {
-        StopTomcat();
+        StopTomcat(waitForExitAndForce: true);
         base.OnShutdown();
     }
 
@@ -579,18 +579,20 @@ internal sealed class TomcatWindowsService : ServiceBase
         // Do not block the Windows service on connector/application readiness; startup.bat returning successfully is sufficient here.
     }
 
-    private void StopTomcat()
+    private void StopTomcat(bool waitForExitAndForce)
     {
         if (Interlocked.Exchange(ref _stopStarted, 1) != 0)
         {
             return;
         }
 
-        StopSharedTomcatBestEffort();
-        WriteServiceLog("Tomcat Windows service stopped.");
+        StopSharedTomcatBestEffort(waitForExitAndForce);
+        WriteServiceLog(waitForExitAndForce
+            ? "Tomcat Windows service stopped."
+            : "Tomcat Windows service stop request sent; runtime cleanup delegated to MCPanel controller.");
     }
 
-    private void StopSharedTomcatBestEffort()
+    private void StopSharedTomcatBestEffort(bool waitForExitAndForce = true)
     {
         try
         {
@@ -613,6 +615,11 @@ internal sealed class TomcatWindowsService : ServiceBase
                 {
                     WriteServiceLog("Tomcat shutdown.bat failed: " + ex.Message);
                 }
+            }
+
+            if (!waitForExitAndForce)
+            {
+                return;
             }
 
             var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(20);
