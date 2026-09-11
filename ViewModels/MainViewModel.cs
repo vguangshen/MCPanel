@@ -175,9 +175,9 @@ public sealed partial class MainViewModel : ObservableObject
     public Visibility CustomWebsiteGroupVisibility => VisibleCustomWebsites.IsEmpty ? Visibility.Collapsed : Visibility.Visible;
     public Visibility WebsiteNoResultsVisibility => VisibleWebsiteCount == 0 && InstalledProducts.Count + CustomWebsites.Count > 0
         ? Visibility.Visible : Visibility.Collapsed;
-    private bool MatchesWebsite(InstalledProductItem item) => MatchesWebsiteOptions(item.IsTomcatDeployment, item.CanBrowse) && MatchesWebsiteText(item.DisplayName, item.ProductId,
+    private bool MatchesWebsite(InstalledProductItem item) => MatchesWebsiteOptions(item.IsTomcatDeployment) && MatchesWebsiteText(item.DisplayName, item.ProductId,
         item.InstallPath, item.EnvironmentSummary, item.Url, item.DomainDisplayText, item.SiteDisplayText);
-    private bool MatchesWebsite(CustomWebsiteItem item) => MatchesWebsiteOptions(false, item.IsRunning) && MatchesWebsiteText(item.Name, item.PhysicalPath,
+    private bool MatchesWebsite(CustomWebsiteItem item) => MatchesWebsiteOptions(false) && MatchesWebsiteText(item.Name, item.PhysicalPath,
         item.Url, item.DomainSummary, item.PoolSummary, "IIS");
     internal bool MatchesWebsiteText(params string[] fields)
     {
@@ -210,7 +210,7 @@ public sealed partial class MainViewModel : ObservableObject
     public string InstalledProductCountText => $"{InstalledProducts.Count + CustomWebsites.Count} 个网站";
     public string InstalledProductStatus => InstalledProducts.Count + CustomWebsites.Count == 0
         ? "当前没有网站。可以新建 IIS 网站，或先在“产品管理”中安装产品。"
-        : "集中管理产品网站与自定义 IIS 网站，包括域名、SSL、绑定和运行状态。";
+        : "集中管理产品网站与自定义 IIS 网站，包括域名、SSL 和平台绑定。";
     public Visibility WebsiteEmptyVisibility => InstalledProducts.Count + CustomWebsites.Count == 0
         ? Visibility.Visible
         : Visibility.Collapsed;
@@ -591,7 +591,6 @@ public sealed partial class MainViewModel : ObservableObject
         }
         _updatingWebsiteRows = false;
         SyncWebsiteRows();
-        _websiteRefreshSchedule.RequestRefresh();
 
         OnPropertyChanged(nameof(InstalledProductCountText));
         OnPropertyChanged(nameof(InstalledProductStatus));
@@ -625,7 +624,6 @@ public sealed partial class MainViewModel : ObservableObject
         }
         _updatingWebsiteRows = false;
         SyncWebsiteRows();
-        _websiteRefreshSchedule.RequestRefresh();
 
         OnPropertyChanged(nameof(InstalledProductCountText));
         OnPropertyChanged(nameof(InstalledProductStatus));

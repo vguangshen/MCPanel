@@ -900,7 +900,7 @@
                             <StackPanel VerticalAlignment="Center">
                                 <TextBlock Text="已安装网站" Style="{StaticResource SectionTitle}" />
                                 <TextBlock Text="{Binding WebsiteSearchCountText}" Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis"
-                                           ToolTip="管理平台绑定、域名和运行状态，输入关键词快速定位软件。"
+                                           ToolTip="管理平台绑定、域名和 SSL，输入关键词快速定位软件。"
                                            FontSize="13" Margin="0,6,0,0" />
                             </StackPanel>
                             <Button x:Name="BindPlatformButton" Grid.Column="2" Style="{StaticResource WebsitePrimaryActionButton}"
@@ -945,16 +945,11 @@
                             <Grid.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries>
                                 <ResourceDictionary Source="Resources/PanelDialogControls.xaml" />
                             </ResourceDictionary.MergedDictionaries></ResourceDictionary></Grid.Resources>
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="132" /><ColumnDefinition Width="142" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="132" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                             <ComboBox SelectedIndex="{Binding WebsiteTypeFilter}" Height="32" Margin="0,0,8,0" AutomationProperties.Name="网站类型筛选">
                                 <ComboBoxItem Content="全部平台" /><ComboBoxItem Content="Java 平台" /><ComboBoxItem Content=".NET / IIS" />
                             </ComboBox>
-                            <ComboBox Grid.Column="1" SelectedIndex="{Binding WebsiteStateFilter}" Height="32" Margin="0,0,12,0" AutomationProperties.Name="网站状态筛选">
-                                <ComboBoxItem Content="全部状态" /><ComboBoxItem Content="服务运行中" /><ComboBoxItem Content="停止或待检查" />
-                            </ComboBox>
-                            <Button Grid.Column="3" Content="刷新状态" Height="32" Click="RefreshWebsiteStates_Click" ToolTip="批量更新服务状态，不扫描软件目录或访问网页" />
                         </Grid>
-                        <TextBlock Text="{Binding WebsiteOperationText}" Foreground="{DynamicResource MutedBrush}" FontSize="11" TextTrimming="CharacterEllipsis" Margin="2,6,0,0" />
                         <Border Visibility="{Binding WebsiteRecordErrorVisibility}" Background="{DynamicResource WarningBrush}" CornerRadius="6" Padding="10" Margin="0,8,0,0">
                             <DockPanel><Button DockPanel.Dock="Right" Content="恢复平台记录备份" Style="{StaticResource WebsiteActionButton}" Click="RestorePlatformRecords_Click" Margin="12,0,0,0" />
                                 <TextBlock Text="{Binding WebsiteRecordError}" Foreground="{DynamicResource WarningTextBrush}" TextWrapping="Wrap" /></DockPanel>

@@ -151,10 +151,6 @@
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextBrush}" FontSize="17" FontWeight="SemiBold"
                                    MaxWidth="310" TextTrimming="CharacterEllipsis" />
-                        <Border Width="20" Height="20" CornerRadius="10" Margin="9,0,0,0" BorderBrush="{DynamicResource CardLineBrush}" BorderThickness="1">
-                            <Ellipse Width="8" Height="8" Fill="{Binding StatusBrush}" />
-                        </Border>
-                        <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource MutedBrush}" FontSize="11" Margin="6,3,0,0" />
                     </StackPanel>
                     <TextBlock Text="{Binding PhysicalPath}" ToolTip="{Binding PhysicalPath}" Foreground="{DynamicResource MutedBrush}"
                                FontSize="11" Margin="0,10,0,0" TextTrimming="CharacterEllipsis" />
@@ -213,14 +209,6 @@
                                             Height="30"
                                             VerticalAlignment="Center"
                                             ToolTip="{Binding DisplayName}" />
-                        <Border Grid.Column="1" Width="22" Height="22" CornerRadius="11" Margin="8,0,0,0"
-                                Background="{DynamicResource SurfaceAltBrush}"
-                                BorderBrush="{DynamicResource CardLineBrush}"
-                                BorderThickness="1"
-                                VerticalAlignment="Center"
-                                ToolTip="{Binding RuntimeStatusText}">
-                            <Ellipse Width="9" Height="9" Fill="{Binding RuntimeStatusBrush}" />
-                        </Border>
                     </Grid>
                     <TextBlock Grid.Row="1" Text="{Binding EnvironmentSummary}" Foreground="{DynamicResource MutedBrush}"
                                FontSize="12" Margin="0,10,0,0" TextTrimming="CharacterEllipsis" />
@@ -455,7 +443,6 @@
                                     Click="InstalledProductRepair_Click" />
                             <Button Content="编辑平台" Style="{DynamicResource WebsiteActionButton}" Margin="0,0,8,0"
                                     Visibility="{Binding Product.IsExternalPlatform, Converter={StaticResource BooleanToVisibility}}" Click="EditLocalPlatform_Click" />
-                            <Button Content="检测访问" Style="{DynamicResource WebsiteActionButton}" Margin="0,0,8,0" Click="ProbeWebsite_Click" />
                             <Button Content="域名与 SSL" Style="{DynamicResource WebsiteActionButton}" Margin="0,0,8,0"
                                     VerticalAlignment="Center"
                                     Click="InstalledProductDomain_Click" />

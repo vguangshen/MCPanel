@@ -528,7 +528,15 @@ internal sealed class TomcatWindowsService : ServiceBase
         WriteServiceLog("Tomcat Windows service started; automatic recovery disabled.");
     }
 
-    protected override void OnStop() => StopTomcat(waitForExitAndForce: false);
+    protected override void OnStop()
+    {
+        if (Interlocked.Exchange(ref _stopStarted, 1) != 0)
+        {
+            return;
+        }
+
+        WriteServiceLog("Tomcat Windows service wrapper stopped; runtime cleanup delegated to MCPanel controller.");
+    }
 
     protected override void OnShutdown()
     {

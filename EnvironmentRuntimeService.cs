@@ -424,27 +424,31 @@ public sealed class EnvironmentRuntimeService
                 var tomcatRoot = RequireTomcatRoot();
                 if (TomcatWindowsServiceManager.IsRegisteredForRoot(tomcatRoot))
                 {
-                    await Task.Run(() => TomcatWindowsServiceManager.Stop(), cancellationToken);
-                    // sc.exe only acknowledges the stop request. Verify the real
-                    // shared CATALINA_BASE process, never the SCM status value.
-                    for (var attempt = 0; attempt < 80 && TomcatProductInstanceManager.IsSharedTomcatRunning(); attempt++)
+                    try
                     {
-                        await Task.Delay(250, cancellationToken);
+                        await Task.Run(() => TomcatWindowsServiceManager.Stop(), cancellationToken);
                     }
-                    if (!TomcatProductInstanceManager.IsSharedTomcatRunning())
+                    catch (Exception serviceError)
                     {
-                        return "Tomcat Server 已停止；单应用 Tomcat 实例不受影响。";
+                        // SCM is not runtime truth. Record wrapper-control failures and
+                        // continue with the real CATALINA_BASE process cleanup below.
+                        EnvironmentOperationDiagnostics.RecordFailure(
+                            "环境管理",
+                            "发送 Tomcat Windows Service 停止请求",
+                            serviceError);
                     }
                 }
 
                 if (TomcatProductInstanceManager.IsSharedTomcatRunning())
                 {
                     await TomcatProductInstanceManager.StopSharedTomcatAsync(cancellationToken);
-                    if (TomcatProductInstanceManager.IsSharedTomcatRunning())
-                    {
-                        throw new InvalidOperationException("Tomcat Server 共享进程未能停止；单应用实例未受影响。请检查共享 Tomcat Java 进程。");
-                    }
                 }
+
+                if (TomcatProductInstanceManager.IsSharedTomcatRunning())
+                {
+                    throw new InvalidOperationException("Tomcat Server 共享进程未能停止；单应用实例未受影响。请检查共享 Tomcat Java 进程。");
+                }
+
                 return "Tomcat Server 已停止；单应用 Tomcat 实例不受影响。";
             case EnvironmentKind.Nginx:
                 return await StopNginxAsync(cancellationToken);
@@ -1443,14 +1447,17 @@ public sealed class EnvironmentRuntimeService
         var sharedRunning = sharedProcessRunning &&
             TomcatRuntimeProbe.ArePortsListening(TomcatRuntimeProbe.ReadHttpPorts(tomcatRoot));
         var managedRunning = TomcatProductInstanceManager.IsAnyManagedTomcatHealthy();
-        var anyRunning = sharedRunning || managedRunning;
+        // The Environment card controls the shared server only. Independent/Catalina
+        // product instances are managed from the Websites page and must not make the
+        // shared Tomcat Server badge/button look running when no shared JVM exists.
+        var anyRunning = sharedProcessRunning;
         var detail = sharedRunning
             ? "全部应用模式正在运行。"
-            : managedRunning
-                ? "一个或多个应用正在单独运行。"
-                : sharedProcessRunning
-                    ? "检测到 Tomcat Java 进程，但配置端口未全部监听。"
-                    : "当前没有运行中的 Tomcat。";
+            : sharedProcessRunning
+                ? "检测到共享 Tomcat Java 进程，但配置端口未全部监听。"
+                : managedRunning
+                    ? "总 Tomcat Server 未运行；一个或多个应用正在单独运行，请在“网站”页面管理。"
+                    : "当前没有运行中的总 Tomcat Server。";
         return Installed(anyRunning, $"Tomcat 已安装到 {tomcatRoot}。{detail}");
     }
 

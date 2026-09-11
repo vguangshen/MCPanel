@@ -603,7 +603,10 @@ public sealed class TomcatProductInstanceManager
         }
 
         var processIds = GetListeningProcessIds(new[] { port });
-        return processIds.Count == 0 || processIds.Any(IsJavaProcessId);
+        // Unknown ownership is not proof of a Java listener. Requiring a positively
+        // identified java.exe PID prevents stale/unrelated ports from creating a
+        // phantom Tomcat-running state after the JVM has already exited.
+        return processIds.Count > 0 && processIds.Any(IsJavaProcessId);
     }
 
     private static async Task<string> PrepareInstanceAsync(

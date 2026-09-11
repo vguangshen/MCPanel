@@ -20,9 +20,13 @@ public sealed partial class ReliabilityTests
     public void TomcatRestartCannotBeKilledByLateServiceStopCleanup()
     {
         var services = ReadRepositoryFile("ManagedComponentWindowsServices.cs");
-        StringAssert.Contains(services, "OnStop() => StopTomcat(waitForExitAndForce: false)");
-        StringAssert.Contains(services, "if (!waitForExitAndForce)");
-        StringAssert.Contains(services, "runtime cleanup delegated to MCPanel controller");
+        var stopStart = services.IndexOf("protected override void OnStop()", StringComparison.Ordinal);
+        var shutdownStart = services.IndexOf("protected override void OnShutdown()", stopStart, StringComparison.Ordinal);
+        Assert.IsTrue(stopStart >= 0 && shutdownStart > stopStart);
+        var normalStop = services.Substring(stopStart, shutdownStart - stopStart);
+        StringAssert.Contains(normalStop, "runtime cleanup delegated to MCPanel controller");
+        Assert.IsFalse(normalStop.Contains("StopTomcat", StringComparison.Ordinal));
+        Assert.IsFalse(normalStop.Contains("shutdown.bat", StringComparison.Ordinal));
 
         var runtime = ReadRepositoryFile("EnvironmentRuntimeService.cs");
         StringAssert.Contains(runtime, "controlAttempt < 3");
