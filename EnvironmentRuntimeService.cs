@@ -167,21 +167,16 @@ public sealed class EnvironmentRuntimeService
             windowStyle: ProcessWindowStyle.Normal);
     }
 
-    public async Task<string> StartTomcatInCatalinaConsoleAsync(
+    public Task<string> StartTomcatInCatalinaConsoleAsync(
         CancellationToken cancellationToken = default, Action<TomcatStartupProgress>? tomcatProgress = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var tomcatRoot = RequireTomcatRoot();
         if (IsRunning(EnvironmentKind.Tomcat))
         {
-            throw new InvalidOperationException("Tomcat 已经在运行。请先停止后台 Tomcat，再使用 Catalina 诊断模式启动。");
+            throw new InvalidOperationException("Tomcat 已经在运行。请先停止后台 Tomcat，再使用 Catalina 前台方式启动。");
         }
 
-        var ports = TomcatRuntimeProbe.ReadHttpPorts(tomcatRoot).ToArray();
-        if (ports.Length == 0)
-            throw new InvalidDataException("Tomcat server.xml 中没有可用的 HTTP 端口。请先修复产品绑定。");
-        tomcatProgress?.Invoke(new TomcatStartupProgress(5, "正在准备 Catalina 诊断启动...", 0, 0));
-        await Task.Yield();
         var binDirectory = Path.Combine(tomcatRoot, "bin");
         var catalina = Path.Combine(binDirectory, "catalina.bat");
         if (!File.Exists(catalina))
@@ -198,32 +193,25 @@ public sealed class EnvironmentRuntimeService
             $"""
             @echo off
             chcp 65001 >nul
-            title MCPanel Tomcat Catalina Diagnostic
+            title MCPanel Tomcat Catalina
             cd /d "{binDirectory}"
             call catalina.bat run
             echo.
-            echo Tomcat has exited. Review the error output above.
-            echo Press any key to close this diagnostic window.
+            echo Tomcat has exited. Review the Catalina output above.
+            echo Press any key to close this window.
             pause >nul
             """,
             new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
 
-        using var diagnosticWindow = ProcessRunner.StartFile(
+        using var catalinaWindow = ProcessRunner.StartFile(
             launcher,
             string.Empty,
             binDirectory,
             windowStyle: ProcessWindowStyle.Normal);
 
-        tomcatProgress?.Invoke(new TomcatStartupProgress(15, "已打开 Catalina 控制台，正在等待端口就绪...", 0, 0));
-        await TomcatRuntimeProbe.WaitForStartupAsync(tomcatRoot, ports, cancellationToken,
-            progress: (ready, total) => tomcatProgress?.Invoke(new TomcatStartupProgress(
-                ready == total ? 96 : 15d + 75d * ready / total,
-                ready == total ? "正在验证 Catalina 端口稳定监听..." : $"Catalina 端口就绪：{ready}/{total}",
-                0, 0)));
-        tomcatProgress?.Invoke(new TomcatStartupProgress(100, "Catalina 启动完成，全部配置端口已稳定监听。", 0, 0));
-        return "Catalina 已启动，全部配置端口已确认稳定监听。启动日志和错误保留在前台诊断窗口中。";
+        return Task.FromResult(
+            "Catalina 窗口已启动。MCPanel 不再等待端口或执行 HTTP 就绪诊断；启动过程请直接查看 Catalina 窗口。");
     }
-
     public NginxRuntimeOptions GetNginxOptions()
     {
         return NginxRuntimeManager.LoadOptions() ?? new NginxRuntimeOptions();
@@ -3122,3 +3110,4 @@ public sealed class EnvironmentRuntimeService
     internal static bool HasIisUninstallContinuation => File.Exists(IisPendingUninstallMarker);
     internal static string IisUninstallContinuationMessage => "IIS 组件卸载已暂存，请重启设备后点击“继续卸载”。";
 }
+
