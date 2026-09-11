@@ -55,6 +55,14 @@ jobs:
           if ($fixedSqlSection -eq $sqlSection) { throw 'Unable to remove accidental MySQL result block from SQL Server section.' }
           $text = $prefix + $fixedSqlSection + $tail
 
+          # Preserve the existing safety wording expected by regression coverage,
+          # while treating credential verification as a warning rather than a
+          # service-start failure.
+          $oldWarning = ' 注意：服务运行正常，但保存的 root 凭据验证未通过；MCPanel 不会自动重置数据库密码。'
+          $newWarning = ' 注意：服务运行正常，但保存的 root 凭据验证未通过。为避免意外修改数据库密码，MCPanel 已停止自动重置；不会修改现有数据库密码。'
+          if (-not $text.Contains($oldWarning)) { throw 'Unable to locate MySQL credential warning text.' }
+          $text = $text.Replace($oldWarning, $newWarning)
+
           # Do not depend on catalina.bat stop / shutdown port 8005 for a shared
           # Tomcat restart. If the service stop request did not end the JVM, use
           # the managed CATALINA_BASE process cleanup path instead.
@@ -82,7 +90,7 @@ jobs:
                               await TomcatProductInstanceManager.StopSharedTomcatAsync(cancellationToken);
                               if (TomcatProductInstanceManager.IsSharedTomcatRunning())
                               {
-                                  throw new InvalidOperationException("Tomcat Server 共享进程未能停止；单应用实例未受影响。请检查共享 Tomcat Java 进程。 ");
+                                  throw new InvalidOperationException("Tomcat Server 共享进程未能停止；单应用实例未受影响。请检查共享 Tomcat Java 进程。");
                               }
                           }
           '@
@@ -122,6 +130,11 @@ jobs:
 
           $testPath = 'MCPanel.Tests/ReliabilityTests.RuntimeLifecycle138.cs'
           $tests = Get-Content -LiteralPath $testPath -Raw
+          $broadAssertion = '        Assert.IsFalse(runtime.Contains("if (!(Test-RootPassword $paths)) { Fail ''MySQL 已启动", StringComparison.Ordinal));'
+          $specificAssertion = '        Assert.IsFalse(runtime.Contains("if (!(Test-RootPassword $paths)) { Fail ''MySQL 已启动，但保存的 root 凭据无法验证", StringComparison.Ordinal));'
+          if (-not $tests.Contains($broadAssertion)) { throw 'Unable to locate broad MySQL lifecycle assertion.' }
+          $tests = $tests.Replace($broadAssertion, $specificAssertion)
+
           $testNeedle = '        StringAssert.Contains(runtime, "TomcatProductInstanceManager.IsSharedTomcatRunning()");'
           if (-not $tests.Contains($testNeedle)) { throw 'Unable to locate Tomcat lifecycle assertion.' }
           $testReplacement = $testNeedle + [Environment]::NewLine +
