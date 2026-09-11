@@ -599,12 +599,12 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
                 "Catalina" => await _tomcatInstanceManager.StartAsync(item.ProductId, catalinaMode: true),
                 _ => throw new NotSupportedException("未知 Tomcat 应用操作。")
             };
+            TomcatProductInstanceManager.WriteOperationLog(item.ProductId, $"界面操作完成：{message}");
 
             var runtime = await Task.Run(() => TomcatProductInstanceManager.GetRuntimeInfo(item.ProductId));
             item.ApplyTomcatRuntime(runtime);
             _model.RefreshWebsiteFilterForRuntimeChange();
             EnsureWebsiteRowVisible(item.ProductId);
-            MessageBox.Show(message, "Tomcat 应用", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
@@ -815,5 +815,6 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
         }
     }
 }
+
 
 
