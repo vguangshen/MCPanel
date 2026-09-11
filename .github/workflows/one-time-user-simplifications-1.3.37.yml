@@ -38,6 +38,10 @@ jobs:
         shell: pwsh
         run: .\tools\Apply-UserSimplifications-1.3.37.ps1
 
+      - name: Apply validation fixes
+        shell: pwsh
+        run: .\tools\Fix-UserSimplifications-1.3.37.ps1
+
       - name: Run full regression tests
         shell: pwsh
         run: |
@@ -60,6 +64,7 @@ jobs:
         run: |
           Remove-Item -LiteralPath '.github/workflows/one-time-user-simplifications-1.3.37.yml' -Force
           Remove-Item -LiteralPath 'tools/Apply-UserSimplifications-1.3.37.ps1' -Force
+          Remove-Item -LiteralPath 'tools/Fix-UserSimplifications-1.3.37.ps1' -Force
 
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
