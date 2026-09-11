@@ -1,6 +1,6 @@
 name: One-time user simplifications 1.3.37
 
-# Validation retry: website full-card view and no-progress Tomcat expectations.
+# Validation retry: full Tomcat service-state decoupling audit.
 on:
   push:
     branches:
@@ -43,6 +43,10 @@ jobs:
         shell: pwsh
         run: .\tools\Fix-UserSimplifications-1.3.37.ps1
 
+      - name: Apply Tomcat service decoupling audit fixes
+        shell: pwsh
+        run: .\tools\Fix-TomcatServiceDecoupling-1.3.37.ps1
+
       - name: Run full regression tests
         shell: pwsh
         run: |
@@ -66,11 +70,12 @@ jobs:
           Remove-Item -LiteralPath '.github/workflows/one-time-user-simplifications-1.3.37.yml' -Force
           Remove-Item -LiteralPath 'tools/Apply-UserSimplifications-1.3.37.ps1' -Force
           Remove-Item -LiteralPath 'tools/Fix-UserSimplifications-1.3.37.ps1' -Force
+          Remove-Item -LiteralPath 'tools/Fix-TomcatServiceDecoupling-1.3.37.ps1' -Force
 
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
-          git commit -m "Release MCPanel 1.3.37`n`nSimplify Tomcat service readiness handling and startup progress, remove duplicate AI model-setting buttons, and restore the full website card view while keeping platform/status filters."
+          git commit -m "Release MCPanel 1.3.37`n`nFully decouple Tomcat runtime state from SCM Running/Stopped status, remove startup progress probing, remove duplicate AI model-setting buttons, and restore the full website card view while keeping platform/status filters."
           if ($LASTEXITCODE -ne 0) {
             throw 'Unable to commit validated MCPanel 1.3.37 source.'
           }
