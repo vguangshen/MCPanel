@@ -168,7 +168,7 @@ public sealed partial class ReliabilityTests
     }
 
     [TestMethod]
-    public void LargeWebsiteListVirtualizesAndSupportsFilterPinAndScroll()
+    public void LargeWebsiteListVirtualizesAndSupportsFiltersAndScroll()
     {
         RunWebsiteUiTest(() =>
         {
@@ -176,7 +176,6 @@ public sealed partial class ReliabilityTests
             try
             {
                 window.Show(); var model = (MainViewModel)window.DataContext;
-                model.CompactWebsites = true;
                 model.RefreshCustomWebsites(Enumerable.Range(0, 1000).Select(index => new CustomWebsiteDefinition
                     { Name = "测试网站 " + index, PhysicalPath = @"Z:\Missing\site" + index }).ToArray());
                 ((Grid)window.FindName("SitesPage")).Visibility = Visibility.Visible;
@@ -184,9 +183,6 @@ public sealed partial class ReliabilityTests
                 var list = (ListBox)window.FindName("WebsiteListScroll");
                 var realized = Enumerable.Range(0, 1000).Count(index => list.ItemContainerGenerator.ContainerFromIndex(index) is not null);
                 Assert.IsTrue(realized > 0 && realized < 100, $"1000 个网站仅应生成屏幕附近条目，实际 {realized}。");
-                var last = model.WebsiteRows.Last();
-                model.ToggleWebsitePinAsync(last).GetAwaiter().GetResult();
-                Assert.AreSame(last, model.WebsiteView.Cast<object>().First());
                 model.WebsiteTypeFilter = 1; Assert.IsTrue(model.WebsiteView.IsEmpty);
                 model.WebsiteTypeFilter = 0; model.WebsiteSearchKeyword = "测试网站 998";
                 var narrowed = model.WebsiteView.Cast<object>().Cast<WebsiteRow>().ToArray();

@@ -109,7 +109,7 @@ public sealed class AiAnalysisService
         var settings = LoadSettings();
         if (string.IsNullOrWhiteSpace(settings.ApiKey))
         {
-            throw new InvalidOperationException("尚未配置模型 API Key，请打开“模型设置”填写并保存。");
+            throw new InvalidOperationException("尚未配置模型 API Key，请在 MCPanel.exe.config 的 Ai.ApiKey 中填写。\n配置修改后重新开始分析即可生效。");
         }
 
         if (string.IsNullOrWhiteSpace(settings.Endpoint))

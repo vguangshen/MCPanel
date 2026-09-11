@@ -206,6 +206,47 @@ internal static class ManagedWindowsServiceController
     internal static string BuildFailureFlagArguments(string serviceName, bool enabled = true) =>
         BuildScArguments("failureflag", serviceName, enabled ? "1" : "0");
 
+    public static void StartWithoutStatusWait(string serviceName, string displayName)
+    {
+        if (!IsInstalled(serviceName))
+        {
+            throw new InvalidOperationException($"{displayName} Windows 服务尚未注册，请先重新安装该组件。");
+        }
+
+        var result = RunSc(BuildScArguments("start", serviceName), elevated: true);
+        if (result.ExitCode != 0 && result.ExitCode != 1056)
+        {
+            ThrowCommandFailure($"启动 {displayName} Windows 服务", result);
+        }
+    }
+
+    public static void StopWithoutStatusWait(string serviceName, string displayName)
+    {
+        if (!IsInstalled(serviceName))
+        {
+            return;
+        }
+
+        var result = RunSc(BuildScArguments("stop", serviceName), elevated: true);
+        if (result.ExitCode != 0 && result.ExitCode != 1062)
+        {
+            ThrowCommandFailure($"停止 {displayName} Windows 服务", result);
+        }
+    }
+
+    public static void DeleteWithoutStatusWait(string serviceName, string displayName)
+    {
+        if (!IsInstalled(serviceName))
+        {
+            return;
+        }
+
+        var result = RunSc(BuildScArguments("delete", serviceName), elevated: true);
+        if (result.ExitCode != 0 && result.ExitCode != 1060)
+        {
+            ThrowCommandFailure($"删除 {displayName} Windows 服务", result);
+        }
+    }
     public static void Start(string serviceName, string displayName)
     {
         if (!IsInstalled(serviceName))
@@ -339,21 +380,6 @@ internal static class TomcatWindowsServiceManager
     public const string ServiceDescription = "Tomcat 8.5.57 Web 服务器（由 MCPanel 管理；不自动恢复崩溃实例）。";
 
     public static bool IsInstalled() => ManagedWindowsServiceController.IsInstalled(ServiceName);
-    public static bool IsRunning() => ManagedWindowsServiceController.IsRunning(ServiceName);
-    public static bool IsRunningForRoot(
-        string tomcatRoot,
-        [System.Runtime.CompilerServices.CallerMemberName] string callerMemberName = "") =>
-        ShouldTreatAsRunningForRoot(callerMemberName) &&
-        IsRunning() &&
-        ManagedWindowsServiceController.IsRegisteredForRoot(ServiceName, TomcatWindowsServiceHost.ServiceArgument, tomcatRoot);
-
-    // DeployToTomcatAsync writes the new product Service into server.xml. If the
-    // shared Tomcat service is already running, restarting it here would make the
-    // freshly installed Java product start immediately. Product deployment is
-    // intentionally configuration-only: the user starts the product (or the
-    // shared all-applications mode) explicitly afterwards.
-    internal static bool ShouldTreatAsRunningForRoot(string callerMemberName) =>
-        !string.Equals(callerMemberName, "DeployToTomcatAsync", StringComparison.Ordinal);
     public static bool IsRegisteredForRoot(string tomcatRoot) =>
         ManagedWindowsServiceController.IsRegisteredForRoot(ServiceName, TomcatWindowsServiceHost.ServiceArgument, tomcatRoot);
 
@@ -372,14 +398,14 @@ internal static class TomcatWindowsServiceManager
 
     public static void Start()
     {
-        // Clear recovery on every start as well, so machines upgraded from older
-        // builds cannot retain an SCM restart policy that masks a Tomcat crash.
+        // Tomcat is launched through SCM, but MCPanel deliberately does not wait
+        // for SCM status transitions. The Java process/ports are the runtime truth.
         ManagedWindowsServiceController.DisableRecovery(ServiceName, ServiceDisplayName);
-        ManagedWindowsServiceController.Start(ServiceName, ServiceDisplayName);
+        ManagedWindowsServiceController.StartWithoutStatusWait(ServiceName, ServiceDisplayName);
     }
 
-    public static void Stop() => ManagedWindowsServiceController.Stop(ServiceName, ServiceDisplayName);
-    public static void Delete() => ManagedWindowsServiceController.Delete(ServiceName, ServiceDisplayName);
+    public static void Stop() => ManagedWindowsServiceController.StopWithoutStatusWait(ServiceName, ServiceDisplayName);
+    public static void Delete() => ManagedWindowsServiceController.DeleteWithoutStatusWait(ServiceName, ServiceDisplayName);
 }
 
 internal static class FrpWindowsServiceManager
@@ -550,7 +576,7 @@ internal sealed class TomcatWindowsService : ServiceBase
             throw new InvalidOperationException($"Tomcat startup.bat 退出码：{result.ExitCode}");
         }
 
-        TomcatRuntimeProbe.WaitForStartupAsync(_tomcatRoot, ports, cancellationToken).GetAwaiter().GetResult();
+        // Do not block the Windows service on connector/application readiness; startup.bat returning successfully is sufficient here.
     }
 
     private void StopTomcat()

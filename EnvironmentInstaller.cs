@@ -172,10 +172,9 @@ public sealed class EnvironmentInstaller : IDisposable
 
         progress(InstallingProgress(92, "正在启动 Tomcat Server Windows 服务...", 78));
         TomcatWindowsServiceManager.Start();
-        var ports = TomcatRuntimeProbe.ReadHttpPorts(tomcatRoot).ToArray();
-        await TomcatRuntimeProbe.WaitForStartupAsync(tomcatRoot, ports, cancellationToken);
+        await Task.Delay(500, cancellationToken);
 
-        progress(InstallingProgress(100, $"Tomcat 已安装到 {tomcatRoot}，并注册为自动启动的 Windows 服务 {TomcatWindowsServiceManager.ServiceName}。"));
+        progress(InstallingProgress(100, $"Tomcat 已安装到 {tomcatRoot}，Windows 服务启动请求已发送；不再等待服务状态或读取启动进度。"));
     }
 
     private async Task InstallNginxAsync(EnvironmentDownloadSettings downloads, Action<InstallProgress> progress, CancellationToken cancellationToken)

@@ -9,12 +9,6 @@ public partial class MainWindow
 {
     private static readonly HttpClient WebsiteCheckClient = new(new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false }) { Timeout = TimeSpan.FromSeconds(5) };
     private readonly HashSet<string> _websiteChecks = new(StringComparer.OrdinalIgnoreCase);
-    private void AiSettings_Click(object sender, RoutedEventArgs e)
-    {
-        var dialog = new AiSettingsDialog { Owner = this };
-        PanelThemeService.Apply(_isDarkThemeActive, dialog.Resources);
-        if (dialog.ShowDialog() == true) _model.SettingsStatus = "AI 模型设置已保存，下次分析立即生效。";
-    }
 
     private async void RefreshWebsiteStates_Click(object sender, RoutedEventArgs e)
         => await _model.RefreshWebsiteStatesAsync(true, false, force: true);
@@ -41,17 +35,6 @@ public partial class MainWindow
         catch (Exception ex) { MessageBox.Show(ex.Message, "编辑平台", MessageBoxButton.OK, MessageBoxImage.Warning); }
     }
 
-    internal async void PinWebsite_Click(object sender, RoutedEventArgs e)
-    {
-        if ((sender as FrameworkElement)?.DataContext is WebsiteRow row) await _model.ToggleWebsitePinAsync(row);
-    }
-
-    internal void ExpandWebsite_Click(object sender, RoutedEventArgs e)
-    {
-        if ((sender as FrameworkElement)?.DataContext is not WebsiteRow row) return;
-        row.IsExpanded = !row.IsExpanded;
-        if (row.Item is InstalledProductItem product) product.IsManagementExpanded = row.IsExpanded;
-    }
 
     internal async void ProbeWebsite_Click(object sender, RoutedEventArgs e)
     {

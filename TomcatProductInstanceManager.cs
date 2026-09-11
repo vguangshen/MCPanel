@@ -88,8 +88,8 @@ public sealed class TomcatProductInstanceManager
             : Array.Empty<int>();
 
         if (tomcatHome is not null && portListening &&
-            (TomcatWindowsServiceManager.IsRunningForRoot(tomcatHome) ||
-             (IsSharedTomcatRunning() && instanceProcessIds.Length == 0)))
+            IsSharedTomcatRunning() &&
+            instanceProcessIds.Length == 0)
         {
             return new TomcatProductRuntimeInfo(TomcatProductRuntimeMode.Shared, port, true);
         }
@@ -143,8 +143,8 @@ public sealed class TomcatProductInstanceManager
         var ports = GetActiveTcpPorts();
         var java = EnumerateJavaProcesses().ToArray();
         var home = FindTomcatRoot();
-        var shared = home is not null && (TomcatWindowsServiceManager.IsRunningForRoot(home) ||
-            java.Any(process => ContainsJavaOptionPath(process.CommandLine, "-Dcatalina.base", home)));
+        var shared = home is not null &&
+            java.Any(process => ContainsJavaOptionPath(process.CommandLine, "-Dcatalina.base", home));
         string netstat = string.Empty;
         if (products.Any(product => ports.Contains(product.Port)))
         {
@@ -240,8 +240,11 @@ public sealed class TomcatProductInstanceManager
             // The shared Windows service owns the same product ports. An explicit
             // single-application start switches the server into manual product mode;
             // the shared service will return automatically on the next Windows boot.
-            if (TomcatWindowsServiceManager.IsRunningForRoot(tomcatHome))
+            if (TomcatWindowsServiceManager.IsRegisteredForRoot(tomcatHome))
             {
+                // Ask SCM to stop the wrapper if it owns this Tomcat root, but do
+                // not use SCM Running/Stopped as runtime truth. The CATALINA_BASE
+                // process check below is authoritative.
                 TomcatWindowsServiceManager.Stop();
             }
             // Stop only the shared CATALINA_BASE. Do not use every product HTTP port as

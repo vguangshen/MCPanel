@@ -66,13 +66,15 @@ public partial class ReliabilityTests
     }
 
     [TestMethod]
-    public void SharedTomcatRestartAndCatalinaForwardProgressToEnvironmentCard()
+    public void SharedTomcatRestartAndCatalinaDoNotDriveEnvironmentProgress()
     {
         var window = ReadRepositoryFile("MainWindow.Environment.cs");
         var runtime = ReadRepositoryFile("EnvironmentRuntimeService.cs");
-        StringAssert.Contains(window, "\"Restart\" when item.Kind == EnvironmentKind.Tomcat");
-        StringAssert.Contains(window, "await _runtimeService.StartTomcatInCatalinaConsoleAsync(");
-        StringAssert.Contains(runtime, "tomcatProgress: kind == EnvironmentKind.Tomcat");
-        StringAssert.Contains(runtime, "await TomcatRuntimeProbe.WaitForStartupAsync(tomcatRoot, ports, cancellationToken,");
+        Assert.IsFalse(window.Contains("\"Restart\" when item.Kind == EnvironmentKind.Tomcat", StringComparison.Ordinal));
+        StringAssert.Contains(window, "\"Restart\" => await _runtimeService.RestartAsync(item.Kind)");
+        StringAssert.Contains(window, "\"CatalinaRun\" => await _runtimeService.StartTomcatInCatalinaConsoleAsync()");
+        Assert.IsFalse(window.Contains("ApplyTomcatStartupProgress", StringComparison.Ordinal));
+        Assert.IsFalse(runtime.Contains("tomcatProgress: kind == EnvironmentKind.Tomcat", StringComparison.Ordinal));
+        Assert.IsFalse(runtime.Contains("正在验证 Tomcat 端口稳定监听", StringComparison.Ordinal));
     }
 }

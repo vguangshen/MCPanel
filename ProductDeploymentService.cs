@@ -520,10 +520,24 @@ public sealed class ProductDeploymentService
 
         if (sharedTomcatWasRunning)
         {
-            // server.xml cannot be safely edited while the shared Catalina
-            // process owns the connector.  Stop it, remove the Service, then
-            // restore the previous all-applications mode in the finally block.
+            // Stop the service wrapper first so the later restore is not blocked
+            // by an SCM service that still says Running while its Java child is gone.
+            // SCM status itself is never used as the success criterion.
             ReportUninstallProgress(progress, 42, "正在停止 Tomcat 全部应用模式...");
+            if (tomcatRoot is not null && TomcatWindowsServiceManager.IsRegisteredForRoot(tomcatRoot))
+            {
+                try
+                {
+                    TomcatWindowsServiceManager.Stop();
+                }
+                catch (Exception serviceError)
+                {
+                    EnvironmentOperationDiagnostics.RecordFailure(
+                        "产品管理",
+                        $"卸载 {product.ProductId} 时发送 Tomcat Windows Service 停止请求",
+                        serviceError);
+                }
+            }
             await TomcatProductInstanceManager.StopAllTomcatProcessesAsync(cancellationToken);
         }
 
@@ -938,17 +952,7 @@ public sealed class ProductDeploymentService
 
         TomcatProductStartupManager.RefreshRegistration();
 
-        var sharedServiceRestarted = false;
-        if (TomcatWindowsServiceManager.IsRunningForRoot(tomcatRoot))
-        {
-            TomcatWindowsServiceManager.Stop();
-            TomcatWindowsServiceManager.Start();
-            sharedServiceRestarted = true;
-        }
-
-        var modeText = sharedServiceRestarted
-            ? "共享 Tomcat Server 已重启并加载新应用。"
-            : "未自动启动单应用实例；如需单独运行，请在产品管理中手动启动。";
+        var modeText = "未自动启动单应用实例；如需单独运行，请在产品管理中手动启动。";
         return new ProductDeploymentResult(
             $"产品已安装到 {appRoot}，并分配 Tomcat 端口 {deployment.Port}。访问地址：{deployment.Url}。{modeText}",
             appRoot);

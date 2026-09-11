@@ -444,26 +444,6 @@ public sealed class EnvironmentItem(EnvironmentKind kind, string title, string o
         OnPropertyChanged(nameof(IsProgressIndeterminate));
     }
 
-    public void ApplyTomcatStartupProgress(TomcatStartupProgress update)
-    {
-        if (update is null || !IsTomcatModule)
-        {
-            return;
-        }
-
-        _statusKind = update.Percent >= 100
-            ? RuntimeStatusKind.Running
-            : RuntimeStatusKind.Starting;
-        _progressStage = InstallProgressStage.Preparing;
-        _stagePercent = Compat.Clamp(update.Percent, 0, 100);
-        Progress = _stagePercent.Value;
-        ProgressStageText = "启动进度";
-        DownloadSpeedText = string.Empty;
-        StatusText = update.Message;
-        BadgeText = update.Percent >= 100 ? "运行中" : "启动中";
-        BadgeBrush = RuntimeStatusVisuals.Brush(_statusKind);
-        OnPropertyChanged(nameof(IsProgressIndeterminate));
-    }
     public void ApplyRuntimeState(EnvironmentRuntimeState state)
     {
         if (IsMySqlModule)

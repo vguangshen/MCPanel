@@ -334,20 +334,6 @@ public sealed class EnvironmentRuntimeService
                     throw new InvalidDataException("Tomcat server.xml 中没有可用的 HTTP 端口。请先修复产品绑定。");
                 }
 
-                var productPorts = ProductDeploymentService.LoadTomcatDeploymentInfos()
-                    .Select(info => info.Port)
-                    .Where(port => tomcatPorts.Contains(port))
-                    .Distinct()
-                    .ToArray();
-                var progressPorts = productPorts.Length > 0 ? productPorts : tomcatPorts;
-                var reportsApplications = productPorts.Length > 0;
-                tomcatProgress?.Invoke(new TomcatStartupProgress(
-                    5,
-                    "正在准备共享 Tomcat Server...",
-                    0,
-                    reportsApplications ? productPorts.Length : 0));
-                await Task.Yield();
-
                 if (!TomcatWindowsServiceManager.IsRegisteredForRoot(tomcatRoot))
                 {
                     var serviceExecutable = Path.Combine(ComponentPaths.ApplicationRoot, "MCPanel.exe");
@@ -358,61 +344,54 @@ public sealed class EnvironmentRuntimeService
                     TomcatWindowsServiceManager.EnsureRegistered(serviceExecutable, tomcatRoot);
                 }
 
-                tomcatProgress?.Invoke(new TomcatStartupProgress(
-                    10,
-                    "正在切换到后台 Tomcat Windows Service...",
-                    0,
-                    reportsApplications ? productPorts.Length : 0));
                 TomcatProductStartupManager.RemoveRegistration();
-                tomcatProgress?.Invoke(new TomcatStartupProgress(
-                    15,
-                    "正在启动 Tomcat Server Windows 服务...",
-                    0,
-                    reportsApplications ? productPorts.Length : 0));
-
-                // The Windows service intentionally starts Tomcat without a console window. Run the
-                // synchronous SCM wait on a worker thread so the WPF UI can poll the real connector
-                // ports while Tomcat loads each configured product.
-                var serviceStartTask = Task.Run(() => TomcatWindowsServiceManager.Start());
-                while (!serviceStartTask.IsCompleted)
+                if (!TomcatProductInstanceManager.IsSharedTomcatRunning())
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    var ready = progressPorts.Count(TomcatRuntimeProbe.IsPortListening);
-                    var total = progressPorts.Length;
-                    var ratio = total == 0 ? 0d : ready / (double)total;
-                    var percent = ready >= total && total > 0
-                        ? 92d
-                        : 15d + ratio * 75d;
-                    var message = reportsApplications
-                        ? ready >= total && total > 0
-                            ? $"应用已就绪：{ready}/{total}，正在等待 Tomcat Server 完成启动..."
-                            : $"正在加载应用：{ready}/{total}"
-                        : ready >= total && total > 0
-                            ? "Tomcat 端口已就绪，正在等待 Windows 服务完成启动..."
-                            : $"正在等待 Tomcat 端口：{ready}/{total}";
-                    tomcatProgress?.Invoke(new TomcatStartupProgress(
-                        percent,
-                        message,
-                        reportsApplications ? ready : 0,
-                        reportsApplications ? total : 0));
-                    await Task.Delay(250, cancellationToken);
+                    try
+                    {
+                        // Best effort only: SCM acknowledgement is not runtime truth.
+                        TomcatWindowsServiceManager.Start();
+                    }
+                    catch (Exception serviceError)
+                    {
+                        EnvironmentOperationDiagnostics.RecordFailure(
+                            "环境管理",
+                            "发送 Tomcat Windows Service 启动请求",
+                            serviceError);
+                    }
+
+                    for (var attempt = 0; attempt < 10 && !TomcatProductInstanceManager.IsSharedTomcatRunning(); attempt++)
+                    {
+                        await Task.Delay(200, cancellationToken);
+                    }
                 }
 
-                await serviceStartTask;
-                tomcatProgress?.Invoke(new TomcatStartupProgress(
-                    96,
-                    "正在验证 Tomcat 端口稳定监听...",
-                    productPorts.Length,
-                    productPorts.Length));
-                await TomcatRuntimeProbe.WaitForStartupAsync(tomcatRoot, tomcatPorts, cancellationToken);
-                tomcatProgress?.Invoke(new TomcatStartupProgress(
-                    100,
-                    reportsApplications
-                        ? $"Tomcat Server 已启动，{productPorts.Length}/{productPorts.Length} 个应用已就绪。"
-                        : "Tomcat Server 已启动。",
-                    productPorts.Length,
-                    productPorts.Length));
-                return $"Tomcat Server Windows 服务已启动，{tomcatPorts.Length} 个配置端口已确认监听。日志目录：{Path.Combine(tomcatRoot, "logs")}";
+                if (!TomcatProductInstanceManager.IsSharedTomcatRunning())
+                {
+                    // If SCM is still Starting/Stopping (or returns a false timeout),
+                    // start the real Tomcat process directly. This keeps panel start
+                    // and post-uninstall restore independent from SCM timing.
+                    var startup = Path.Combine(tomcatRoot, "bin", "startup.bat");
+                    if (!File.Exists(startup))
+                    {
+                        throw new FileNotFoundException("未找到 Tomcat startup.bat。", startup);
+                    }
+                    EnvironmentInstaller.NormalizeTomcatJvmPropertiesFile(tomcatRoot);
+                    var startResult = await ProcessRunner.RunFileAsync(
+                        startup,
+                        string.Empty,
+                        Path.Combine(tomcatRoot, "bin"),
+                        elevated: false,
+                        cancellationToken,
+                        captureOutput: false,
+                        timeout: TimeSpan.FromSeconds(30));
+                    if (startResult.ExitCode != 0)
+                    {
+                        throw new InvalidOperationException($"Tomcat startup.bat 退出码：{startResult.ExitCode}");
+                    }
+                }
+
+                return $"Tomcat Server 启动请求已发送；运行状态按实际 Java 进程判断，不再等待 Windows 服务状态或读取启动进度。日志目录：{Path.Combine(tomcatRoot, "logs")}";
             case EnvironmentKind.Nginx:
                 return await StartNginxAsync(cancellationToken);
             case EnvironmentKind.MySql:
@@ -439,7 +418,16 @@ public sealed class EnvironmentRuntimeService
                 if (TomcatWindowsServiceManager.IsRegisteredForRoot(tomcatRoot))
                 {
                     await Task.Run(() => TomcatWindowsServiceManager.Stop(), cancellationToken);
-                    return "Tomcat Server Windows 服务已停止；单应用 Tomcat 实例不受影响。";
+                    // sc.exe only acknowledges the stop request. Verify the real
+                    // shared CATALINA_BASE process, never the SCM status value.
+                    for (var attempt = 0; attempt < 80 && TomcatProductInstanceManager.IsSharedTomcatRunning(); attempt++)
+                    {
+                        await Task.Delay(250, cancellationToken);
+                    }
+                    if (!TomcatProductInstanceManager.IsSharedTomcatRunning())
+                    {
+                        return "Tomcat Server 已停止；单应用 Tomcat 实例不受影响。";
+                    }
                 }
 
                 if (TomcatProductInstanceManager.IsSharedTomcatRunning())
@@ -497,9 +485,8 @@ public sealed class EnvironmentRuntimeService
             return $"SQL Server 已重启。{FormatSqlServerConnectionText()}";
         }
 
-        if (kind == EnvironmentKind.Tomcat)
-            tomcatProgress?.Invoke(new TomcatStartupProgress(5, "正在停止 Tomcat Server...", 0, 0));
         try
+
         {
             await StopAsync(kind, cancellationToken);
         }
@@ -516,9 +503,8 @@ public sealed class EnvironmentRuntimeService
         }
 
         await Task.Delay(1200, cancellationToken);
-        await StartAsync(kind, cancellationToken, tomcatProgress: kind == EnvironmentKind.Tomcat
-            ? update => tomcatProgress?.Invoke(update with { Percent = 10d + update.Percent * 0.9d })
-            : null);
+        await StartAsync(kind, cancellationToken);
+
         return $"{DisplayName(kind)} 已重启。";
     }
     public Task<string> UninstallAsync(EnvironmentKind kind, CancellationToken cancellationToken = default)
@@ -532,6 +518,7 @@ public sealed class EnvironmentRuntimeService
                 var tomcatRoot = RequireTomcatRoot();
                 await TryStopAsync(kind, cancellationToken);
                 await TomcatProductInstanceManager.StopAllProductInstancesAsync(cancellationToken);
+                await TomcatProductInstanceManager.StopAllTomcatProcessesAsync(cancellationToken, throwOnFailure: false);
                 if (TomcatWindowsServiceManager.IsRegisteredForRoot(tomcatRoot))
                 {
                     TomcatWindowsServiceManager.Delete();
@@ -1456,32 +1443,19 @@ public sealed class EnvironmentRuntimeService
             return NotInstalled();
         }
 
-        var ports = TomcatRuntimeProbe.ReadHttpPorts(tomcatRoot).ToArray();
-        var serviceRegistered = TomcatWindowsServiceManager.IsRegisteredForRoot(tomcatRoot);
-        var serviceRunning = serviceRegistered && TomcatWindowsServiceManager.IsRunningForRoot(tomcatRoot);
         var sharedProcessRunning = TomcatProductInstanceManager.IsSharedTomcatRunning();
-        var sharedHealthy = sharedProcessRunning && ports.Length > 0 && TomcatRuntimeProbe.ArePortsListening(ports);
-        var singleApplicationRunning = !sharedHealthy && TomcatProductInstanceManager.IsAnyManagedTomcatHealthy();
-
-        var status = sharedHealthy
-            ? RuntimeStatusKind.Running
-            : serviceRunning
-                ? RuntimeStatusKind.Starting
-                : RuntimeStatusKind.Stopped;
-        var serviceText = serviceRegistered
-            ? $"Windows 服务 {TomcatWindowsServiceManager.ServiceName} 已注册为自动启动。"
-            : "尚未注册 Windows 服务；下次点击启动或重新安装时会自动迁移。";
-        var healthText = sharedHealthy
-            ? "共享 Tomcat Server 正在运行。"
-            : serviceRunning
-                ? "Windows 服务正在运行，但配置端口尚未全部监听。"
+        var sharedRunning = sharedProcessRunning &&
+            TomcatRuntimeProbe.ArePortsListening(TomcatRuntimeProbe.ReadHttpPorts(tomcatRoot));
+        var managedRunning = TomcatProductInstanceManager.IsAnyManagedTomcatHealthy();
+        var anyRunning = sharedRunning || managedRunning;
+        var detail = sharedRunning
+            ? "全部应用模式正在运行。"
+            : managedRunning
+                ? "一个或多个应用正在单独运行。"
                 : sharedProcessRunning
-                    ? "检测到旧版共享 Tomcat Java 进程，但服务未运行。"
-                    : "共享 Tomcat Server 当前未运行。";
-        var singleText = singleApplicationRunning
-            ? "另有一个或多个产品正在单应用模式运行；这些实例不会随 Windows 自动启动。"
-            : "单应用实例保持按需启动，不参与系统自动启动。";
-        return Installed(status, $"Tomcat 已安装到 {tomcatRoot}。{serviceText}{healthText}{singleText}");
+                    ? "检测到 Tomcat Java 进程，但配置端口未全部监听。"
+                    : "当前没有运行中的 Tomcat。";
+        return Installed(anyRunning, $"Tomcat 已安装到 {tomcatRoot}。{detail}");
     }
 
     private static EnvironmentRuntimeState GetSqlServerState(ComponentLocator locator)

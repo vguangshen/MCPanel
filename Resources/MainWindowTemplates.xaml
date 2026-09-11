@@ -469,41 +469,18 @@
         </Border>
     </DataTemplate>
     <DataTemplate x:Key="WebsiteRowTemplate">
-        <StackPanel Margin="0,0,8,6">
-            <Grid Margin="4,0,2,4">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="32" /><ColumnDefinition Width="*" /><ColumnDefinition Width="140" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                <Button Content="{Binding PinText}" FontSize="18" Foreground="{DynamicResource PrimaryBrush}" Background="Transparent" BorderThickness="0" Height="30" ToolTip="置顶 / 取消置顶" Click="PinWebsite_Click" />
-                <StackPanel Grid.Column="1" Margin="4,0,12,0">
-                    <StackPanel.Style><Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers>
-                        <DataTrigger Binding="{Binding DataContext.CompactWebsites, RelativeSource={RelativeSource AncestorType=Window}}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger>
-                    </Style.Triggers></Style></StackPanel.Style>
-                    <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" />
-                    <TextBlock Text="{Binding Path}" FontSize="11" Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis" />
-                </StackPanel>
-                <ContentControl Grid.Column="2" Content="{Binding Item}" VerticalAlignment="Center">
-                    <ContentControl.Style><Style TargetType="ContentControl"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers>
-                        <DataTrigger Binding="{Binding DataContext.CompactWebsites, RelativeSource={RelativeSource AncestorType=Window}}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger>
-                    </Style.Triggers></Style></ContentControl.Style>
-                    <ContentControl.Resources>
-                        <DataTemplate DataType="{x:Type local:InstalledProductItem}"><TextBlock Text="{Binding RuntimeStatusText}" Foreground="{Binding RuntimeStatusBrush}" FontSize="11" TextTrimming="CharacterEllipsis" /></DataTemplate>
-                        <DataTemplate DataType="{x:Type local:CustomWebsiteItem}"><TextBlock Text="{Binding StatusText}" Foreground="{Binding StatusBrush}" FontSize="11" TextTrimming="CharacterEllipsis" /></DataTemplate>
-                    </ContentControl.Resources>
-                </ContentControl>
-                <Button Grid.Column="3" Content="管理" Click="ExpandWebsite_Click" Height="30" Margin="8,0,0,0" Style="{DynamicResource WebsiteActionButton}"
-                    Visibility="{Binding DataContext.CompactWebsites, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BooleanToVisibility}}" />
-            </Grid>
-            <ContentControl Content="{Binding Item}">
-                <ContentControl.Style><Style TargetType="ContentControl">
+        <ContentControl Content="{Binding Item}">
+            <ContentControl.Style>
+                <Style TargetType="ContentControl">
                     <Setter Property="ContentTemplate" Value="{StaticResource InstalledProductCardTemplate}" />
                     <Style.Triggers>
-                        <DataTrigger Binding="{Binding IsCustom}" Value="True"><Setter Property="ContentTemplate" Value="{StaticResource CustomWebsiteCardTemplate}" /></DataTrigger>
-                        <MultiDataTrigger><MultiDataTrigger.Conditions>
-                            <Condition Binding="{Binding DataContext.CompactWebsites, RelativeSource={RelativeSource AncestorType=Window}}" Value="True" /><Condition Binding="{Binding IsExpanded}" Value="False" />
-                        </MultiDataTrigger.Conditions><Setter Property="Visibility" Value="Collapsed" /><Setter Property="ContentTemplate" Value="{x:Null}" /></MultiDataTrigger>
+                        <DataTrigger Binding="{Binding IsCustom}" Value="True">
+                            <Setter Property="ContentTemplate" Value="{StaticResource CustomWebsiteCardTemplate}" />
+                        </DataTrigger>
                     </Style.Triggers>
-                </Style></ContentControl.Style>
-            </ContentControl>
-        </StackPanel>
+                </Style>
+            </ContentControl.Style>
+        </ContentControl>
     </DataTemplate>
     <local:SubtractConverter x:Key="SubtractConverter" />
 
