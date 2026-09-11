@@ -8,9 +8,8 @@ function Write-Utf8([string]$Path, [string]$Content) {
     [IO.File]::WriteAllText((Join-Path $PWD $Path), $Content, [Text.UTF8Encoding]::new($false))
 }
 
-# 1) Shared Tomcat normal Start/Restart now uses the same visible Catalina console
-#    style as the previous diagnostic launch. The legacy Windows service is retired
-#    on first interaction so future boots cannot silently start Tomcat in Session 0.
+# 1) Shared Tomcat normal Start/Restart now uses a visible Catalina CMD console.
+#    The legacy Windows service wrapper is retired on first shared-server interaction.
 $path = 'EnvironmentRuntimeService.cs'
 $text = Read-Utf8 $path
 
@@ -98,6 +97,7 @@ $newConsoleMethods = @'
             throw new InvalidOperationException("Tomcat Server 已经在运行。请先停止后再重新打开控制台。");
         }
 
+        RetireLegacyTomcatWindowsService(tomcatRoot);
         LaunchTomcatConsole(tomcatRoot);
         return Task.FromResult(
             "Tomcat Server CMD 控制台已打开。MCPanel 不隐藏启动，也不等待端口或执行 HTTP 就绪诊断；请直接查看窗口中的 Catalina 输出。");
@@ -127,9 +127,9 @@ $newTomcatStart = @'
                 TomcatProductStartupManager.RemoveRegistration();
                 await TomcatProductInstanceManager.StopAllProductInstancesAsync(cancellationToken);
 
-                // MCPanel 1.3.43 retires the old hidden Session-0 service wrapper.
-                // Shared Tomcat is launched only from an interactive CMD window so
-                // startup exceptions and Catalina output remain visible to the user.
+                // Shared Tomcat runs in the interactive user session from 1.3.43.
+                // Retire the old Session-0 service wrapper so it cannot silently
+                // start a second hidden shared server after an update or reboot.
                 RetireLegacyTomcatWindowsService(tomcatRoot);
                 LaunchTomcatConsole(tomcatRoot);
 
@@ -139,7 +139,6 @@ $text = $text.Substring(0, $caseStart) + $newTomcatStart + $text.Substring($case
 Write-Utf8 $path $text
 
 # 2) New Tomcat installations no longer register/start the hidden Windows service.
-#    Existing service registrations are removed before opening the visible console.
 $path = 'EnvironmentInstaller.cs'
 $text = Read-Utf8 $path
 $installMethod = $text.IndexOf('    private async Task InstallTomcatAsync', [StringComparison]::Ordinal)
@@ -167,41 +166,148 @@ $newInstallTail = @'
 $text = $text.Substring(0, $serviceBlockStart) + $newInstallTail + $text.Substring($nextMethod)
 Write-Utf8 $path $text
 
-# 3) Normal Start now *is* the visible Catalina console experience, so remove the
-#    redundant second button from the environment card.
+# 3) Normal Start is now the visible Catalina experience, so remove the duplicate
+#    environment-card Catalina button. Use indexes instead of attribute-order regex.
 $path = 'Resources/MainWindowTemplates.xaml'
 $text = Read-Utf8 $path
-$before = $text
-$text = [regex]::Replace($text,
-    '(?s)\s*<Button Content="以 Catalina 方式启动"\s*Style="\{DynamicResource EnvironmentWarningButton\}"\s*HorizontalAlignment="Left"\s*Click="EnvironmentRuntime_Click"\s*Tag="CatalinaRun"\s*IsEnabled="\{Binding CanStartCatalina\}"\s*Visibility="\{Binding TomcatCatalinaVisibility\}"\s*/>',
-    '')
-if ($text -eq $before -or $text.Contains('Tag="CatalinaRun"') -or $text.Contains('以 Catalina 方式启动')) {
+$buttonStart = $text.IndexOf('<Button Content="以 Catalina 方式启动"', [StringComparison]::Ordinal)
+if ($buttonStart -lt 0) { throw 'Environment Catalina button start not found.' }
+$buttonEnd = $text.IndexOf('/>', $buttonStart, [StringComparison]::Ordinal)
+if ($buttonEnd -lt 0) { throw 'Environment Catalina button end not found.' }
+$text = $text.Remove($buttonStart, $buttonEnd + 2 - $buttonStart)
+if ($text.Contains('Tag="CatalinaRun"') -or $text.Contains('以 Catalina 方式启动')) {
     throw 'Redundant environment Catalina button was not removed.'
 }
 Write-Utf8 $path $text
 
-# 4) Update old regression contracts that described the retired hidden-service path.
-$path = 'MCPanel.Tests/ReliabilityTests.TomcatServiceDecoupling137.cs'
-$text = Read-Utf8 $path
-$text = $text.Replace('        StringAssert.Contains(runtime, "不再等待 Windows 服务状态或读取启动进度");', '        StringAssert.Contains(runtime, "共享 Tomcat 不再通过 Windows Service 隐藏启动");')
-$text = $text.Replace('        StringAssert.Contains(runtime, "var startup = Path.Combine(tomcatRoot, \\"bin\\", \\"startup.bat\\")");`r`n        StringAssert.Contains(runtime, "运行状态按实际 Java 进程判断");`r`n        StringAssert.Contains(runtime, "catch (Exception serviceError)");', '        StringAssert.Contains(runtime, "LaunchTomcatConsole(tomcatRoot)");`r`n        Assert.IsFalse(runtime.Contains("TomcatWindowsServiceManager.Start();", StringComparison.Ordinal));`r`n        Assert.IsFalse(runtime.Contains("startup.bat 已返回成功", StringComparison.Ordinal));')
-$text = $text.Replace('        StringAssert.Contains(runtime, "var startup = Path.Combine(tomcatRoot, \"bin\", \"startup.bat\")");`n        StringAssert.Contains(runtime, "运行状态按实际 Java 进程判断");`n        StringAssert.Contains(runtime, "catch (Exception serviceError)");', '        StringAssert.Contains(runtime, "LaunchTomcatConsole(tomcatRoot)");`n        Assert.IsFalse(runtime.Contains("TomcatWindowsServiceManager.Start();", StringComparison.Ordinal));`n        Assert.IsFalse(runtime.Contains("startup.bat 已返回成功", StringComparison.Ordinal));')
-Write-Utf8 $path $text
+# 4) Replace old regression contracts that described the retired hidden-service path.
+$test = @'
+using System;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-$path = 'MCPanel.Tests/ReliabilityTests.RuntimeLifecycle138.cs'
-$text = Read-Utf8 $path
-$text = $text.Replace('        StringAssert.Contains(runtime, "controlAttempt < 3");`r`n        StringAssert.Contains(runtime, "startup.bat 已返回成功，但未检测到共享 Java 进程");', '        StringAssert.Contains(runtime, "RetireLegacyTomcatWindowsService(tomcatRoot)");`r`n        StringAssert.Contains(runtime, "LaunchTomcatConsole(tomcatRoot)");`r`n        Assert.IsFalse(runtime.Contains("controlAttempt < 3", StringComparison.Ordinal));`r`n        Assert.IsFalse(runtime.Contains("startup.bat 已返回成功", StringComparison.Ordinal));')
-$text = $text.Replace('        StringAssert.Contains(runtime, "controlAttempt < 3");`n        StringAssert.Contains(runtime, "startup.bat 已返回成功，但未检测到共享 Java 进程");', '        StringAssert.Contains(runtime, "RetireLegacyTomcatWindowsService(tomcatRoot)");`n        StringAssert.Contains(runtime, "LaunchTomcatConsole(tomcatRoot)");`n        Assert.IsFalse(runtime.Contains("controlAttempt < 3", StringComparison.Ordinal));`n        Assert.IsFalse(runtime.Contains("startup.bat 已返回成功", StringComparison.Ordinal));')
-Write-Utf8 $path $text
+namespace MCPanel.Tests;
 
-$path = 'MCPanel.Tests/ReliabilityTests.CatalinaNoReadiness139.cs'
-$text = Read-Utf8 $path
-$text = $text.Replace('        StringAssert.Contains(method, "ProcessRunner.StartFile");`r`n        StringAssert.Contains(method, "call catalina.bat run");', '        StringAssert.Contains(method, "LaunchTomcatConsole(tomcatRoot)");`r`n        var launcherStart = runtime.IndexOf("internal static void LaunchTomcatConsole", StringComparison.Ordinal);`r`n        var launcherEnd = runtime.IndexOf("private static void RetireLegacyTomcatWindowsService", launcherStart, StringComparison.Ordinal);`r`n        Assert.IsTrue(launcherStart >= 0 && launcherEnd > launcherStart);`r`n        var launcher = runtime.Substring(launcherStart, launcherEnd - launcherStart);`r`n        StringAssert.Contains(launcher, "ProcessRunner.StartFile");`r`n        StringAssert.Contains(launcher, "call catalina.bat run");`r`n        StringAssert.Contains(launcher, "ProcessWindowStyle.Normal");')
-$text = $text.Replace('        StringAssert.Contains(method, "ProcessRunner.StartFile");`n        StringAssert.Contains(method, "call catalina.bat run");', '        StringAssert.Contains(method, "LaunchTomcatConsole(tomcatRoot)");`n        var launcherStart = runtime.IndexOf("internal static void LaunchTomcatConsole", StringComparison.Ordinal);`n        var launcherEnd = runtime.IndexOf("private static void RetireLegacyTomcatWindowsService", launcherStart, StringComparison.Ordinal);`n        Assert.IsTrue(launcherStart >= 0 && launcherEnd > launcherStart);`n        var launcher = runtime.Substring(launcherStart, launcherEnd - launcherStart);`n        StringAssert.Contains(launcher, "ProcessRunner.StartFile");`n        StringAssert.Contains(launcher, "call catalina.bat run");`n        StringAssert.Contains(launcher, "ProcessWindowStyle.Normal");')
-$text = $text.Replace('        StringAssert.Contains(method, "不再等待端口或执行 HTTP 就绪诊断");', '        StringAssert.Contains(method, "不隐藏启动，也不等待端口或执行 HTTP 就绪诊断");')
-Write-Utf8 $path $text
+public sealed partial class ReliabilityTests
+{
+    [TestMethod]
+    public void TomcatRuntimePathsUseProcessesAndPortsInsteadOfScmRunningState()
+    {
+        var services = ReadRepositoryFile("ManagedComponentWindowsServices.cs");
+        var managerStart = services.IndexOf("internal static class TomcatWindowsServiceManager", StringComparison.Ordinal);
+        var managerEnd = services.IndexOf("internal static class FrpWindowsServiceManager", managerStart, StringComparison.Ordinal);
+        Assert.IsTrue(managerStart >= 0 && managerEnd > managerStart);
+        var manager = services.Substring(managerStart, managerEnd - managerStart);
+        Assert.IsFalse(manager.Contains("IsRunningForRoot", StringComparison.Ordinal));
+        Assert.IsFalse(manager.Contains("public static bool IsRunning()", StringComparison.Ordinal));
+        StringAssert.Contains(manager, "StopWithoutStatusWait");
+        StringAssert.Contains(manager, "DeleteWithoutStatusWait");
 
-# 5) Dedicated 1.3.43 regression guards.
+        var instances = ReadRepositoryFile("TomcatProductInstanceManager.cs");
+        Assert.IsFalse(instances.Contains("TomcatWindowsServiceManager.IsRunningForRoot", StringComparison.Ordinal));
+        StringAssert.Contains(instances, "IsSharedTomcatRunning()");
+        StringAssert.Contains(instances, "ContainsJavaOptionPath(process.CommandLine, \"-Dcatalina.base\", home)");
+
+        var runtime = ReadRepositoryFile("EnvironmentRuntimeService.cs");
+        Assert.IsFalse(runtime.Contains("TomcatWindowsServiceManager.IsRunningForRoot", StringComparison.Ordinal));
+        StringAssert.Contains(runtime, "TomcatProductInstanceManager.IsSharedTomcatRunning()");
+        StringAssert.Contains(runtime, "共享 Tomcat 不再通过 Windows Service 隐藏启动");
+        StringAssert.Contains(runtime, "LaunchTomcatConsole(tomcatRoot)");
+        Assert.IsFalse(runtime.Contains("TomcatWindowsServiceManager.Start();", StringComparison.Ordinal));
+        Assert.IsFalse(runtime.Contains("startup.bat 已返回成功", StringComparison.Ordinal));
+
+        var deployment = ReadRepositoryFile("ProductDeploymentService.cs");
+        Assert.IsFalse(deployment.Contains("TomcatWindowsServiceManager.IsRunningForRoot", StringComparison.Ordinal));
+        StringAssert.Contains(deployment, "TomcatWindowsServiceManager.IsRegisteredForRoot(tomcatRoot)");
+        StringAssert.Contains(deployment, "await TomcatProductInstanceManager.StopAllTomcatProcessesAsync(cancellationToken);");
+    }
+}
+'@
+Write-Utf8 'MCPanel.Tests/ReliabilityTests.TomcatServiceDecoupling137.cs' $test
+
+$test = @'
+using System;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+namespace MCPanel.Tests;
+
+public sealed partial class ReliabilityTests
+{
+    [TestMethod]
+    public void MySqlRestartSeparatesServiceHealthFromCredentialVerification()
+    {
+        var runtime = ReadRepositoryFile("EnvironmentRuntimeService.cs");
+        StringAssert.Contains(runtime, "--get-server-public-key");
+        StringAssert.Contains(runtime, "Wait-RootPasswordReady");
+        StringAssert.Contains(runtime, "服务运行正常，但保存的 root 凭据验证未通过");
+        StringAssert.Contains(runtime, "private static async Task<string> RunMySqlServiceActionAsync");
+        Assert.IsFalse(runtime.Contains("if (!(Test-RootPassword $paths)) { Fail 'MySQL 已启动，但保存的 root 凭据无法验证", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void TomcatRestartCannotBeKilledByLateServiceStopCleanup()
+    {
+        var services = ReadRepositoryFile("ManagedComponentWindowsServices.cs");
+        var stopStart = services.IndexOf("protected override void OnStop()", StringComparison.Ordinal);
+        var shutdownStart = services.IndexOf("protected override void OnShutdown()", stopStart, StringComparison.Ordinal);
+        Assert.IsTrue(stopStart >= 0 && shutdownStart > stopStart);
+        var normalStop = services.Substring(stopStart, shutdownStart - stopStart);
+        StringAssert.Contains(normalStop, "runtime cleanup delegated to MCPanel controller");
+        Assert.IsFalse(normalStop.Contains("StopTomcat", StringComparison.Ordinal));
+        Assert.IsFalse(normalStop.Contains("shutdown.bat", StringComparison.Ordinal));
+
+        var runtime = ReadRepositoryFile("EnvironmentRuntimeService.cs");
+        StringAssert.Contains(runtime, "RetireLegacyTomcatWindowsService(tomcatRoot)");
+        StringAssert.Contains(runtime, "LaunchTomcatConsole(tomcatRoot)");
+        Assert.IsFalse(runtime.Contains("controlAttempt < 3", StringComparison.Ordinal));
+        Assert.IsFalse(runtime.Contains("startup.bat 已返回成功", StringComparison.Ordinal));
+        StringAssert.Contains(runtime, "TomcatProductInstanceManager.IsSharedTomcatRunning()");
+        StringAssert.Contains(runtime, "StopSharedTomcatAsync(cancellationToken)");
+
+        var instances = ReadRepositoryFile("TomcatProductInstanceManager.cs");
+        StringAssert.Contains(instances, "public static async Task StopSharedTomcatAsync");
+    }
+}
+'@
+Write-Utf8 'MCPanel.Tests/ReliabilityTests.RuntimeLifecycle138.cs' $test
+
+$test = @'
+using System;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+namespace MCPanel.Tests;
+
+public sealed partial class ReliabilityTests
+{
+    [TestMethod]
+    public void CatalinaConsoleLaunchDoesNotRunAutomaticReadinessDiagnostics()
+    {
+        var runtime = ReadRepositoryFile("EnvironmentRuntimeService.cs");
+        var start = runtime.IndexOf("public Task<string> StartTomcatInCatalinaConsoleAsync", StringComparison.Ordinal);
+        var end = runtime.IndexOf("public NginxRuntimeOptions GetNginxOptions()", start, StringComparison.Ordinal);
+        Assert.IsTrue(start >= 0 && end > start);
+        var method = runtime.Substring(start, end - start);
+
+        StringAssert.Contains(method, "LaunchTomcatConsole(tomcatRoot)");
+        StringAssert.Contains(method, "不隐藏启动，也不等待端口或执行 HTTP 就绪诊断");
+        Assert.IsFalse(method.Contains("WaitForStartupAsync", StringComparison.Ordinal));
+        Assert.IsFalse(method.Contains("ReadHttpPorts", StringComparison.Ordinal));
+        Assert.IsFalse(method.Contains("ArePortsListening", StringComparison.Ordinal));
+        Assert.IsFalse(method.Contains("真正 HTTP 就绪", StringComparison.Ordinal));
+        Assert.IsFalse(method.Contains("诊断模式", StringComparison.Ordinal));
+
+        var launcherStart = runtime.IndexOf("internal static void LaunchTomcatConsole", StringComparison.Ordinal);
+        var launcherEnd = runtime.IndexOf("private static void RetireLegacyTomcatWindowsService", launcherStart, StringComparison.Ordinal);
+        Assert.IsTrue(launcherStart >= 0 && launcherEnd > launcherStart);
+        var launcher = runtime.Substring(launcherStart, launcherEnd - launcherStart);
+        StringAssert.Contains(launcher, "ProcessRunner.StartFile");
+        StringAssert.Contains(launcher, "call catalina.bat run");
+        StringAssert.Contains(launcher, "ProcessWindowStyle.Normal");
+    }
+}
+'@
+Write-Utf8 'MCPanel.Tests/ReliabilityTests.CatalinaNoReadiness139.cs' $test
+
+# 5) Dedicated 1.3.43 guards.
 $test = @'
 using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
