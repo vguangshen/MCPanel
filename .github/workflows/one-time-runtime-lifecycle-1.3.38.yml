@@ -33,25 +33,105 @@ jobs:
         shell: pwsh
         run: .\tools\Apply-RuntimeLifecycle-1.3.38.ps1
 
-      - name: Scope MySQL result propagation to MySQL only
+      - name: Repair generated lifecycle source
         shell: pwsh
         run: |
           $path = 'EnvironmentRuntimeService.cs'
           $text = Get-Content -LiteralPath $path -Raw
+
+          # The one-time transformer changes a generic try/catch shape that also
+          # exists in the SQL Server action. Remove that accidental MySQL return
+          # block only from the SQL Server section.
           $sqlMarker = '    private static async Task RunSqlServerServiceActionAsync(string action, CancellationToken cancellationToken)'
           $mysqlMarker = '    private static async Task<string> RunMySqlServiceActionAsync(string action, CancellationToken cancellationToken)'
           $sqlStart = $text.IndexOf($sqlMarker, [StringComparison]::Ordinal)
           $mysqlStart = $text.IndexOf($mysqlMarker, [StringComparison]::Ordinal)
           if ($sqlStart -lt 0 -or $mysqlStart -le $sqlStart) { throw 'Unable to locate SQL/MySQL service action sections.' }
-
           $prefix = $text.Substring(0, $sqlStart)
           $sqlSection = $text.Substring($sqlStart, $mysqlStart - $sqlStart)
           $tail = $text.Substring($mysqlStart)
           $pattern = '(?ms)\r?\n\s*var detail = ReadTextFileBestEffort\(result\);\r?\n\s*return string\.IsNullOrWhiteSpace\(detail\)\r?\n\s*\? \$"MySQL \{action\} 操作已完成。"\r?\n\s*: detail\.Trim\(\);'
           $fixedSqlSection = [regex]::Replace($sqlSection, $pattern, '', 1)
-          if ($fixedSqlSection -eq $sqlSection) { throw 'SQL Server section does not contain the accidental MySQL result block.' }
+          if ($fixedSqlSection -eq $sqlSection) { throw 'Unable to remove accidental MySQL result block from SQL Server section.' }
           $text = $prefix + $fixedSqlSection + $tail
+
+          # Do not depend on catalina.bat stop / shutdown port 8005 for a shared
+          # Tomcat restart. If the service stop request did not end the JVM, use
+          # the managed CATALINA_BASE process cleanup path instead.
+          $oldStop = @'
+                          if (TomcatProductInstanceManager.IsSharedTomcatRunning())
+                          {
+                              var shutdown = Path.Combine(tomcatRoot, "bin", "shutdown.bat");
+                              if (File.Exists(shutdown))
+                              {
+                                  await RunFileAsync(shutdown, string.Empty, Path.Combine(tomcatRoot, "bin"), false, cancellationToken);
+                              }
+                              for (var attempt = 0; attempt < 80 && TomcatProductInstanceManager.IsSharedTomcatRunning(); attempt++)
+                              {
+                                  await Task.Delay(250, cancellationToken);
+                              }
+                              if (TomcatProductInstanceManager.IsSharedTomcatRunning())
+                              {
+                                  throw new InvalidOperationException("Tomcat Server 共享进程未能停止；为避免影响单应用实例，已取消强制结束全部 Java 进程。");
+                              }
+                          }
+          '@
+          $newStop = @'
+                          if (TomcatProductInstanceManager.IsSharedTomcatRunning())
+                          {
+                              await TomcatProductInstanceManager.StopSharedTomcatAsync(cancellationToken);
+                              if (TomcatProductInstanceManager.IsSharedTomcatRunning())
+                              {
+                                  throw new InvalidOperationException("Tomcat Server 共享进程未能停止；单应用实例未受影响。请检查共享 Tomcat Java 进程。 ");
+                              }
+                          }
+          '@
+          if (-not $text.Contains($oldStop)) { throw 'Unable to locate shared Tomcat shutdown.bat stop block.' }
+          $text = $text.Replace($oldStop, $newStop)
           [IO.File]::WriteAllText((Resolve-Path $path), $text, (New-Object Text.UTF8Encoding($false)))
+
+          $instancesPath = 'TomcatProductInstanceManager.cs'
+          $instances = Get-Content -LiteralPath $instancesPath -Raw
+          $marker = '    public static async Task StopAllTomcatProcessesAsync('
+          if (-not $instances.Contains($marker)) { throw 'Unable to locate StopAllTomcatProcessesAsync marker.' }
+          if (-not $instances.Contains('public static async Task StopSharedTomcatAsync(')) {
+            $method = @'
+              public static async Task StopSharedTomcatAsync(CancellationToken cancellationToken = default)
+              {
+                  var tomcatHome = FindTomcatRoot();
+                  if (tomcatHome is null)
+                  {
+                      return;
+                  }
+
+                  await RuntimeLock.WaitAsync(cancellationToken);
+                  try
+                  {
+                      await StopCatalinaBaseAsync(tomcatHome, cancellationToken, Array.Empty<int>());
+                  }
+                  finally
+                  {
+                      RuntimeLock.Release();
+                  }
+              }
+
+          '@
+            $instances = $instances.Replace($marker, $method + $marker)
+          }
+          [IO.File]::WriteAllText((Resolve-Path $instancesPath), $instances, (New-Object Text.UTF8Encoding($false)))
+
+          $testPath = 'MCPanel.Tests/ReliabilityTests.RuntimeLifecycle138.cs'
+          $tests = Get-Content -LiteralPath $testPath -Raw
+          $testNeedle = '        StringAssert.Contains(runtime, "TomcatProductInstanceManager.IsSharedTomcatRunning()");'
+          if (-not $tests.Contains($testNeedle)) { throw 'Unable to locate Tomcat lifecycle assertion.' }
+          $testReplacement = $testNeedle + [Environment]::NewLine +
+              '        StringAssert.Contains(runtime, "StopSharedTomcatAsync(cancellationToken)");' + [Environment]::NewLine +
+              '        var instances = ReadRepositoryFile("TomcatProductInstanceManager.cs");' + [Environment]::NewLine +
+              '        StringAssert.Contains(instances, "public static async Task StopSharedTomcatAsync");'
+          $tests = $tests.Replace($testNeedle, $testReplacement)
+          [IO.File]::WriteAllText((Resolve-Path $testPath), $tests, (New-Object Text.UTF8Encoding($false)))
+
+          Add-Content -LiteralPath 'RELEASE-NOTES.md' -Encoding UTF8 -Value '- 修复 Tomcat 已完全运行后点击“重启”偶发无法停止的问题：不再依赖可能未监听的 8005 shutdown 端口；共享 Tomcat 停止改为按 CATALINA_BASE 精确结束共享 Java 进程，并保持单应用实例不受影响。'
 
       - name: Full regression tests
         shell: pwsh
