@@ -1,0 +1,52 @@
+name: One-time runtime lifecycle 1.3.38
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-commit:
+    if: startsWith(github.event.head_commit.message, 'Apply runtime lifecycle 1.3.38')
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install SharpSvn native runtime dependencies
+        shell: pwsh
+        run: choco install vcredist-all -y --no-progress
+
+      - name: Apply MySQL and Tomcat lifecycle fixes
+        shell: pwsh
+        run: .\tools\Apply-RuntimeLifecycle-1.3.38.ps1
+
+      - name: Full regression tests
+        shell: pwsh
+        run: dotnet test .\MCPanel.Tests\MCPanel.Tests.csproj -c Release --nologo
+
+      - name: Win-x64 publish validation
+        shell: pwsh
+        run: .\Publish-WinX64.ps1 -OutputDirectory (Join-Path $env:RUNNER_TEMP 'MCPanelPublish138')
+
+      - name: Commit validated 1.3.38 source
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/workflows/one-time-runtime-lifecycle-1.3.38.yml tools/Apply-RuntimeLifecycle-1.3.38.ps1
+          git add -A
+          git commit -m "Fix MySQL and Tomcat lifecycle for 1.3.38"
+          git push origin HEAD:main
