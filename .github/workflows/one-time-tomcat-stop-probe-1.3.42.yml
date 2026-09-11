@@ -41,6 +41,10 @@ jobs:
         shell: pwsh
         run: .\tools\Fix-WebsiteStatus-AndProbeProxy-1.3.42.ps1
 
+      - name: Update lifecycle regression contract
+        shell: pwsh
+        run: .\tools\Fix-RuntimeLifecycleTest-1.3.42.ps1
+
       - name: Full regression tests
         shell: pwsh
         run: dotnet test .\MCPanel.Tests\MCPanel.Tests.csproj --configuration Release
@@ -56,6 +60,7 @@ jobs:
         run: |
           Remove-Item -LiteralPath '.\tools\Fix-TomcatStop-AndRemoveProbe-1.3.42.ps1' -Force
           Remove-Item -LiteralPath '.\tools\Fix-WebsiteStatus-AndProbeProxy-1.3.42.ps1' -Force
+          Remove-Item -LiteralPath '.\tools\Fix-RuntimeLifecycleTest-1.3.42.ps1' -Force
           Remove-Item -LiteralPath '.\.github\workflows\one-time-tomcat-stop-probe-1.3.42.yml' -Force
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
