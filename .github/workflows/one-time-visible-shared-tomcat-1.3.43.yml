@@ -1,4 +1,5 @@
 name: One-time visible shared Tomcat 1.3.43
+# Retry after making the Catalina button removal and regression updates deterministic.
 
 on:
   push:
