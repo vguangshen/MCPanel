@@ -33,6 +33,44 @@ jobs:
         shell: pwsh
         run: .\tools\Apply-RuntimeLifecycle-1.3.38.ps1
 
+      - name: Scope MySQL result propagation to MySQL only
+        shell: pwsh
+        run: |
+          $path = 'EnvironmentRuntimeService.cs'
+          $text = Get-Content -LiteralPath $path -Raw
+          $sqlMarker = '    private static async Task RunSqlServerServiceActionAsync(string action, CancellationToken cancellationToken)'
+          $mysqlMarker = '    private static async Task<string> RunMySqlServiceActionAsync(string action, CancellationToken cancellationToken)'
+          $sqlStart = $text.IndexOf($sqlMarker, [StringComparison]::Ordinal)
+          $mysqlStart = $text.IndexOf($mysqlMarker, [StringComparison]::Ordinal)
+          if ($sqlStart -lt 0 -or $mysqlStart -le $sqlStart) { throw 'Unable to locate SQL/MySQL service action sections.' }
+
+          $bad = @'
+          try
+          {
+              await RunElevatedPowerShellFileAsync(script, cancellationToken, log);
+              var detail = ReadTextFileBestEffort(result);
+              return string.IsNullOrWhiteSpace(detail)
+                  ? $"MySQL {action} 操作已完成。"
+                  : detail.Trim();
+          }
+          catch (Exception ex)
+          '@
+          $good = @'
+          try
+          {
+              await RunElevatedPowerShellFileAsync(script, cancellationToken, log);
+          }
+          catch (Exception ex)
+          '@
+
+          $prefix = $text.Substring(0, $sqlStart)
+          $sqlSection = $text.Substring($sqlStart, $mysqlStart - $sqlStart)
+          $tail = $text.Substring($mysqlStart)
+          if (-not $sqlSection.Contains($bad)) { throw 'SQL Server section does not contain the accidental MySQL return block.' }
+          $sqlSection = $sqlSection.Replace($bad, $good)
+          $text = $prefix + $sqlSection + $tail
+          [IO.File]::WriteAllText((Resolve-Path $path), $text, (New-Object Text.UTF8Encoding($false)))
+
       - name: Full regression tests
         shell: pwsh
         run: dotnet test .\MCPanel.Tests\MCPanel.Tests.csproj -c Release --nologo
