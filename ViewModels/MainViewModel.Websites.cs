@@ -45,6 +45,8 @@ public sealed partial class MainViewModel
         VisibleInstalledWebsites.Refresh(); VisibleCustomWebsites.Refresh(); WebsiteView.Refresh(); NotifyWebsiteFilter();
     }
 
+    internal void RefreshWebsiteFilterForRuntimeChange() => RefreshWebsiteFilter();
+
     private void SyncWebsiteRows()
     {
         if (_updatingWebsiteRows) return;
@@ -59,6 +61,7 @@ public sealed partial class MainViewModel
             rows.Add(row);
         }
         _websiteRows.Replace(rows);
+        WebsiteView.Refresh();
         NotifyWebsiteFilter();
     }
 
@@ -111,3 +114,4 @@ public sealed class WebsiteRow(string id, object item) : ObservableObject
     public string Path => Item is InstalledProductItem product ? product.InstallPath : ((CustomWebsiteItem)Item).PhysicalPath;
     public int Order { get; set; }
 }
+

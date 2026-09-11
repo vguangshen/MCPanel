@@ -168,7 +168,7 @@ public sealed partial class MainViewModel : ObservableObject
             RefreshWebsiteFilter();
         }
     }
-    private int VisibleWebsiteCount => VisibleInstalledWebsites.Cast<object>().Count() + VisibleCustomWebsites.Cast<object>().Count();
+    private int VisibleWebsiteCount => WebsiteView?.Cast<object>().Count() ?? 0;
     public string WebsiteSearchCountText => string.IsNullOrWhiteSpace(WebsiteSearchKeyword)
         ? InstalledProductCountText : $"找到 {VisibleWebsiteCount} / {InstalledProducts.Count + CustomWebsites.Count} 个网站";
     public Visibility InstalledWebsiteGroupVisibility => VisibleInstalledWebsites.IsEmpty ? Visibility.Collapsed : Visibility.Visible;
@@ -748,3 +748,4 @@ public sealed partial class MainViewModel : ObservableObject
         RefreshSystemState();
     }
 }
+

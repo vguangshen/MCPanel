@@ -164,6 +164,21 @@ public sealed class InstalledProductItem : ObservableObject
         RuntimeStatusBrush = Brushes.Goldenrod;
     }
 
+    internal void ApplyTomcatRuntime(TomcatProductRuntimeInfo runtime)
+    {
+        TomcatRuntimeMode = runtime.Mode;
+        RuntimeStatusText = TomcatProductInstanceManager.FormatRuntimeStatus(runtime);
+        RuntimeStatusBrush = runtime.Mode switch
+        {
+            TomcatProductRuntimeMode.Shared => Brushes.MediumSeaGreen,
+            TomcatProductRuntimeMode.Independent => Brushes.MediumSeaGreen,
+            TomcatProductRuntimeMode.Catalina => Brushes.DeepSkyBlue,
+            TomcatProductRuntimeMode.PortConflict => Brushes.IndianRed,
+            _ => Brushes.Goldenrod
+        };
+        CanBrowse = runtime.IsRunning && runtime.PortListening;
+    }
+
     public void RefreshRuntime()
     {
         try
@@ -198,22 +213,11 @@ public sealed class InstalledProductItem : ObservableObject
 
             var runtime = WebsiteRuntimeSnapshot.Latest.Tomcat.TryGetValue(ProductId, out var cachedRuntime) ? cachedRuntime
                 : new TomcatProductRuntimeInfo(TomcatProductRuntimeMode.Stopped, _tomcatPort, false);
-            TomcatRuntimeMode = runtime.Mode;
-
             SiteDisplayText = $"Tomcat / {ProductId}";
             PoolDisplayText = $"应用上下文：/{ProductId}";
             Url = $"http://localhost:{tomcatDeployment.Value.Port}/{ProductId}/";
 
-            RuntimeStatusText = TomcatProductInstanceManager.FormatRuntimeStatus(runtime);
-            RuntimeStatusBrush = runtime.Mode switch
-            {
-                TomcatProductRuntimeMode.Shared => Brushes.MediumSeaGreen,
-                TomcatProductRuntimeMode.Independent => Brushes.MediumSeaGreen,
-                TomcatProductRuntimeMode.Catalina => Brushes.DeepSkyBlue,
-                TomcatProductRuntimeMode.PortConflict => Brushes.IndianRed,
-                _ => Brushes.Goldenrod
-            };
-            CanBrowse = runtime.IsRunning && runtime.PortListening;
+            ApplyTomcatRuntime(runtime);
             return;
         }
 
@@ -257,10 +261,7 @@ public sealed class InstalledProductItem : ObservableObject
         }
         if (IsTomcatDeployment && snapshot.Tomcat.TryGetValue(ProductId, out var runtime))
         {
-            TomcatRuntimeMode = runtime.Mode;
-            CanBrowse = runtime.IsRunning && runtime.PortListening;
-            RuntimeStatusText = TomcatProductInstanceManager.FormatRuntimeStatus(runtime);
-            RuntimeStatusBrush = CanBrowse ? Brushes.MediumSeaGreen : Brushes.Goldenrod;
+            ApplyTomcatRuntime(runtime);
         }
         else if (_iisInfo is not null)
         {
@@ -1398,3 +1399,6 @@ public sealed class DriveItem : ObservableObject
     private static string FormatSize(long usedBytes, long totalBytes) => $"{ToGb(usedBytes):N2} GB/{ToGb(totalBytes):N0} GB";
     private static double ToGb(long bytes) => bytes / 1024d / 1024d / 1024d;
 }
+
+
+

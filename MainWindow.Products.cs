@@ -539,6 +539,30 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
         }
     }
 
+    private void EnsureWebsiteRowVisible(string productId)
+    {
+        var row = _model.WebsiteView.Cast<object>()
+            .OfType<WebsiteRow>()
+            .FirstOrDefault(candidate => candidate.Item is InstalledProductItem product &&
+                string.Equals(product.ProductId, productId, StringComparison.OrdinalIgnoreCase));
+        if (row is null)
+        {
+            return;
+        }
+
+        WebsiteListScroll.ScrollIntoView(row);
+        WebsiteListScroll.UpdateLayout();
+        WebsiteListScroll.Dispatcher.BeginInvoke(
+            DispatcherPriority.Loaded,
+            new Action(() =>
+            {
+                if (WebsiteListScroll.Items.Contains(row))
+                {
+                    WebsiteListScroll.ScrollIntoView(row);
+                }
+            }));
+    }
+
     internal async void InstalledProductTomcatAction_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is not InstalledProductItem item ||
@@ -576,12 +600,10 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
                 _ => throw new NotSupportedException("未知 Tomcat 应用操作。")
             };
 
-            if (action == "Catalina")
-            {
-                await Task.Delay(1200);
-            }
-
-            item.RefreshRuntime();
+            var runtime = await Task.Run(() => TomcatProductInstanceManager.GetRuntimeInfo(item.ProductId));
+            item.ApplyTomcatRuntime(runtime);
+            _model.RefreshWebsiteFilterForRuntimeChange();
+            EnsureWebsiteRowVisible(item.ProductId);
             MessageBox.Show(message, "Tomcat 应用", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
@@ -793,3 +815,5 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
         }
     }
 }
+
+
