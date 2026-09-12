@@ -517,7 +517,8 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
 
     private void InstalledProductBrowse_Click(object sender, RoutedEventArgs e)
     {
-        if (((FrameworkElement)sender).DataContext is InstalledProductItem item && item.CanBrowse)
+        if (((FrameworkElement)sender).DataContext is InstalledProductItem item &&
+            !string.IsNullOrWhiteSpace(item.Url))
         {
             Process.Start(new ProcessStartInfo(item.Url) { UseShellExecute = true });
         }
@@ -525,7 +526,8 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
 
     internal void InstalledProductUrl_Click(object sender, MouseButtonEventArgs e)
     {
-        if (((FrameworkElement)sender).DataContext is InstalledProductItem item && item.CanBrowse)
+        if (((FrameworkElement)sender).DataContext is InstalledProductItem item &&
+            !string.IsNullOrWhiteSpace(item.Url))
         {
             Process.Start(new ProcessStartInfo(item.Url) { UseShellExecute = true });
         }
@@ -815,6 +817,7 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
         }
     }
 }
+
 
 
 
