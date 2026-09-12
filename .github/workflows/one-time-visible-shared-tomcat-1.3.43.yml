@@ -1,5 +1,5 @@
 name: One-time visible shared Tomcat 1.3.43
-# Retry with both Catalina entry points preserved; normal shared Start/Restart also uses a visible Catalina CMD console.
+# Retry after updating the two stale shared-Tomcat regression contracts; both Catalina entry points remain required.
 
 on:
   push:
