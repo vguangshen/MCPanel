@@ -1,7 +1,7 @@
-# MCPanel 1.3.46
+# MCPanel 1.3.47
 
-- IIS 产品端口改为“运行配置为事实来源”：用户在 IIS 管理器手动修改 `MCPanel` 网站 HTTP 绑定端口后，MCPanel 会自动回读真实端口并原子更新部署状态缓存，网站页访问链接随之更新。
-- Java/Tomcat 产品同样回读实际 `server.xml` Connector 端口；手工设置的任意合法 TCP 端口都可被识别并保留（共享 Tomcat 使用的 8080 除外），而 MCPanel 新产品的自动端口分配仍保持 9000-10000。
-- MCPanel 运行时自动检查端口漂移：网站页前台约 5 秒一次，后台/托盘约 30 秒一次；启动、重新激活和进入网站页会加速下一次同步。
-- Nginx 自动产品代理会跟随真实 IIS/Tomcat 后端端口更新；产品独立域名/SSL 规则也只更新后端目标，保留域名、HTTPS、证书、限速与前端监听设置。普通管理员规则和显式产品代理覆盖不会被自动改写。
-- Nginx 同步继续使用差异比较，配置未变化时不会写文件或 reload，避免周期检查造成无意义重载。
+- 恢复原版式的登录后后台运行体验：当 MCPanel 由 Windows 开机启动项以 `--tray` 模式启动时，会自动尝试恢复共享 Tomcat Server。
+- 开机恢复使用隐藏的 `catalina.bat run` 进程，不弹出 CMD 窗口；首次检查前延迟 8 秒，并在完全未检测到共享运行实例时执行一次受控重试。
+- 手动“启动 / 重启 Tomcat”仍保持 1.3.43 以来的可见 Catalina CMD 控制台，不改回 Windows Service 隐藏运行；专用“以 Catalina 方式启动”入口保持不变。
+- 只自动恢复共享 Tomcat，不恢复历史 `MCPanelTomcatProducts` 单产品登录启动项，也不会自动启动独立 Java 产品实例。
+- 开机恢复失败不会阻塞 Windows 登录或 MCPanel 托盘；详细状态写入 `tomcat-autostart.log` 供诊断。

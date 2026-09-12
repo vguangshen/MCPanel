@@ -193,6 +193,15 @@ public partial class App : Application
                 _ = ScheduleUiMemoryRelease(Volatile.Read(ref _uiGeneration));
             }
 
+            // The original ITMCStore-style login path restores the shared web
+            // runtime in the background. Keep ordinary/manual Tomcat Start and
+            // Restart interactive (visible Catalina console); only the --tray
+            // Windows-logon path performs this silent shared-server restore.
+            if (startInTray)
+            {
+                _ = TomcatLogonStartup.TryRestoreSharedTomcatAsync();
+            }
+
             // The embedded API follows the MCPanel process. The Windows
             // startup toggle only decides whether MCPanel itself is launched;
             // the Account API page's enable switch decides whether the API is
