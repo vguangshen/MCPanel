@@ -1699,17 +1699,13 @@ public sealed class ProductDeploymentService
 
     internal static string ResolveIisPipelineMode(string? runEnvironment, string managedRuntimeVersion)
     {
-        // ASP.NET Core pools have no CLR runtime and use the integrated module
-        // pipeline.  For legacy products, retain the original AddSite mapping:
-        // Framework4.0 => Integrated, every other declared framework => Classic.
-        if (string.IsNullOrWhiteSpace(managedRuntimeVersion) || string.IsNullOrWhiteSpace(runEnvironment))
-        {
-            return "Integrated";
-        }
-
-        return runEnvironment!.Trim().Equals("Framework4.0", StringComparison.OrdinalIgnoreCase)
-            ? "Integrated"
-            : "Classic";
+        // Match the original ITMCStore application-pool behavior while
+        // retaining MCPanel's current IIS 7+ appcmd management path.
+        // CLR selection (v2.0/v4.0/no managed CLR) remains independent;
+        // every IIS product uses the Integrated request-processing pipeline.
+        _ = runEnvironment;
+        _ = managedRuntimeVersion;
+        return "Integrated";
     }
 
     private static int SelectIisPort(string appcmd, string siteName)

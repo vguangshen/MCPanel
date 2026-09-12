@@ -560,7 +560,7 @@ public sealed partial class ReliabilityTests
 
         StringAssert.Contains(script, "/managedPipelineMode:$managedPipelineMode");
         StringAssert.Contains(script, "/enable32BitAppOnWin64:$enable32Bit");
-        StringAssert.Contains(script, "$managedPipelineMode='Classic'");
+        StringAssert.Contains(script, "$managedPipelineMode='Integrated'");
         StringAssert.Contains(script, "$enable32Bit=$false");
     }
 
