@@ -1,5 +1,5 @@
 name: One-time visible shared Tomcat 1.3.43
-# Retry after the installed-site URL fix; target only the shared-server Catalina button and keep the per-product Catalina action.
+# Retry with both Catalina entry points preserved; normal shared Start/Restart also uses a visible Catalina CMD console.
 
 on:
   push:
