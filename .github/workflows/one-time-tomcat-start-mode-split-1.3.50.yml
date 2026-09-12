@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   migrate-test-release:
-    if: github.event.head_commit.message == 'Add Tomcat start-mode split migration 1.3.50'
+    if: github.event.head_commit.message == 'Retry Tomcat start-mode split migration 1.3.50'
     runs-on: windows-latest
     timeout-minutes: 45
 
@@ -37,6 +37,8 @@ jobs:
         shell: pwsh
         run: |
           & .\tools\Split-TomcatStartModes-1.3.50.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & .\tools\Align-TomcatStartModeRegression-1.3.50.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Full regression tests
@@ -68,6 +70,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git rm -- '.github/workflows/one-time-tomcat-start-mode-split-1.3.50.yml'
           git rm -- 'tools/Split-TomcatStartModes-1.3.50.ps1'
+          git rm -- 'tools/Align-TomcatStartModeRegression-1.3.50.ps1'
           git add --all
           git commit -m "Release MCPanel 1.3.50`n`nSeparate normal Tomcat start/restart from explicit Catalina run mode. Normal Start and Restart now use startup.bat start semantics while CatalinaRun remains a foreground diagnostic console."
           if ($LASTEXITCODE -ne 0) {
