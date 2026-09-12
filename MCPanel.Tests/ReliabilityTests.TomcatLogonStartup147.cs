@@ -6,7 +6,7 @@ namespace MCPanel.Tests;
 public sealed partial class ReliabilityTests
 {
     [TestMethod]
-    public void TomcatLogonStartup147_OnlyRestoresInstalledStoppedServerFromTrayStartup()
+    public void TomcatLogonStartup148_OnlyRestoresInstalledStoppedServerFromTrayStartup()
     {
         Assert.IsTrue(TomcatLogonStartup.ShouldRestore(trayStartup: true, tomcatInstalled: true, sharedTomcatRunning: false));
         Assert.IsFalse(TomcatLogonStartup.ShouldRestore(trayStartup: false, tomcatInstalled: true, sharedTomcatRunning: false));
@@ -15,7 +15,7 @@ public sealed partial class ReliabilityTests
     }
 
     [TestMethod]
-    public void TomcatLogonStartup147_AppHooksOnlyTrayStartupAndKeepsManualCatalinaPath()
+    public void TomcatLogonStartup148_UsesImmediateVisibleManualCatalinaLauncher()
     {
         var app = ReadRepositoryFile("App.xaml.cs");
         var runtime = ReadRepositoryFile("EnvironmentRuntimeService.cs");
@@ -23,19 +23,24 @@ public sealed partial class ReliabilityTests
 
         StringAssert.Contains(app, "if (startInTray)");
         StringAssert.Contains(app, "TomcatLogonStartup.TryRestoreSharedTomcatAsync()");
-        StringAssert.Contains(startup, "ProcessWindowStyle.Hidden");
-        StringAssert.Contains(startup, "\"run\"");
+        StringAssert.Contains(startup, "EnvironmentRuntimeService.LaunchTomcatConsole(root)");
+        Assert.IsFalse(startup.Contains("InitialDelay", StringComparison.Ordinal));
+        Assert.IsFalse(startup.Contains("RetryDelay", StringComparison.Ordinal));
+        Assert.IsFalse(startup.Contains("StartupProbeTimeout", StringComparison.Ordinal));
+        Assert.IsFalse(startup.Contains("Task.Delay", StringComparison.Ordinal));
+        Assert.IsFalse(startup.Contains("ProcessWindowStyle.Hidden", StringComparison.Ordinal));
+        Assert.IsFalse(startup.Contains("StartHiddenCatalina", StringComparison.Ordinal));
+        Assert.IsFalse(startup.Contains("WaitForSharedTomcatAsync", StringComparison.Ordinal));
         Assert.IsFalse(startup.Contains("TomcatWindowsServiceManager.EnsureRegistered", StringComparison.Ordinal));
         Assert.IsFalse(startup.Contains("StartProduct", StringComparison.OrdinalIgnoreCase));
 
-        // Manual environment actions must remain visible and must not be silently
-        // redirected to the logon-only startup path.
+        // Manual environment actions remain on the exact same visible launcher.
         StringAssert.Contains(runtime, "LaunchTomcatConsole(tomcatRoot)");
         StringAssert.Contains(runtime, "windowStyle: ProcessWindowStyle.Normal");
     }
 
     [TestMethod]
-    public void TomcatLogonStartup147_DoesNotReviveLegacyPerProductRunRegistration()
+    public void TomcatLogonStartup148_DoesNotReviveLegacyPerProductRunRegistration()
     {
         var legacy = ReadRepositoryFile("TomcatProductStartupManager.cs");
         StringAssert.Contains(legacy, "RemoveRegistration();");
