@@ -1,0 +1,98 @@
+name: One-time URL always clickable
+
+on:
+  push:
+    branches:
+      - 'fix/url-always-clickable'
+    paths:
+      - '.github/workflows/one-time-url-always-clickable.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Patch URL handlers
+        shell: pwsh
+        run: |
+          $path = '.\MainWindow.Products.cs'
+          $text = Get-Content -LiteralPath $path -Raw
+          $old = @'
+              private void InstalledProductBrowse_Click(object sender, RoutedEventArgs e)
+              {
+                  if (((FrameworkElement)sender).DataContext is InstalledProductItem item && item.CanBrowse)
+                  {
+                      Process.Start(new ProcessStartInfo(item.Url) { UseShellExecute = true });
+                  }
+              }
+
+              internal void InstalledProductUrl_Click(object sender, MouseButtonEventArgs e)
+              {
+                  if (((FrameworkElement)sender).DataContext is InstalledProductItem item && item.CanBrowse)
+                  {
+                      Process.Start(new ProcessStartInfo(item.Url) { UseShellExecute = true });
+                  }
+              }
+          '@
+          $new = @'
+              private void InstalledProductBrowse_Click(object sender, RoutedEventArgs e)
+              {
+                  if (((FrameworkElement)sender).DataContext is InstalledProductItem item &&
+                      !string.IsNullOrWhiteSpace(item.Url))
+                  {
+                      Process.Start(new ProcessStartInfo(item.Url) { UseShellExecute = true });
+                  }
+              }
+
+              internal void InstalledProductUrl_Click(object sender, MouseButtonEventArgs e)
+              {
+                  if (((FrameworkElement)sender).DataContext is InstalledProductItem item &&
+                      !string.IsNullOrWhiteSpace(item.Url))
+                  {
+                      Process.Start(new ProcessStartInfo(item.Url) { UseShellExecute = true });
+                  }
+              }
+          '@
+          if (-not $text.Contains($old)) {
+              throw 'Expected InstalledProduct URL handler block was not found.'
+          }
+          $text = $text.Replace($old, $new)
+          Set-Content -LiteralPath $path -Value $text -Encoding utf8NoBOM
+
+      - name: Validate URL handler source
+        shell: pwsh
+        run: |
+          $text = Get-Content -LiteralPath '.\MainWindow.Products.cs' -Raw
+          $start = $text.IndexOf('private void InstalledProductBrowse_Click')
+          $end = $text.IndexOf('internal void InstalledProductManageToggle_Click', $start)
+          if ($start -lt 0 -or $end -le $start) { throw 'Could not isolate URL handler block.' }
+          $block = $text.Substring($start, $end - $start)
+          if ($block.Contains('item.CanBrowse')) { throw 'URL opening is still gated by runtime state.' }
+          if (-not $block.Contains('!string.IsNullOrWhiteSpace(item.Url)')) { throw 'URL availability guard is missing.' }
+
+      - name: Full regression tests
+        shell: pwsh
+        run: dotnet test .\MCPanel.Tests\MCPanel.Tests.csproj --configuration Release
+
+      - name: Commit validated fix
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath '.\.github\workflows\one-time-url-always-clickable.yml' -Force
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Fix installed website URL opening'
+          git push origin HEAD:'fix/url-always-clickable'
