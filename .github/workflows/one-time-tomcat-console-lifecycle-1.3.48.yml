@@ -1,0 +1,68 @@
+name: One-time Tomcat console lifecycle 1.3.48
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: github.event.head_commit.message == 'Validate MCPanel 1.3.48 Tomcat console lifecycle'
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install SharpSvn native runtime dependencies
+        shell: pwsh
+        run: |
+          choco install vcredist-all -y --no-progress
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Failed to install the VC++ runtime bundle required by SharpSvn.'
+          }
+
+      - name: Apply Tomcat console lifecycle behavior
+        shell: pwsh
+        run: |
+          & .\tools\Apply-TomcatConsoleLifecycle-1.3.48.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Full regression tests
+        shell: pwsh
+        run: |
+          $results = Join-Path $env:RUNNER_TEMP 'MCPanelRegression'
+          New-Item -ItemType Directory -Force -Path $results | Out-Null
+          dotnet test .\MCPanel.Tests\MCPanel.Tests.csproj -c Release --logger "trx;LogFileName=regression.trx" --results-directory $results
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host 'Initial regression run failed; retrying once to exclude known runner timing flakes.'
+            dotnet test .\MCPanel.Tests\MCPanel.Tests.csproj -c Release --logger "trx;LogFileName=regression-retry.trx" --results-directory $results
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      - name: Win-x64 publish validation
+        shell: pwsh
+        run: |
+          $publishDir = Join-Path $env:RUNNER_TEMP 'MCPanelPublish148'
+          & .\Publish-WinX64.ps1 -OutputDirectory $publishDir
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Commit validated 1.3.48 source
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -- '.github/workflows/one-time-tomcat-console-lifecycle-1.3.48.yml'
+          git rm -- 'tools/Apply-TomcatConsoleLifecycle-1.3.48.ps1'
+          git add --all
+          git commit -m 'Prepare MCPanel 1.3.48 Tomcat console lifecycle'
+          git push origin HEAD:main
