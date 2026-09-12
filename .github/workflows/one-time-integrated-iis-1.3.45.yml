@@ -60,6 +60,16 @@ jobs:
           }
           [IO.File]::WriteAllText((Join-Path $PWD $path), $updated, [Text.UTF8Encoding]::new($false))
 
+          $legacyTestPath = 'MCPanel.Tests\ReliabilityTests.DownloadQueue.cs'
+          $legacyTest = Get-Content -LiteralPath $legacyTestPath -Raw
+          $oldPipelineAssertion = '$managedPipelineMode=''Classic'''
+          $newPipelineAssertion = '$managedPipelineMode=''Integrated'''
+          if (-not $legacyTest.Contains($oldPipelineAssertion)) {
+            throw 'Expected legacy Classic pipeline assertion was not found.'
+          }
+          $legacyTest = $legacyTest.Replace($oldPipelineAssertion, $newPipelineAssertion)
+          [IO.File]::WriteAllText((Join-Path $PWD $legacyTestPath), $legacyTest, [Text.UTF8Encoding]::new($false))
+
           $test = @'
           using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -136,7 +146,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git rm '.github/workflows/one-time-integrated-iis-1.3.45.yml'
-          git add ProductDeploymentService.cs MCPanel.Tests/ReliabilityTests.IisIntegratedPipeline145.cs MCPanel.csproj RELEASE-NOTES.md
+          git add ProductDeploymentService.cs MCPanel.Tests/ReliabilityTests.DownloadQueue.cs MCPanel.Tests/ReliabilityTests.IisIntegratedPipeline145.cs MCPanel.csproj RELEASE-NOTES.md
           git diff --cached --check
           git commit -m 'Prepare MCPanel 1.3.45 integrated IIS pipeline'
           git push origin HEAD:main
