@@ -29,6 +29,8 @@ public partial class MainWindow : Window
     private const int DwmCornerPreferenceRound = 2;
     private static readonly TimeSpan EnvironmentRuntimeRefreshInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan BackgroundRuntimeRefreshInterval = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan ProductRouteForegroundSyncInterval = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan ProductRouteBackgroundSyncInterval = TimeSpan.FromSeconds(30);
 
     [DllImport("dwmapi.dll", EntryPoint = "DwmSetWindowAttribute")]
     private static extern int DwmSetWindowAttribute(
@@ -54,6 +56,8 @@ public partial class MainWindow : Window
     private bool _monitoringStarted;
     private bool _runtimeRefreshInFlight;
     private DateTime _nextRuntimeRefreshUtc = DateTime.MinValue;
+    private bool _productRouteSyncInFlight;
+    private DateTime _nextProductRouteSyncUtc = DateTime.MinValue;
     private int _runtimeRefreshGeneration;
     private bool _isClosed;
     private bool _closeAfterActivationFailure;
@@ -99,6 +103,7 @@ public partial class MainWindow : Window
         Activated += (_, _) =>
         {
             _nextRuntimeRefreshUtc = DateTime.MinValue;
+            _nextProductRouteSyncUtc = DateTime.MinValue;
             Dispatcher.BeginInvoke(
                 new Action(FocusActiveNavigationItem),
                 DispatcherPriority.ApplicationIdle);
@@ -136,28 +141,25 @@ public partial class MainWindow : Window
             _productInstallQueue.Tick();
             _model.InstallationProgress.Tick();
 
-            if (!_monitoringStarted)
+            if (!_monitoringStarted) return;
+
+            var now = DateTime.UtcNow;
+            if (!_productRouteSyncInFlight && now >= _nextProductRouteSyncUtc)
             {
-                return;
+                await RefreshProductRuntimeBindingsAsync(force: true);
             }
 
-            // CPU/memory/drive widgets are only visible on Home. Avoid sampling and
-            // raising bindings every second while another page is in front.
             if (IsVisible && WindowState != WindowState.Minimized && HomePage.IsVisible)
             {
                 _model.TickSystemState();
             }
 
-            // Runtime discovery is intentionally much slower than visual telemetry:
-            // it scans services, ports, install roots and Tomcat/Java state. Suspend
-            // it completely while minimized/to-tray and use a faster cadence only
-            // while the Environment page is actually visible.
             if (_runtimeRefreshInFlight || !IsVisible || WindowState == WindowState.Minimized)
             {
                 return;
             }
 
-            var now = DateTime.UtcNow;
+            now = DateTime.UtcNow;
             if (now < _nextRuntimeRefreshUtc)
             {
                 return;
@@ -211,7 +213,7 @@ public partial class MainWindow : Window
             try
             {
                 _productInstallQueue.ResumePending();
-                await NginxProductProxyService.TrySyncAsync();
+                await RefreshProductRuntimeBindingsAsync(force: true);
                 await RefreshEnvironmentStatesAsync();
                 _nextRuntimeRefreshUtc = DateTime.UtcNow + BackgroundRuntimeRefreshInterval;
                 RefreshPanelMemoryUsage();
@@ -568,6 +570,7 @@ public partial class MainWindow : Window
         {
             _model.RefreshInstalledProducts();
             _model.RefreshCustomWebsites(_customWebsiteService.LoadAll());
+            _nextProductRouteSyncUtc = DateTime.MinValue;
         }
         else if (page == "Settings")
         {

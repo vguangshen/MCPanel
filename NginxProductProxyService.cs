@@ -13,6 +13,7 @@ public static class NginxProductProxyService
 {
     private const string UserOverridePrefix = "__mcpanel_user_override__:";
     private const string SuppressedPrefix = "__mcpanel_suppressed__:";
+    private const string ManagedWebsitePrefix = "product-domain:";
 
     internal enum ManagedProductRuleKind
     {
@@ -54,9 +55,11 @@ public static class NginxProductProxyService
 
         var runtimeService = new EnvironmentRuntimeService();
         var current = NginxRuntimeManager.NormalizeOptions(runtimeService.GetNginxOptions());
+        var routes = LoadProductRoutes().ToArray();
+        var synchronizedRules = RebindManagedWebsiteTargets(current.Rules, routes);
         var defaultPublicPort = ResolveDefaultPublicPort(current);
-        var generatedRules = BuildProductRules(defaultPublicPort, current.Rules, LoadProductRoutes());
-        var mergedRules = MergeProductRules(current.Rules, generatedRules);
+        var generatedRules = BuildProductRules(defaultPublicPort, synchronizedRules, routes);
+        var mergedRules = MergeProductRules(synchronizedRules, generatedRules);
 
         if (mergedRules.Count == 0)
         {
@@ -122,6 +125,69 @@ public static class NginxProductProxyService
             : NginxRuntimeManager.DefaultListenPort;
     }
 
+    internal static IReadOnlyList<NginxProxyRule> RebindManagedWebsiteTargets(
+        IReadOnlyCollection<NginxProxyRule> currentRules,
+        IReadOnlyCollection<ProductRoute> routes)
+    {
+        var routesById = routes
+            .GroupBy(route => NormalizeManagedWebsiteProductId(route.ProductId), StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Key.Length > 0)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var result = new List<NginxProxyRule>(currentRules.Count);
+        foreach (var source in currentRules)
+        {
+            var rule = NginxRuntimeManager.NormalizeRule(source);
+            var managedWebsiteId = rule.ManagedWebsiteId?.Trim() ?? string.Empty;
+            if (!managedWebsiteId.StartsWith(ManagedWebsitePrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                result.Add(rule);
+                continue;
+            }
+
+            var productKey = NormalizeManagedWebsiteProductId(managedWebsiteId.Substring(ManagedWebsitePrefix.Length));
+            if (!routesById.TryGetValue(productKey, out var route))
+            {
+                result.Add(rule);
+                continue;
+            }
+
+            var target = $"http://127.0.0.1:{route.Port}{route.LocationPath.TrimEnd('/')}/";
+            if (string.Equals(rule.ProxyTarget, target, StringComparison.OrdinalIgnoreCase))
+            {
+                result.Add(rule);
+                continue;
+            }
+
+            result.Add(NginxRuntimeManager.NormalizeRule(new NginxProxyRule
+            {
+                Enabled = rule.Enabled,
+                Name = rule.Name,
+                ListenPort = rule.ListenPort,
+                ServerName = rule.ServerName,
+                LocationPath = rule.LocationPath,
+                ProxyTarget = target,
+                WebSocket = rule.WebSocket,
+                ManagedProductId = rule.ManagedProductId,
+                ManagedWebsiteId = rule.ManagedWebsiteId,
+                SslEnabled = rule.SslEnabled,
+                HttpsPort = rule.HttpsPort,
+                SslCertificatePath = rule.SslCertificatePath,
+                SslCertificateKeyPath = rule.SslCertificateKeyPath,
+                RedirectHttpToHttps = rule.RedirectHttpToHttps,
+                MaxRateKbps = rule.MaxRateKbps
+            }));
+        }
+
+        return result;
+    }
+
+    private static string NormalizeManagedWebsiteProductId(string value)
+    {
+        var safe = new string((value ?? string.Empty)
+            .Select(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_' or '.' ? ch : '_')
+            .ToArray()).Trim('_');
+        return safe;
+    }
     internal static IReadOnlyList<NginxProxyRule> BuildProductRules(
         int defaultPublicPort,
         IReadOnlyCollection<NginxProxyRule> currentRules,

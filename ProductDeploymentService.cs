@@ -14,7 +14,7 @@ public sealed record ProductUninstallProgress(double Percent, string Status);
 public sealed record IisProductDeploymentInfo(string ProductId, string SiteName, string ApplicationPath, string ApplicationPool, string PhysicalPath, int Port, string Url);
 public sealed record TomcatProductDeploymentInfo(string ProductId, string ServiceName, string EngineName, string HostAppBase, string ContextPath, string PhysicalPath, int Port, string Url);
 
-public sealed class ProductDeploymentService
+public sealed partial class ProductDeploymentService
 {
     internal const int TomcatProductPortMinimum = 9000;
     internal const int TomcatProductPortMaximum = 10000;
@@ -661,6 +661,7 @@ public sealed class ProductDeploymentService
 
     public static IisProductDeploymentInfo? LoadIisDeploymentInfo(string productId)
     {
+        ReconcileRuntimeDeploymentState();
         var file = GetIisStateFile(SafeName(productId));
         if (!File.Exists(file))
         {
@@ -679,6 +680,7 @@ public sealed class ProductDeploymentService
 
     public static IReadOnlyList<IisProductDeploymentInfo> LoadIisDeploymentInfos()
     {
+        ReconcileRuntimeDeploymentState();
         var stateDirectory = ComponentPaths.ProductStateRoot;
         if (!Directory.Exists(stateDirectory))
         {
@@ -713,6 +715,7 @@ public sealed class ProductDeploymentService
 
     public static TomcatProductDeploymentInfo? LoadTomcatDeploymentInfo(string productId)
     {
+        ReconcileRuntimeDeploymentState();
         var safeName = SafeName(productId);
         var stateFile = GetTomcatStateFile(safeName);
         if (File.Exists(stateFile))
@@ -736,6 +739,7 @@ public sealed class ProductDeploymentService
 
     public static IReadOnlyList<TomcatProductDeploymentInfo> LoadTomcatDeploymentInfos()
     {
+        ReconcileRuntimeDeploymentState();
         var stateDirectory = ComponentPaths.ProductStateRoot;
         if (!Directory.Exists(stateDirectory))
         {
@@ -792,17 +796,19 @@ public sealed class ProductDeploymentService
         int? configuredPort,
         IEnumerable<int> generatedInstancePorts)
     {
-        if (configuredPort.HasValue && IsValidTomcatProductPort(configuredPort.Value))
+        // The configured Connector is runtime truth, even when an administrator
+        // deliberately moves it outside MCPanel's 9000-10000 auto-allocation pool.
+        if (configuredPort.HasValue && IsValidObservedTomcatProductPort(configuredPort.Value))
         {
             return configuredPort.Value;
         }
 
-        if (IsValidTomcatProductPort(persistedPort))
+        if (IsValidObservedTomcatProductPort(persistedPort))
         {
             return persistedPort;
         }
 
-        return generatedInstancePorts.FirstOrDefault(IsValidTomcatProductPort);
+        return generatedInstancePorts.FirstOrDefault(IsValidObservedTomcatProductPort);
     }
 
     private static TomcatProductDeploymentInfo WithTomcatPort(TomcatProductDeploymentInfo info, int port) =>
@@ -818,8 +824,8 @@ public sealed class ProductDeploymentService
         {
             var port = TomcatRuntimeProbe
                 .ReadHttpPorts(Path.GetDirectoryName(Path.GetDirectoryName(serverXml)!)!)
-                .FirstOrDefault(IsValidTomcatProductPort);
-            return IsValidTomcatProductPort(port) ? port : null;
+                .FirstOrDefault(IsValidObservedTomcatProductPort);
+            return IsValidObservedRuntimePort(port) ? port : null;
         }
         catch
         {
@@ -1038,7 +1044,7 @@ public sealed class ProductDeploymentService
             // which is incompatible with MCPanel's persisted product routes.
             // Repair such state while holding the same cross-process lock used
             // for normal allocation so an upgrade heals existing deployments.
-            int? preferredPort = IsValidTomcatProductPort(deployment.Port)
+            int? preferredPort = IsValidObservedTomcatProductPort(deployment.Port)
                 ? deployment.Port
                 : null;
             var port = SelectTomcatProductPort(
@@ -1077,7 +1083,7 @@ public sealed class ProductDeploymentService
 
     private static XElement CreateTomcatProductService(XElement serverRoot, TomcatProductDeploymentInfo deployment)
     {
-        if (!IsValidTomcatProductPort(deployment.Port))
+        if (!IsValidObservedTomcatProductPort(deployment.Port))
         {
             throw new InvalidDataException(
                 $"不能为 {deployment.ProductId} 写入无效的 Tomcat 产品端口 {deployment.Port}。");
@@ -1395,7 +1401,7 @@ public sealed class ProductDeploymentService
                     NumberStyles.Integer,
                     CultureInfo.InvariantCulture,
                     out var port) &&
-                IsValidTomcatProductPort(port))
+                IsValidObservedTomcatProductPort(port))
             {
                 return new TomcatServiceMatch(service, port);
             }
@@ -1453,7 +1459,7 @@ public sealed class ProductDeploymentService
                 {
                     var state = JsonSerializer.Deserialize<TomcatProductDeploymentInfo>(
                         File.ReadAllText(stateFile, Encoding.UTF8));
-                    if (state?.Port is >= TomcatProductPortMinimum and <= TomcatProductPortMaximum &&
+                    if (state is not null && IsValidObservedTomcatProductPort(state.Port) &&
                         (Directory.Exists(state.PhysicalPath) || File.Exists(state.PhysicalPath)))
                     {
                         configuredPorts.Add(state.Port);
@@ -1470,7 +1476,7 @@ public sealed class ProductDeploymentService
             .Select(endpoint => endpoint.Port)
             .ToHashSet();
 
-        if (preferredPort is >= TomcatProductPortMinimum and <= TomcatProductPortMaximum &&
+        if (preferredPort.HasValue && IsValidObservedTomcatProductPort(preferredPort.Value) &&
             !configuredPorts.Contains(preferredPort.Value) &&
             (allowActivePreferredPort || !activePorts.Contains(preferredPort.Value)))
         {
@@ -1491,6 +1497,16 @@ public sealed class ProductDeploymentService
 
     internal static bool IsValidTomcatProductPort(int port) =>
         port is >= TomcatProductPortMinimum and <= TomcatProductPortMaximum;
+
+    // Auto-allocation intentionally stays in 9000-10000, but runtime discovery
+    // must respect any valid TCP port an administrator configured by hand.
+    internal static bool IsValidObservedRuntimePort(int port) => port is > 0 and <= 65535;
+
+    // 8080 belongs to the shared Tomcat Server. A product can be manually moved
+    // to any other valid TCP port (for example 8085, 9314 or 12000), but recovery
+    // must never persist the shared listener as an independent product binding.
+    internal static bool IsValidObservedTomcatProductPort(int port) =>
+        IsValidObservedRuntimePort(port) && port != 8080;
 
     private static async Task SaveTomcatServerXmlAsync(string serverXml, XDocument document, CancellationToken cancellationToken)
     {
@@ -1720,10 +1736,10 @@ public sealed class ProductDeploymentService
                 timeout: TimeSpan.FromSeconds(3));
             if (result.ExitCode == 0)
             {
-                var match = System.Text.RegularExpressions.Regex.Match(result.StandardOutput, @"http/[^:]*:(?<port>\d+):", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                if (match.Success && int.TryParse(match.Groups["port"].Value, out var existingPort))
+                var existingPort = ParseIisHttpBindingPort(result.StandardOutput);
+                if (existingPort.HasValue)
                 {
-                    return existingPort;
+                    return existingPort.Value;
                 }
             }
         }
