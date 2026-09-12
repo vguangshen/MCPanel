@@ -7,10 +7,11 @@ namespace MCPanel.Tests;
 public partial class ReliabilityTests
 {
     [TestMethod]
-    public void TomcatProductStart_IndependentAndCatalinaUseVisibleConsole_WhileSharedServerStaysHidden()
+    public void TomcatProductAndSharedServerStartsUseVisibleConsoles()
     {
         var manager = ReadRepositoryFile("TomcatProductInstanceManager.cs");
         var runtime = ReadRepositoryFile("EnvironmentRuntimeService.cs");
+        var templates = ReadRepositoryFile(Path.Combine("Resources", "MainWindowTemplates.xaml"));
         var processRunner = ReadRepositoryFile("ProcessRunner.cs");
 
         StringAssert.Contains(manager,
@@ -30,8 +31,17 @@ public partial class ReliabilityTests
         Assert.IsFalse(manager.Contains("PumpTomcatReaderAsync(", StringComparison.Ordinal));
         Assert.IsFalse(manager.Contains("DisposeProcessAfterCaptureAsync(", StringComparison.Ordinal));
 
-        // Shared Tomcat remains the opposite: managed by the background Windows service.
-        StringAssert.Contains(runtime, "TomcatWindowsServiceManager.Start");
+        // Shared Tomcat now also opens a visible Catalina CMD console instead of
+        // being launched as a hidden Windows service.
+        StringAssert.Contains(runtime, "LaunchTomcatConsole(tomcatRoot)");
+        StringAssert.Contains(runtime, "ProcessWindowStyle.Normal");
+        Assert.IsFalse(runtime.Contains("TomcatWindowsServiceManager.Start();", StringComparison.Ordinal));
+
+        // Both explicit Catalina entry points must remain available.
+        StringAssert.Contains(templates, "Tag=\"CatalinaRun\"");
+        StringAssert.Contains(templates, "Tag=\"Catalina\"");
+        StringAssert.Contains(templates, "Content=\"以 Catalina 方式启动\"");
+
         StringAssert.Contains(processRunner,
             "ProcessWindowStyle windowStyle = ProcessWindowStyle.Hidden");
     }
