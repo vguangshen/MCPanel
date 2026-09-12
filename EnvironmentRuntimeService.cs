@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using Microsoft.Win32;
@@ -177,6 +177,11 @@ public sealed class EnvironmentRuntimeService
             throw new FileNotFoundException("未找到 Tomcat Catalina 启动脚本。", catalina);
         }
 
+        // A previous Catalina console can remain at the post-run pause after
+        // Tomcat has stopped. Close only MCPanel-owned launcher windows before
+        // opening a fresh shared-server console so repeated starts/restarts do
+        // not accumulate stale CMD windows.
+        TomcatConsoleWindowManager.CloseExistingConsoleWindows();
         EnvironmentInstaller.NormalizeTomcatJvmPropertiesFile(root);
         var workDirectory = ComponentPaths.WorkRoot;
         Directory.CreateDirectory(workDirectory);
@@ -424,7 +429,12 @@ public sealed class EnvironmentRuntimeService
                     throw new InvalidOperationException("Tomcat Server 共享进程未能停止；单应用实例未受影响。请检查共享 Tomcat Java 进程。");
                 }
 
-                return "Tomcat Server 已停止；单应用 Tomcat 实例不受影响。";
+                // catalina.bat run returns to run-tomcat-server.cmd after the
+                // Java process exits; that wrapper deliberately pauses so an
+                // unexpected crash remains diagnosable. A deliberate Stop or
+                // Restart must close the old managed console as well.
+                TomcatConsoleWindowManager.CloseExistingConsoleWindows();
+                return "Tomcat Server 已停止，旧 Catalina CMD 控制台已关闭；单应用 Tomcat 实例不受影响。";
             case EnvironmentKind.Nginx:
                 return await StopNginxAsync(cancellationToken);
             case EnvironmentKind.MySql:
