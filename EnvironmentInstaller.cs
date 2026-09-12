@@ -159,24 +159,21 @@ public sealed class EnvironmentInstaller : IDisposable
             throw new FileNotFoundException("Tomcat 解压完成，但未找到启动脚本。", startup);
         }
 
-        var serviceExecutable = Process.GetCurrentProcess().MainModule?.FileName;
-        if (string.IsNullOrWhiteSpace(serviceExecutable) || !File.Exists(serviceExecutable))
-        {
-            throw new InvalidOperationException("无法定位 MCPanel 主程序，不能注册 Tomcat Windows 服务。");
-        }
-
-        progress(InstallingProgress(84, "正在注册 Tomcat Server Windows 服务...", 58));
+        progress(InstallingProgress(84, "正在清理旧 Tomcat 后台服务并准备可见控制台...", 58));
         TomcatProductStartupManager.RemoveRegistration();
         await TomcatProductInstanceManager.StopAllTomcatProcessesAsync(cancellationToken, throwOnFailure: false);
-        TomcatWindowsServiceManager.EnsureRegistered(serviceExecutable!, tomcatRoot);
 
-        progress(InstallingProgress(92, "正在启动 Tomcat Server Windows 服务...", 78));
-        TomcatWindowsServiceManager.Start();
-        await Task.Delay(500, cancellationToken);
+        if (TomcatWindowsServiceManager.IsRegisteredForRoot(tomcatRoot))
+        {
+            try { TomcatWindowsServiceManager.Stop(); } catch { }
+            try { TomcatWindowsServiceManager.Delete(); } catch { }
+        }
 
-        progress(InstallingProgress(100, $"Tomcat 已安装到 {tomcatRoot}，Windows 服务启动请求已发送；不再等待服务状态或读取启动进度。"));
+        progress(InstallingProgress(92, "正在打开 Tomcat Server CMD 控制台...", 78));
+        EnvironmentRuntimeService.LaunchTomcatConsole(tomcatRoot);
+
+        progress(InstallingProgress(100, $"Tomcat 已安装到 {tomcatRoot}，并已在可见 CMD 控制台中启动；后续启动与重启不再通过 Windows Service 隐藏运行。"));
     }
-
     private async Task InstallNginxAsync(EnvironmentDownloadSettings downloads, Action<InstallProgress> progress, CancellationToken cancellationToken)
     {
         var root = ComponentPaths.SelectNginxInstallRoot();

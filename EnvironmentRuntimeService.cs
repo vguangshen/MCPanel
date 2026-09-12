@@ -167,33 +167,28 @@ public sealed class EnvironmentRuntimeService
             windowStyle: ProcessWindowStyle.Normal);
     }
 
-    public Task<string> StartTomcatInCatalinaConsoleAsync(
-        CancellationToken cancellationToken = default, Action<TomcatStartupProgress>? tomcatProgress = null)
+    internal static void LaunchTomcatConsole(string tomcatRoot)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        var tomcatRoot = RequireTomcatRoot();
-        if (IsRunning(EnvironmentKind.Tomcat))
-        {
-            throw new InvalidOperationException("Tomcat 已经在运行。请先停止后台 Tomcat，再使用 Catalina 前台方式启动。");
-        }
-
-        var binDirectory = Path.Combine(tomcatRoot, "bin");
+        var root = Path.GetFullPath(tomcatRoot);
+        var binDirectory = Path.Combine(root, "bin");
         var catalina = Path.Combine(binDirectory, "catalina.bat");
         if (!File.Exists(catalina))
         {
             throw new FileNotFoundException("未找到 Tomcat Catalina 启动脚本。", catalina);
         }
 
-        EnvironmentInstaller.NormalizeTomcatJvmPropertiesFile(tomcatRoot);
+        EnvironmentInstaller.NormalizeTomcatJvmPropertiesFile(root);
         var workDirectory = ComponentPaths.WorkRoot;
         Directory.CreateDirectory(workDirectory);
-        var launcher = Path.Combine(workDirectory, "run-tomcat-catalina.cmd");
+        var launcher = Path.Combine(workDirectory, "run-tomcat-server.cmd");
         AtomicFile.WriteAllText(
             launcher,
             $"""
             @echo off
             chcp 65001 >nul
-            title MCPanel Tomcat Catalina
+            title MCPanel Tomcat Server
+            set "CATALINA_HOME={root}"
+            set "CATALINA_BASE={root}"
             cd /d "{binDirectory}"
             call catalina.bat run
             echo.
@@ -203,14 +198,59 @@ public sealed class EnvironmentRuntimeService
             """,
             new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
 
-        using var catalinaWindow = ProcessRunner.StartFile(
+        using var tomcatWindow = ProcessRunner.StartFile(
             launcher,
             string.Empty,
             binDirectory,
             windowStyle: ProcessWindowStyle.Normal);
+    }
 
+    private static void RetireLegacyTomcatWindowsService(string tomcatRoot)
+    {
+        if (!TomcatWindowsServiceManager.IsRegisteredForRoot(tomcatRoot))
+        {
+            return;
+        }
+
+        try
+        {
+            TomcatWindowsServiceManager.Stop();
+        }
+        catch (Exception serviceError)
+        {
+            EnvironmentOperationDiagnostics.RecordFailure(
+                "环境管理",
+                "停止旧 Tomcat Windows Service 包装器",
+                serviceError);
+        }
+
+        try
+        {
+            TomcatWindowsServiceManager.Delete();
+        }
+        catch (Exception serviceError)
+        {
+            EnvironmentOperationDiagnostics.RecordFailure(
+                "环境管理",
+                "删除旧 Tomcat Windows Service 包装器",
+                serviceError);
+        }
+    }
+
+    public Task<string> StartTomcatInCatalinaConsoleAsync(
+        CancellationToken cancellationToken = default, Action<TomcatStartupProgress>? tomcatProgress = null)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var tomcatRoot = RequireTomcatRoot();
+        if (TomcatProductInstanceManager.IsSharedTomcatRunning())
+        {
+            throw new InvalidOperationException("Tomcat Server 已经在运行。请先停止后再重新打开控制台。");
+        }
+
+        RetireLegacyTomcatWindowsService(tomcatRoot);
+        LaunchTomcatConsole(tomcatRoot);
         return Task.FromResult(
-            "Catalina 窗口已启动。MCPanel 不再等待端口或执行 HTTP 就绪诊断；启动过程请直接查看 Catalina 窗口。");
+            "Tomcat Server CMD 控制台已打开。MCPanel 不隐藏启动，也不等待端口或执行 HTTP 就绪诊断；请直接查看窗口中的 Catalina 输出。");
     }
     public NginxRuntimeOptions GetNginxOptions()
     {
@@ -322,86 +362,21 @@ public sealed class EnvironmentRuntimeService
                     throw new InvalidDataException("Tomcat server.xml 中没有可用的 HTTP 端口。请先修复产品绑定。");
                 }
 
-                if (!TomcatWindowsServiceManager.IsRegisteredForRoot(tomcatRoot))
+                if (TomcatProductInstanceManager.IsSharedTomcatRunning())
                 {
-                    var serviceExecutable = Path.Combine(ComponentPaths.ApplicationRoot, "MCPanel.exe");
-                    if (!File.Exists(serviceExecutable))
-                    {
-                        throw new FileNotFoundException("无法定位 MCPanel.exe，不能注册 Tomcat Windows 服务。", serviceExecutable);
-                    }
-                    TomcatWindowsServiceManager.EnsureRegistered(serviceExecutable, tomcatRoot);
+                    throw new InvalidOperationException("Tomcat Server 已经在运行。请使用“重启”重新打开可见控制台。");
                 }
 
                 TomcatProductStartupManager.RemoveRegistration();
-                if (!TomcatProductInstanceManager.IsSharedTomcatRunning())
-                {
-                    // A restart can arrive while SCM is still finishing the previous
-                    // service stop. Retry the control request a few times, but keep
-                    // the real shared CATALINA_BASE process as the runtime truth.
-                    for (var controlAttempt = 0;
-                         controlAttempt < 3 && !TomcatProductInstanceManager.IsSharedTomcatRunning();
-                         controlAttempt++)
-                    {
-                        try
-                        {
-                            TomcatWindowsServiceManager.Start();
-                        }
-                        catch (Exception serviceError)
-                        {
-                            EnvironmentOperationDiagnostics.RecordFailure(
-                                "环境管理",
-                                $"发送 Tomcat Windows Service 启动请求（第 {controlAttempt + 1} 次）",
-                                serviceError);
-                        }
+                await TomcatProductInstanceManager.StopAllProductInstancesAsync(cancellationToken);
 
-                        for (var processAttempt = 0;
-                             processAttempt < 10 && !TomcatProductInstanceManager.IsSharedTomcatRunning();
-                             processAttempt++)
-                        {
-                            await Task.Delay(200, cancellationToken);
-                        }
-                    }
-                }
+                // Shared Tomcat runs in the interactive user session from 1.3.43.
+                // Retire the old Session-0 service wrapper so it cannot silently
+                // start a second hidden shared server after an update or reboot.
+                RetireLegacyTomcatWindowsService(tomcatRoot);
+                LaunchTomcatConsole(tomcatRoot);
 
-                if (!TomcatProductInstanceManager.IsSharedTomcatRunning())
-                {
-                    // If SCM is still Starting/Stopping (or returns a false timeout),
-                    // start the real Tomcat process directly. This keeps panel start
-                    // and post-uninstall restore independent from SCM timing.
-                    var startup = Path.Combine(tomcatRoot, "bin", "startup.bat");
-                    if (!File.Exists(startup))
-                    {
-                        throw new FileNotFoundException("未找到 Tomcat startup.bat。", startup);
-                    }
-                    EnvironmentInstaller.NormalizeTomcatJvmPropertiesFile(tomcatRoot);
-                    var startResult = await ProcessRunner.RunFileAsync(
-                        startup,
-                        string.Empty,
-                        Path.Combine(tomcatRoot, "bin"),
-                        elevated: false,
-                        cancellationToken,
-                        captureOutput: false,
-                        timeout: TimeSpan.FromSeconds(30));
-                    if (startResult.ExitCode != 0)
-                    {
-                        throw new InvalidOperationException($"Tomcat startup.bat 退出码：{startResult.ExitCode}");
-                    }
-
-                    for (var processAttempt = 0;
-                         processAttempt < 20 && !TomcatProductInstanceManager.IsSharedTomcatRunning();
-                         processAttempt++)
-                    {
-                        await Task.Delay(250, cancellationToken);
-                    }
-                    if (!TomcatProductInstanceManager.IsSharedTomcatRunning())
-                    {
-                        throw new InvalidOperationException(
-                            $"Tomcat startup.bat 已返回成功，但未检测到共享 Java 进程。请检查日志目录：{Path.Combine(tomcatRoot, "logs")}");
-                    }
-                }
-
-                return $"Tomcat Server 启动请求已发送；运行状态按实际 Java 进程判断，不再等待 Windows 服务状态或读取启动进度。日志目录：{Path.Combine(tomcatRoot, "logs")}";
-            case EnvironmentKind.Nginx:
+                return $"Tomcat Server CMD 控制台已打开；共享 Tomcat 不再通过 Windows Service 隐藏启动。请在控制台观察 Catalina 输出，日志目录：{Path.Combine(tomcatRoot, "logs")}";            case EnvironmentKind.Nginx:
                 return await StartNginxAsync(cancellationToken);
             case EnvironmentKind.MySql:
                 return await RunMySqlServiceActionAsync("start", cancellationToken);

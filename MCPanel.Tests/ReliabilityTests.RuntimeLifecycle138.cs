@@ -29,10 +29,13 @@ public sealed partial class ReliabilityTests
         Assert.IsFalse(normalStop.Contains("shutdown.bat", StringComparison.Ordinal));
 
         var runtime = ReadRepositoryFile("EnvironmentRuntimeService.cs");
-        StringAssert.Contains(runtime, "controlAttempt < 3");
-        StringAssert.Contains(runtime, "startup.bat 已返回成功，但未检测到共享 Java 进程");
+        StringAssert.Contains(runtime, "RetireLegacyTomcatWindowsService(tomcatRoot)");
+        StringAssert.Contains(runtime, "LaunchTomcatConsole(tomcatRoot)");
+        Assert.IsFalse(runtime.Contains("controlAttempt < 3", StringComparison.Ordinal));
+        Assert.IsFalse(runtime.Contains("startup.bat 已返回成功", StringComparison.Ordinal));
         StringAssert.Contains(runtime, "TomcatProductInstanceManager.IsSharedTomcatRunning()");
         StringAssert.Contains(runtime, "StopSharedTomcatAsync(cancellationToken)");
+
         var instances = ReadRepositoryFile("TomcatProductInstanceManager.cs");
         StringAssert.Contains(instances, "public static async Task StopSharedTomcatAsync");
     }

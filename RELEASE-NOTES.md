@@ -1,9 +1,7 @@
-# MCPanel 1.3.42
+# MCPanel 1.3.43
 
-- 删除“已安装网站”里的“检测访问”按钮以及对应的临时 HTTP GET 探测代码。
-- 删除“已安装网站”的服务状态检测功能：移除状态筛选、刷新状态按钮、30 秒自动状态刷新、状态提示行以及卡片运行状态点；网站页只负责搜索、平台绑定、域名/SSL 和显式运行操作。
-- 修复 Tomcat 偶发显示“运行中”但任务管理器已经没有 Java 进程的问题：端口监听只有在能够明确确认监听 PID 为 java.exe 时，才作为 Java 运行证据，未知 PID 不再按 Java 处理。
-- “环境 → Tomcat Server”现在只表示共享/总 Tomcat Server 的状态；单应用独立/Catalina 实例继续在“网站”页各自管理，不再让环境页的“停止”按钮看起来无效。
-- Tomcat 停止链移除 Windows Service Stop 后最多 20 秒的冗余等待，发送 SCM 停止请求后直接按真实 CATALINA_BASE Java 进程清理并验证。
-- Windows Service 的普通 OnStop 不再重复执行 shutdown.bat；运行时停止统一交给 MCPanel 控制器，避免重复 shutdown、长时间无响应和旧停止动作打到新实例的竞态。系统关机路径仍保留强制清理。
-- 完整回归测试与 Win-x64 发布验证已通过。
+- 总/共享 Tomcat Server 的“启动”和“重启”改为可见 CMD 控制台启动，使用 `catalina.bat run`，Catalina 标准输出和异常可直接在窗口中观察。
+- 共享 Tomcat 不再通过 MCPanelTomcat Windows Service 隐藏启动；首次启动/重启会尽力停止并删除旧的服务包装器，后续不再由 SCM 在后台拉起共享 Tomcat。
+- Tomcat 新安装流程不再注册或启动隐藏 Windows 服务，安装完成后直接打开可见的 Tomcat Server CMD 控制台。
+- 保留环境卡片上的“以 Catalina 方式启动”按钮和产品管理中的 Catalina 启动入口；普通“启动”与“重启”同时改为可见 Catalina CMD 控制台模式。
+- 控制台中的 Tomcat 退出后窗口会保留并暂停，便于查看最后的异常和 Catalina 输出；MCPanel 仍不执行 HTTP 就绪诊断。
