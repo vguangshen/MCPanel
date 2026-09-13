@@ -14,15 +14,29 @@ jobs:
     if: startsWith(github.event.head_commit.message, 'Release MCPanel ')
     runs-on: windows-latest
     timeout-minutes: 45
+    env:
+      NUGET_PACKAGES: ${{ github.workspace }}\.nuget\packages
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v6
+      - name: Verify preinstalled .NET 10 SDK
+        shell: pwsh
+        run: |
+          $version = (dotnet --version).Trim()
+          Write-Host "Selected SDK from global.json: $version"
+          if ($version -notmatch '^10\.') {
+            throw "MCPanel requires a .NET 10 SDK, but the runner selected $version."
+          }
+
+      - name: Restore NuGet package cache
+        uses: actions/cache@v6
         with:
-          dotnet-version: '10.0.x'
+          path: ${{ env.NUGET_PACKAGES }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'global.json', '**/nuget.config', '**/NuGet.Config') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
 
       - name: Ensure SharpSvn VC++ 2010 runtime
         shell: pwsh
