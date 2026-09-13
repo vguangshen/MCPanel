@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   migrate-test-release:
-    if: github.event.head_commit.message == 'Retry Tomcat start-mode split migration 1.3.50 third pass'
+    if: github.event.head_commit.message == 'Retry Tomcat start-mode split migration 1.3.50 fourth pass'
     runs-on: windows-latest
     timeout-minutes: 45
 
