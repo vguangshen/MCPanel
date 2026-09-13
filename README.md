@@ -9,7 +9,7 @@ Modern WPF panel for configuring and installing .NET and Java software.
 - Product management with local legacy product fallback, online catalog refresh, product search, download status, and progress.
 - Product installation checks IIS/Tomcat and database prerequisites before downloading, then re-applies the original Store version/database configuration after every SVN update.
 - Java/Tomcat products are restored in the background after Windows logon without opening the main panel window.
-- Closing the main window keeps a lightweight system-tray process running. The complete WPF window is disposed to release UI memory; click the tray icon to create and activate it again, or use the tray menu to exit MCPanel completely.
+- Closing the main window hides it to the system tray while the lightweight queue supervision and durable install recovery remain active; use the tray icon to restore the window or the tray menu to exit MCPanel completely.
 - When panel auto-start is enabled, Windows starts `MCPanel.exe --tray`, so sign-in does not construct or display the main window. Existing Nginx, Tomcat, database, and FRP processes continue independently while the panel UI is closed.
 - Account API has a dedicated left navigation page for the embedded HTTP service, HMAC key lifecycle, health checks, redacted logs, start-stop, and optional logon auto-start. Its original routes and database methods are compiled into MCPanel; no standalone Account API executable is required.
 - Product websites support Nginx-managed domains, PEM certificates, HTTPS redirect, WebSocket forwarding, and per-connection bandwidth limits.
@@ -91,14 +91,23 @@ DPAPI for the current Windows user under `StoreData`; it is not written into
 therefore needs its own one-time token setup, but subsequent checks and downloads
 run automatically.
 
-For a GitHub Release, create its artifacts with:
+The standard release path is automated by `.github/workflows/release.yml`. Update
+`Version`, `FileVersion`, and `AssemblyVersion` in `MCPanel.csproj`, update
+`RELEASE-NOTES.md`, then push a `main` commit whose message starts with
+`Release MCPanel `. The workflow runs the full regression suite, performs the
+Win-x64 publish, creates the versioned ZIP and SHA-256 sidecar, writes
+`update-manifest.json`, and publishes the matching GitHub Release.
+
+For a manual artifact build, read the version from the project instead of copying
+a version number into documentation:
 
 ```powershell
-.\Build-UpdatePackage.ps1 -Version 1.1.20 -GitHubRelease -ReleaseNotes '修复说明'
+$version = ([xml](Get-Content .\MCPanel.csproj -Raw)).Project.PropertyGroup.Version
+.\Build-UpdatePackage.ps1 -Version $version -GitHubRelease -ReleaseNotes '修复说明'
 ```
 
 Publish the ZIP, its `.sha256` sidecar, and `update-manifest.json` as assets of
-the matching `v1.1.20` GitHub Release. MCPanel retrieves the release and assets
+the matching `v<version>` GitHub Release. MCPanel retrieves the release and assets
 through the GitHub API over HTTPS, sends the token only to `api.github.com`,
 follows signed asset redirects without forwarding the token, and verifies the
 ZIP SHA-256 before any extraction or replacement.
