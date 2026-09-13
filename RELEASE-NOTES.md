@@ -1,8 +1,8 @@
-# MCPanel 1.3.51
+# MCPanel 1.3.52
 
-- 清理 1.3.11 / 1.3.12 遗留的一次性 Tomcat 迁移脚本，移除不再参与当前构建和运行的历史维护文件。
-- 清理旧 Tomcat Windows Service 的注册/启动 API；保留旧服务检测、停止、删除与兼容入口，确保老版本安装仍可平滑退役历史服务。
-- 修正 Windows 登录恢复行为：与普通“启动/重启”一致使用标准 `startup.bat` / `start` 模式，不再隐式进入 `catalina.bat run`。
-- 修正 Tomcat 安装完成后的首次启动，同样使用标准 start 模式；`catalina.bat run` 仅保留给显式“以 Catalina 方式启动”的诊断操作。
-- 保留 .NET Framework 4.6.2 所需运行时兼容层、编译器 polyfill 和旧数据目录迁移逻辑，避免清理影响现有用户升级。
-- 已通过完整 regression 与 Win-x64 publish 验证。
+- 修复 `TomcatConsoleWindowManager` 的 nullable 静态分析警告，保持现有 Tomcat 控制台识别逻辑不变，同时让正式构建回到零 C# warning 目标。
+- 发布工作流升级到 `actions/checkout@v7` 与 `actions/setup-dotnet@v6`，移除旧 Node 20 Action 运行时带来的弃用警告。
+- 更新 README 的托盘行为说明，使文档与当前“隐藏主窗口、继续队列监督”的实际实现一致。
+- 重写 GitHub Release 发布说明：以当前自动化 release workflow 为标准流程，手工打包示例改为直接读取 `MCPanel.csproj` 版本，避免文档版本号长期过期。
+- 保留 Legacy HTTPS manifest、旧数据目录迁移、旧配置键和旧凭据解密等升级兼容路径，不影响现有安装继续升级。
+- 正式发布流程继续执行完整 regression、Win-x64 publish、更新包、SHA-256 与 manifest 校验。
