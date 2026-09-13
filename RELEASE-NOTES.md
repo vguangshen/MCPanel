@@ -1,6 +1,8 @@
-# MCPanel 1.3.53
+# MCPanel 1.3.54
 
-- 审计 vendored SharpSvn 原生依赖，确认当前 `SharpSvn.dll` 为 1.8009.3299.43，且 x64 SharpSvn / SharpPlink 仅直接依赖 `MSVCR100.dll`（Visual C++ 2010 Runtime）。
-- 精简 GitHub Release CI：不再安装 `vcredist-all` 的 2005–2017 全套运行库；优先复用 Runner 已有的 x64 `MSVCR100.dll`，缺失时才安装 `vcredist2010` 并再次校验。
-- 保留 `actions/checkout@v7`、`actions/setup-dotnet@v6` 和现有完整 regression / Win-x64 publish / SHA-256 / manifest 发布校验链。
-- 未修改 SharpSvn、SVN 产品下载、旧数据迁移、Legacy HTTPS manifest 或 Tomcat 兼容行为，本次仅收缩发布基础设施中的冗余依赖。
+- 精简 GitHub Release 的 .NET SDK 准备阶段：移除每次重新下载安装 `actions/setup-dotnet` 的步骤，直接使用 `windows-latest` 已预装的 .NET 10 SDK，并在发布前显式校验所选 SDK 仍属于 10.x。
+- 新增 `global.json`，以 `10.0.100 + latestFeature` 约束构建始终使用 .NET 10，同时允许本机与 GitHub Runner 在 10.0.x feature band / patch 之间滚动，不绑定单一补丁版本。
+- 引入 `actions/cache@v6` 缓存 NuGet global-packages；缓存键由项目 `.csproj`、`global.json` 与 NuGet 配置共同决定，依赖变化时自动生成新缓存。
+- 两轮 CI 审计确认：无 `setup-dotnet` 时 Runner 可直接选择 .NET SDK 10.0.400；NuGet 冷 restore 基线约 20.31 秒，缓存命中后 cache restore + `dotnet restore` 约 10 秒量级。
+- 保留 v1.3.53 已验证的 SharpSvn VC++ 2010 精确依赖策略、250 项 regression、Win-x64 publish、SHA-256 与 update manifest 发布校验链。
+- 未修改 MCPanel 业务逻辑、SharpSvn/SVN 行为、Tomcat 兼容逻辑、旧数据迁移或 Legacy HTTPS manifest，本次仅优化发布基础设施与构建可重复性。
