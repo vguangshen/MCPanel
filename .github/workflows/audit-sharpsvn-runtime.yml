@@ -1,0 +1,55 @@
+name: Audit SharpSvn runtime dependencies
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/audit-sharpsvn-runtime.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Inspect SharpSvn assembly metadata
+        shell: pwsh
+        run: |
+          $dll = Resolve-Path 'Vendor\SharpSvn\SharpSvn.dll'
+          $assemblyName = [System.Reflection.AssemblyName]::GetAssemblyName($dll)
+          $versionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($dll)
+          Write-Host "Assembly: $($assemblyName.FullName)"
+          Write-Host "FileVersion: $($versionInfo.FileVersion)"
+          Write-Host "ProductVersion: $($versionInfo.ProductVersion)"
+          Write-Host "ProductName: $($versionInfo.ProductName)"
+
+      - name: Inspect native PE dependencies
+        shell: pwsh
+        run: |
+          $roots = @(
+            "$env:ProgramFiles\Microsoft Visual Studio",
+            "${env:ProgramFiles(x86)}\Microsoft Visual Studio"
+          ) | Where-Object { $_ -and (Test-Path $_) }
+          $dumpbin = $null
+          foreach ($root in $roots) {
+            $dumpbin = Get-ChildItem -LiteralPath $root -Filter dumpbin.exe -File -Recurse -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName -match 'Hostx64\\x64\\dumpbin\.exe$' } |
+              Select-Object -First 1
+            if ($dumpbin) { break }
+          }
+          if (-not $dumpbin) { throw 'dumpbin.exe not found on runner.' }
+          Write-Host "Using dumpbin: $($dumpbin.FullName)"
+          & $dumpbin.FullName /DEPENDENTS 'Vendor\SharpSvn\SharpSvn.dll'
+          if ($LASTEXITCODE -ne 0) { throw "dumpbin failed with exit code $LASTEXITCODE" }
+          Write-Host '--- SharpSvn.UI.dll ---'
+          & $dumpbin.FullName /DEPENDENTS 'Vendor\SharpSvn\SharpSvn.UI.dll'
+          if ($LASTEXITCODE -ne 0) { throw "dumpbin UI failed with exit code $LASTEXITCODE" }
+          Write-Host '--- SharpPlink-x64.svnExe ---'
+          & $dumpbin.FullName /DEPENDENTS 'Vendor\SharpSvn\SharpPlink-x64.svnExe'
+          if ($LASTEXITCODE -ne 0) { throw "dumpbin SharpPlink failed with exit code $LASTEXITCODE" }
