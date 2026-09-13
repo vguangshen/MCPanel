@@ -24,13 +24,28 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Install SharpSvn native runtime dependencies
+      - name: Ensure SharpSvn VC++ 2010 runtime
         shell: pwsh
         run: |
-          choco install vcredist-all -y --no-progress
-          if ($LASTEXITCODE -ne 0) {
-            throw "Failed to install the VC++ runtime bundle required by the vendored SharpSvn build."
+          # The vendored SharpSvn 1.8009.3299.43 x64 binary and SharpPlink
+          # import MSVCR100.dll. Do not install unrelated VC++ generations.
+          $runtime = Join-Path $env:WINDIR 'System32\MSVCR100.dll'
+          if (Test-Path -LiteralPath $runtime) {
+            $version = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($runtime).FileVersion
+            Write-Host "SharpSvn runtime already available: $runtime ($version)."
+            exit 0
           }
+
+          Write-Host 'MSVCR100.dll is missing; installing only the VC++ 2010 redistributable.'
+          choco install vcredist2010 -y --no-progress
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to install the VC++ 2010 runtime required by the vendored SharpSvn build."
+          }
+          if (-not (Test-Path -LiteralPath $runtime)) {
+            throw "VC++ 2010 installation completed but the required x64 runtime is still missing: $runtime"
+          }
+          $version = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($runtime).FileVersion
+          Write-Host "SharpSvn runtime installed: $runtime ($version)."
 
       - name: Read application version
         id: version
