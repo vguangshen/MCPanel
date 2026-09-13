@@ -16,10 +16,10 @@ public sealed partial class ReliabilityTests
         var block = runtime.Substring(tomcat, nginx - tomcat);
 
         StringAssert.Contains(block, "RetireLegacyTomcatWindowsService(tomcatRoot)");
-        StringAssert.Contains(block, "LaunchTomcatConsole(tomcatRoot)");
+        StringAssert.Contains(block, "LaunchTomcatStartConsole(tomcatRoot)");
         StringAssert.Contains(block, "StopAllProductInstancesAsync(cancellationToken)");
+        Assert.IsFalse(block.Contains("LaunchTomcatConsole(tomcatRoot)", StringComparison.Ordinal));
         Assert.IsFalse(block.Contains("TomcatWindowsServiceManager.Start()", StringComparison.Ordinal));
-        Assert.IsFalse(block.Contains("startup.bat", StringComparison.Ordinal));
         Assert.IsFalse(block.Contains("WaitForStartupAsync", StringComparison.Ordinal));
     }
 
