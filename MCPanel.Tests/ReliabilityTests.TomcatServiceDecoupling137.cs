@@ -26,7 +26,8 @@ public sealed partial class ReliabilityTests
         var runtime = ReadRepositoryFile("EnvironmentRuntimeService.cs");
         Assert.IsFalse(runtime.Contains("TomcatWindowsServiceManager.IsRunningForRoot", StringComparison.Ordinal));
         StringAssert.Contains(runtime, "TomcatProductInstanceManager.IsSharedTomcatRunning()");
-        StringAssert.Contains(runtime, "共享 Tomcat 不再通过 Windows Service 隐藏启动");
+        StringAssert.Contains(runtime, "Tomcat Server 已按标准 start 模式启动");
+        StringAssert.Contains(runtime, "LaunchTomcatStartConsole(tomcatRoot)");
         StringAssert.Contains(runtime, "LaunchTomcatConsole(tomcatRoot)");
         Assert.IsFalse(runtime.Contains("TomcatWindowsServiceManager.Start();", StringComparison.Ordinal));
         Assert.IsFalse(runtime.Contains("startup.bat 已返回成功", StringComparison.Ordinal));
