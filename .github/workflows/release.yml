@@ -30,11 +30,74 @@ jobs:
             throw "MCPanel requires a .NET 10 SDK, but the runner selected $version."
           }
 
+      - name: Compute NuGet dependency fingerprint
+        id: nuget-key
+        shell: pwsh
+        run: |
+          $entries = [System.Collections.Generic.List[string]]::new()
+          $projectRoot = (Get-Location).Path
+          $projects = Get-ChildItem -Path $projectRoot -Filter '*.csproj' -File -Recurse |
+            Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' } |
+            Sort-Object FullName
+
+          foreach ($file in $projects) {
+            [xml]$project = Get-Content -LiteralPath $file.FullName -Raw
+            $relative = $file.FullName.Substring($projectRoot.Length).TrimStart('\', '/')
+
+            foreach ($group in @($project.Project.PropertyGroup)) {
+              foreach ($name in @('TargetFramework', 'TargetFrameworks')) {
+                $value = [string]$group.$name
+                if (-not [string]::IsNullOrWhiteSpace($value)) {
+                  $entries.Add("$relative|$name|$($value.Trim())")
+                }
+              }
+            }
+
+            foreach ($group in @($project.Project.ItemGroup)) {
+              foreach ($reference in @($group.PackageReference)) {
+                if ($null -eq $reference) { continue }
+                $include = [string]$reference.Include
+                $update = [string]$reference.Update
+                $version = [string]$reference.Version
+                $entries.Add("$relative|PackageReference|$include|$update|$version")
+              }
+              foreach ($packageVersion in @($group.PackageVersion)) {
+                if ($null -eq $packageVersion) { continue }
+                $include = [string]$packageVersion.Include
+                $update = [string]$packageVersion.Update
+                $version = [string]$packageVersion.Version
+                $entries.Add("$relative|PackageVersion|$include|$update|$version")
+              }
+            }
+          }
+
+          if (Test-Path -LiteralPath 'global.json') {
+            $entries.Add('global.json|' + (Get-Content -LiteralPath 'global.json' -Raw).Trim())
+          }
+          Get-ChildItem -Path $projectRoot -File -Recurse |
+            Where-Object { $_.Name -ieq 'NuGet.Config' -and $_.FullName -notmatch '[\\/](bin|obj)[\\/]' } |
+            Sort-Object FullName |
+            ForEach-Object {
+              $relative = $_.FullName.Substring($projectRoot.Length).TrimStart('\', '/')
+              $entries.Add("$relative|" + (Get-Content -LiteralPath $_.FullName -Raw).Trim())
+            }
+
+          $canonical = (($entries | Sort-Object) -join "`n")
+          $sha = [System.Security.Cryptography.SHA256]::Create()
+          try {
+            $bytes = [Text.Encoding]::UTF8.GetBytes($canonical)
+            $hash = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+          } finally {
+            $sha.Dispose()
+          }
+          Write-Host "NuGet dependency fingerprint: $hash"
+          "hash=$hash" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
       - name: Restore NuGet package cache
         uses: actions/cache@v6
         with:
           path: ${{ env.NUGET_PACKAGES }}
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'global.json', '**/nuget.config', '**/NuGet.Config') }}
+          key: nuget-${{ runner.os }}-${{ steps.nuget-key.outputs.hash }}
           restore-keys: |
             nuget-${{ runner.os }}-
 
