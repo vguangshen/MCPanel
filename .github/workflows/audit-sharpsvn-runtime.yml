@@ -32,18 +32,16 @@ jobs:
       - name: Inspect native PE dependencies
         shell: pwsh
         run: |
-          $roots = @(
-            "$env:ProgramFiles\Microsoft Visual Studio",
-            "${env:ProgramFiles(x86)}\Microsoft Visual Studio"
-          ) | Where-Object { $_ -and (Test-Path $_) }
-          $dumpbin = $null
-          foreach ($root in $roots) {
-            $dumpbin = Get-ChildItem -LiteralPath $root -Filter dumpbin.exe -File -Recurse -ErrorAction SilentlyContinue |
-              Where-Object { $_.FullName -match 'Hostx64\\x64\\dumpbin\.exe$' } |
-              Select-Object -First 1
-            if ($dumpbin) { break }
-          }
-          if (-not $dumpbin) { throw 'dumpbin.exe not found on runner.' }
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw 'vswhere.exe not found on runner.' }
+          $install = (& $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1).Trim()
+          if ([string]::IsNullOrWhiteSpace($install)) { throw 'Visual Studio C++ tools installation not found.' }
+          $dumpbin = Get-ChildItem -LiteralPath (Join-Path $install 'VC\Tools\MSVC') -Filter dumpbin.exe -File -Recurse -ErrorAction Stop |
+            Where-Object { $_.FullName -match 'Hostx64\\x64\\dumpbin\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if (-not $dumpbin) { throw 'dumpbin.exe not found under the selected Visual Studio installation.' }
+          Write-Host "Visual Studio: $install"
           Write-Host "Using dumpbin: $($dumpbin.FullName)"
           & $dumpbin.FullName /DEPENDENTS 'Vendor\SharpSvn\SharpSvn.dll'
           if ($LASTEXITCODE -ne 0) { throw "dumpbin failed with exit code $LASTEXITCODE" }
