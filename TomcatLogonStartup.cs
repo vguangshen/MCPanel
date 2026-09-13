@@ -1,11 +1,11 @@
-using System.IO;
+﻿using System.IO;
 
 namespace MCPanel;
 
 /// <summary>
 /// Restores only the shared Tomcat server when MCPanel is launched by the
-/// Windows logon Run entry (--tray). Logon and manual startup intentionally use
-/// the same visible Catalina-console launcher.
+/// Windows logon Run entry (--tray). Logon and normal manual startup intentionally
+/// use the same visible standard-start launcher; Catalina run stays diagnostic-only.
 /// </summary>
 internal static class TomcatLogonStartup
 {
@@ -21,7 +21,7 @@ internal static class TomcatLogonStartup
             var tomcatRoot = new ComponentLocator().FindTomcatRoot();
             var installed = !string.IsNullOrWhiteSpace(tomcatRoot) &&
                             Directory.Exists(tomcatRoot) &&
-                            File.Exists(Path.Combine(tomcatRoot, "bin", "catalina.bat"));
+                            File.Exists(Path.Combine(tomcatRoot, "bin", "startup.bat"));
             var alreadyRunning = installed && TomcatProductInstanceManager.IsSharedTomcatRunning();
             if (!ShouldRestore(trayStartup: true, installed, alreadyRunning))
             {
@@ -35,15 +35,15 @@ internal static class TomcatLogonStartup
             var root = Path.GetFullPath(tomcatRoot!);
             TomcatProductStartupManager.RemoveRegistration();
             TomcatProductStartupManager.WriteLog(
-                $"Windows 登录恢复：立即以可见 Catalina CMD 启动共享 Tomcat，CATALINA_BASE={root}",
+                $"Windows 登录恢复：立即以标准 start 模式启动共享 Tomcat，CATALINA_BASE={root}",
                 null);
 
-            // Use exactly the same launcher as normal manual Tomcat startup.
-            // Do not delay, hide the console, wait for readiness or retry in a
-            // second background process. Catalina output remains visible so the
-            // operator can diagnose startup in the same way as a manual start.
-            EnvironmentRuntimeService.LaunchTomcatConsole(root);
-            TomcatProductStartupManager.WriteLog("Windows 登录恢复：已打开共享 Tomcat Catalina CMD 控制台。", null);
+            // Use exactly the same standard-start launcher as normal manual Tomcat
+            // startup. Do not delay, hide the console, wait for readiness or retry
+            // in a second background process. Explicit Catalina run remains a
+            // user-invoked diagnostic action only.
+            EnvironmentRuntimeService.LaunchTomcatStartConsole(root);
+            TomcatProductStartupManager.WriteLog("Windows 登录恢复：已按标准 start 模式打开共享 Tomcat CMD 控制台。", null);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

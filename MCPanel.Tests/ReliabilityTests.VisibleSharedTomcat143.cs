@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MCPanel.Tests;
@@ -47,8 +47,9 @@ public sealed partial class ReliabilityTests
         Assert.IsTrue(start >= 0 && end > start);
         var block = installer.Substring(start, end - start);
 
-        StringAssert.Contains(block, "EnvironmentRuntimeService.LaunchTomcatConsole(tomcatRoot)");
+        StringAssert.Contains(block, "EnvironmentRuntimeService.LaunchTomcatStartConsole(tomcatRoot)");
         StringAssert.Contains(block, "TomcatWindowsServiceManager.Delete()");
+        Assert.IsFalse(block.Contains("EnvironmentRuntimeService.LaunchTomcatConsole(tomcatRoot)", StringComparison.Ordinal));
         Assert.IsFalse(block.Contains("TomcatWindowsServiceManager.EnsureRegistered", StringComparison.Ordinal));
         Assert.IsFalse(block.Contains("TomcatWindowsServiceManager.Start()", StringComparison.Ordinal));
     }

@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -377,32 +377,11 @@ internal static class TomcatWindowsServiceManager
 {
     public const string ServiceName = "MCPanelTomcat";
     public const string ServiceDisplayName = "Tomcat Server (MCPanel)";
-    public const string ServiceDescription = "Tomcat 8.5.57 Web 服务器（由 MCPanel 管理；不自动恢复崩溃实例）。";
 
-    public static bool IsInstalled() => ManagedWindowsServiceController.IsInstalled(ServiceName);
+    // Cleanup-only compatibility for services registered by older MCPanel builds.
+    // Current Tomcat startup must never register or start an SCM service again.
     public static bool IsRegisteredForRoot(string tomcatRoot) =>
         ManagedWindowsServiceController.IsRegisteredForRoot(ServiceName, TomcatWindowsServiceHost.ServiceArgument, tomcatRoot);
-
-    public static string BuildServiceImagePath(string executablePath, string tomcatRoot) =>
-        ManagedWindowsServiceController.BuildServiceImagePath(executablePath, TomcatWindowsServiceHost.ServiceArgument, tomcatRoot);
-
-    public static void EnsureRegistered(string executablePath, string tomcatRoot) =>
-        ManagedWindowsServiceController.EnsureRegistered(
-            ServiceName,
-            ServiceDisplayName,
-            ServiceDescription,
-            executablePath,
-            TomcatWindowsServiceHost.ServiceArgument,
-            tomcatRoot,
-            configureRecovery: false);
-
-    public static void Start()
-    {
-        // Tomcat is launched through SCM, but MCPanel deliberately does not wait
-        // for SCM status transitions. The Java process/ports are the runtime truth.
-        ManagedWindowsServiceController.DisableRecovery(ServiceName, ServiceDisplayName);
-        ManagedWindowsServiceController.StartWithoutStatusWait(ServiceName, ServiceDisplayName);
-    }
 
     public static void Stop() => ManagedWindowsServiceController.StopWithoutStatusWait(ServiceName, ServiceDisplayName);
     public static void Delete() => ManagedWindowsServiceController.DeleteWithoutStatusWait(ServiceName, ServiceDisplayName);

@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
@@ -195,8 +195,8 @@ public partial class App : Application
 
             // Match normal manual Tomcat startup at Windows logon: when MCPanel
             // is launched through the --tray Run entry, immediately restore the
-            // shared server with the same visible Catalina CMD launcher. No
-            // startup delay or hidden-console path is used here.
+            // shared server with the same visible standard-start launcher. The
+            // explicit Catalina run path remains a manual diagnostic action.
             if (startInTray)
             {
                 _ = TomcatLogonStartup.TryRestoreSharedTomcatAsync();

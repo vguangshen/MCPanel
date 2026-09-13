@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
 function Replace-ExactlyOnce {
     param(
@@ -16,7 +16,7 @@ function Replace-ExactlyOnce {
 
     $text = $text.Replace($Old, $New)
     [IO.File]::WriteAllText((Resolve-Path $Path), $text, [Text.UTF8Encoding]::new($true))
-    Write-Host "Updated $Path: $Description."
+    Write-Host "Updated ${Path}: $Description."
 }
 
 # 1) Windows-logon restoration must follow the normal Start semantics introduced

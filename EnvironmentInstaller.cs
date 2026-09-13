@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.IO.Compression;
@@ -169,10 +169,10 @@ public sealed class EnvironmentInstaller : IDisposable
             try { TomcatWindowsServiceManager.Delete(); } catch { }
         }
 
-        progress(InstallingProgress(92, "正在打开 Tomcat Server CMD 控制台...", 78));
-        EnvironmentRuntimeService.LaunchTomcatConsole(tomcatRoot);
+        progress(InstallingProgress(92, "正在以标准 start 模式打开 Tomcat Server CMD 控制台...", 78));
+        EnvironmentRuntimeService.LaunchTomcatStartConsole(tomcatRoot);
 
-        progress(InstallingProgress(100, $"Tomcat 已安装到 {tomcatRoot}，并已在可见 CMD 控制台中启动；后续启动与重启不再通过 Windows Service 隐藏运行。"));
+        progress(InstallingProgress(100, $"Tomcat 已安装到 {tomcatRoot}，并已按标准 start 模式在可见 CMD 控制台中启动；后续启动与重启不再通过 Windows Service 隐藏运行。"));
     }
     private async Task InstallNginxAsync(EnvironmentDownloadSettings downloads, Action<InstallProgress> progress, CancellationToken cancellationToken)
     {

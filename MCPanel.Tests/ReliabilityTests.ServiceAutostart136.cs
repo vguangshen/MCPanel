@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -7,15 +7,20 @@ namespace MCPanel.Tests;
 public sealed partial class ReliabilityTests
 {
     [TestMethod]
-    public void TomcatServiceImagePathTargetsSharedServerRoot()
+    public void TomcatLegacyServiceManagerExposesCleanupOnly()
     {
-        var exe = Path.Combine(Path.GetTempPath(), "MCPanel", "MCPanel.exe");
-        var root = Path.Combine(Path.GetTempPath(), "MCPanel", "Tomcat", "apache-tomcat-8.5.57");
-        var imagePath = TomcatWindowsServiceManager.BuildServiceImagePath(exe, root);
+        var source = ReadRepositoryFile("ManagedComponentWindowsServices.cs");
+        var start = source.IndexOf("internal static class TomcatWindowsServiceManager", StringComparison.Ordinal);
+        var end = source.IndexOf("internal static class FrpWindowsServiceManager", start, StringComparison.Ordinal);
+        Assert.IsTrue(start >= 0 && end > start);
+        var manager = source.Substring(start, end - start);
 
-        StringAssert.Contains(imagePath, TomcatWindowsServiceHost.ServiceArgument);
-        StringAssert.Contains(imagePath, Path.GetFullPath(root));
-        Assert.AreEqual("MCPanelTomcat", TomcatWindowsServiceManager.ServiceName);
+        StringAssert.Contains(manager, "IsRegisteredForRoot");
+        StringAssert.Contains(manager, "StopWithoutStatusWait");
+        StringAssert.Contains(manager, "DeleteWithoutStatusWait");
+        Assert.IsFalse(manager.Contains("BuildServiceImagePath", StringComparison.Ordinal));
+        Assert.IsFalse(manager.Contains("EnsureRegistered", StringComparison.Ordinal));
+        Assert.IsFalse(manager.Contains("public static void Start()", StringComparison.Ordinal));
     }
 
     [TestMethod]
