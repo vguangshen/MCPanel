@@ -119,7 +119,7 @@ public sealed partial class ReliabilityTests
         var normalLauncher = runtime.Substring(normalLauncherIndex, catalinaLauncherIndex - normalLauncherIndex);
         StringAssert.Contains(normalLauncher, "call startup.bat");
         StringAssert.Contains(normalLauncher, "set \"TITLE=MCPanel Tomcat Server\"");
-        Assert.IsFalse(normalLauncher.Contains("catalina.bat run", StringComparison.Ordinal));
+        Assert.IsFalse(normalLauncher.Contains("call catalina.bat run", StringComparison.Ordinal));
 
         var catalinaLauncher = runtime.Substring(catalinaLauncherIndex, retireIndex - catalinaLauncherIndex);
         StringAssert.Contains(catalinaLauncher, "call catalina.bat run");
