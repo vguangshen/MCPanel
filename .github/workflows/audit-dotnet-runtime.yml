@@ -41,6 +41,7 @@ jobs:
       - name: Measure restore
         shell: pwsh
         run: |
+          Write-Host 'Cache verification pass 2.'
           Write-Host "Cache hit: ${{ steps.nuget-cache.outputs.cache-hit }}"
           $sw = [System.Diagnostics.Stopwatch]::StartNew()
           dotnet restore .\MCPanel.Tests\MCPanel.Tests.csproj
