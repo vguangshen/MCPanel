@@ -1,8 +1,7 @@
-# MCPanel 1.3.54
+# MCPanel 1.3.55
 
-- 精简 GitHub Release 的 .NET SDK 准备阶段：移除每次重新下载安装 `actions/setup-dotnet` 的步骤，直接使用 `windows-latest` 已预装的 .NET 10 SDK，并在发布前显式校验所选 SDK 仍属于 10.x。
-- 新增 `global.json`，以 `10.0.100 + latestFeature` 约束构建始终使用 .NET 10，同时允许本机与 GitHub Runner 在 10.0.x feature band / patch 之间滚动，不绑定单一补丁版本。
-- 引入 `actions/cache@v6` 缓存 NuGet global-packages；缓存键使用规范化依赖指纹，仅纳入 `TargetFramework` / `TargetFrameworks`、`PackageReference` / `PackageVersion`、`global.json` 与 `NuGet.Config`，因此单纯应用版本号变化不会让缓存失效，而依赖或目标框架变化仍会自动生成新缓存。
-- 两轮 CI 审计确认：无 `setup-dotnet` 时 Runner 可直接选择 .NET SDK 10.0.400；NuGet 冷 restore 基线约 20.31 秒，缓存命中后 cache restore + `dotnet restore` 约 10 秒量级；正式 1.3.54 验证中项目 restore 已降至约 0.94 秒。
-- 保留 v1.3.53 已验证的 SharpSvn VC++ 2010 精确依赖策略、250 项 regression、Win-x64 publish、SHA-256 与 update manifest 发布校验链。
-- 未修改 MCPanel 业务逻辑、SharpSvn/SVN 行为、Tomcat 兼容逻辑、旧数据迁移或 Legacy HTTPS manifest，本次仅优化发布基础设施与构建可重复性。
+- 继续精简 GitHub Release 的 SharpSvn 前置依赖：移除 Chocolatey `vcredist2010` 安装路径，改为仅下载并静默安装 Microsoft 官方 VC++ 2010 SP1 x64 Redistributable，不再下载或安装无用的 x86 运行库。
+- 下载后的 `vcredist_x64.exe` 在执行前强制通过 Authenticode 校验，要求签名状态为 `Valid` 且签名者为 Microsoft Corporation；安装后再次确认 `C:\Windows\System32\MSVCR100.dll` 存在。
+- 独立 CI 审计确认直接 x64 路径下载约 0.70 秒、下载 + 验签 + 安装总计约 10.85 秒，最终 `MSVCR100.dll` 版本为 10.00.40219.325；此前 Chocolatey 路径通常约 30–40 秒。
+- 保留 v1.3.54 的预装 .NET 10 SDK 校验、`global.json`、NuGet 依赖指纹缓存，以及 250 项 regression / Win-x64 publish / SHA-256 / update manifest 完整发布链。
+- 未修改 MCPanel 业务逻辑、SharpSvn/SVN 行为、Tomcat 兼容逻辑、旧数据迁移或 Legacy HTTPS manifest，本次仅继续收缩发布基础设施的冗余耗时。
