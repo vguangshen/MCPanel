@@ -27,24 +27,35 @@ computer.
 
 ### Publish a GitHub Release
 
+The normal release path is `.github/workflows/release.yml` and should be used
+instead of manually repeating the packaging steps.
+
 1. Change `Version`, `FileVersion`, and `AssemblyVersion` in `MCPanel.csproj`.
-2. Run `Publish-WinX64.ps1`.
-3. Build GitHub Release artifacts:
+2. Update `RELEASE-NOTES.md` for the target version.
+3. Commit the validated source to `main` with a commit message that starts with:
+
+   ```text
+   Release MCPanel <version>
+   ```
+
+4. Push the commit. The release workflow then automatically:
+   - runs the full reliability test suite;
+   - performs the Win-x64 publish;
+   - builds `MCPanel-<version>.zip`;
+   - writes the `.sha256` sidecar and `update-manifest.json`;
+   - creates the matching `v<version>` GitHub Release and uploads all three assets.
+
+If you need to build the GitHub Release assets manually, read the version directly
+from the project so the documentation never carries a stale hard-coded version:
 
 ```powershell
+$version = ([xml](Get-Content .\MCPanel.csproj -Raw)).Project.PropertyGroup.Version
+.\Publish-WinX64.ps1
 .\Build-UpdatePackage.ps1 `
-  -Version 1.1.20 `
+  -Version $version `
   -GitHubRelease `
-  -ReleaseNotes '修复已知问题并改进稳定性。'
+  -ReleaseNotes (Get-Content .\RELEASE-NOTES.md -Raw)
 ```
-
-4. Push and tag the matching source commit as `v1.1.20`.
-5. Create a published, non-prerelease GitHub Release from that tag and upload
-   these three assets from `artifacts\updates`:
-
-   - `MCPanel-1.1.20.zip`
-   - `MCPanel-1.1.20.zip.sha256`
-   - `update-manifest.json`
 
 The manifest is bound to the versioned ZIP name and SHA-256. MCPanel checks that
 the Release tag, manifest, asset name, GitHub asset digest (when provided), and
@@ -53,13 +64,18 @@ available for the local/offline update workflow.
 
 ## Legacy HTTPS manifest channel
 
+The legacy public HTTPS manifest path is retained only as a compatibility and
+fallback channel. New deployments should prefer the private GitHub Release flow
+above.
+
 1. Change `Version`, `FileVersion`, and `AssemblyVersion` in `MCPanel.csproj`.
 2. Run `Publish-WinX64.ps1`.
-3. Build the hash-verified update artifacts:
+3. Build the hash-verified update artifacts using the current project version:
 
 ```powershell
+$version = ([xml](Get-Content .\MCPanel.csproj -Raw)).Project.PropertyGroup.Version
 .\Build-UpdatePackage.ps1 `
-  -Version 1.0.1 `
+  -Version $version `
   -PackageBaseUrl https://example.com/store/updates `
   -ReleaseNotes '修复已知问题并改进稳定性。'
 ```
@@ -69,7 +85,7 @@ was written outside the repository, for example `-PublishDirectory D:\MCPanel`.
 If `-PackageBaseUrl` is omitted, the script creates a ZIP and its SHA-256
 sidecar for local/offline updates but does not create a legacy online manifest.
 
-4. Upload `MCPanel-1.0.1.zip` and `update-manifest.json` from
+4. Upload `MCPanel-<version>.zip` and `update-manifest.json` from
    `artifacts\updates` to the HTTPS website.
 5. Set the public `update-manifest.json` URL in the installed
    `MCPanel.exe.config` file:
