@@ -19,8 +19,8 @@ public partial class ReliabilityTests
         Assert.IsFalse(window.Contains("ApplyTomcatStartupProgress", StringComparison.Ordinal));
         Assert.IsFalse(viewModel.Contains("ApplyTomcatStartupProgress", StringComparison.Ordinal));
 
-        StringAssert.Contains(runtime, "LaunchTomcatConsole(tomcatRoot)");
-        StringAssert.Contains(runtime, "共享 Tomcat 不再通过 Windows Service 隐藏启动");
+        StringAssert.Contains(runtime, "LaunchTomcatStartConsole(tomcatRoot)");
+        StringAssert.Contains(runtime, "Tomcat Server 已按标准 start 模式启动");
         Assert.IsFalse(runtime.Contains("TomcatWindowsServiceManager.Start();", StringComparison.Ordinal));
 
         // The dedicated environment-card Catalina entry point remains supported.
