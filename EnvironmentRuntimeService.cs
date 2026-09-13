@@ -167,6 +167,44 @@ public sealed class EnvironmentRuntimeService
             windowStyle: ProcessWindowStyle.Normal);
     }
 
+    internal static void LaunchTomcatStartConsole(string tomcatRoot)
+    {
+        var root = Path.GetFullPath(tomcatRoot);
+        var binDirectory = Path.Combine(root, "bin");
+        var startup = Path.Combine(binDirectory, "startup.bat");
+        if (!File.Exists(startup))
+        {
+            throw new FileNotFoundException("未找到 Tomcat 普通启动脚本。", startup);
+        }
+
+        // Normal Start/Restart uses Tomcat's standard `start` semantics. Keep
+        // the explicit Catalina entry point separate so only that operation is
+        // tied to `catalina.bat run` and its diagnostic console lifecycle.
+        TomcatConsoleWindowManager.CloseExistingConsoleWindows();
+        EnvironmentInstaller.NormalizeTomcatJvmPropertiesFile(root);
+        var workDirectory = ComponentPaths.WorkRoot;
+        Directory.CreateDirectory(workDirectory);
+        var launcher = Path.Combine(workDirectory, "start-tomcat-server.cmd");
+        AtomicFile.WriteAllText(
+            launcher,
+            $"""
+            @echo off
+            chcp 65001 >nul
+            title MCPanel Tomcat Startup
+            set "CATALINA_HOME={root}"
+            set "CATALINA_BASE={root}"
+            set "TITLE=MCPanel Tomcat Server"
+            cd /d "{binDirectory}"
+            call startup.bat
+            """,
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+
+        using var tomcatWindow = ProcessRunner.StartFile(
+            launcher,
+            string.Empty,
+            binDirectory,
+            windowStyle: ProcessWindowStyle.Normal);
+    }
     internal static void LaunchTomcatConsole(string tomcatRoot)
     {
         var root = Path.GetFullPath(tomcatRoot);
@@ -379,9 +417,9 @@ public sealed class EnvironmentRuntimeService
                 // Retire the old Session-0 service wrapper so it cannot silently
                 // start a second hidden shared server after an update or reboot.
                 RetireLegacyTomcatWindowsService(tomcatRoot);
-                LaunchTomcatConsole(tomcatRoot);
+                LaunchTomcatStartConsole(tomcatRoot);
 
-                return $"Tomcat Server CMD 控制台已打开；共享 Tomcat 不再通过 Windows Service 隐藏启动。请在控制台观察 Catalina 输出，日志目录：{Path.Combine(tomcatRoot, "logs")}";            case EnvironmentKind.Nginx:
+                return $"Tomcat Server 已按标准 start 模式启动，普通 Tomcat CMD 窗口已打开。需要持续查看 Catalina 前台输出时请使用“以 Catalina 方式启动”。日志目录：{Path.Combine(tomcatRoot, "logs")}";            case EnvironmentKind.Nginx:
                 return await StartNginxAsync(cancellationToken);
             case EnvironmentKind.MySql:
                 return await RunMySqlServiceActionAsync("start", cancellationToken);
