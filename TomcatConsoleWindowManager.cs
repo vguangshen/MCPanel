@@ -23,7 +23,7 @@ internal static class TomcatConsoleWindowManager
     {
         var fullLauncher = Path.GetFullPath(launcherPath);
         var commandMatches = !string.IsNullOrWhiteSpace(commandLine) &&
-                             commandLine.IndexOf(fullLauncher, StringComparison.OrdinalIgnoreCase) >= 0;
+                             commandLine!.IndexOf(fullLauncher, StringComparison.OrdinalIgnoreCase) >= 0;
         var titleMatches = string.Equals(
             windowTitle?.Trim(),
             ConsoleTitle,
