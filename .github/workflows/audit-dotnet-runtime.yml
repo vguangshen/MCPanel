@@ -1,4 +1,4 @@
-name: Audit .NET runner baseline
+name: Audit .NET and NuGet cache
 
 on:
   push:
@@ -14,45 +14,36 @@ jobs:
   audit:
     runs-on: windows-latest
     timeout-minutes: 10
+    env:
+      NUGET_PACKAGES: ${{ github.workspace }}\.nuget\packages
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Inspect preinstalled .NET and NuGet state
+      - name: Verify preinstalled .NET 10 SDK
         shell: pwsh
         run: |
-          Write-Host '--- dotnet --info ---'
-          dotnet --info
-          Write-Host '--- dotnet --list-sdks ---'
-          dotnet --list-sdks
-          Write-Host '--- dotnet --list-runtimes ---'
-          dotnet --list-runtimes
-          Write-Host '--- NuGet package root ---'
-          $packages = if ([string]::IsNullOrWhiteSpace($env:NUGET_PACKAGES)) {
-            Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)) '.nuget\packages'
-          } else { $env:NUGET_PACKAGES }
-          Write-Host "NUGET_PACKAGES=$packages"
-          if (Test-Path -LiteralPath $packages) {
-            $count = @(Get-ChildItem -LiteralPath $packages -Directory -ErrorAction SilentlyContinue).Count
-            Write-Host "Preinstalled package directory count: $count"
-          } else {
-            Write-Host 'NuGet package root does not exist yet.'
+          $version = (dotnet --version).Trim()
+          Write-Host "Selected SDK from global.json: $version"
+          if ($version -notmatch '^10\.') {
+            throw "MCPanel requires a .NET 10 SDK, but the runner selected $version."
           }
 
-      - name: Measure cold restore without setup-dotnet
-        shell: pwsh
-        run: |
-          $sw = [System.Diagnostics.Stopwatch]::StartNew()
-          dotnet restore .\MCPanel.Tests\MCPanel.Tests.csproj
-          $sw.Stop()
-          if ($LASTEXITCODE -ne 0) { throw "dotnet restore failed with exit code $LASTEXITCODE" }
-          Write-Host ("Cold restore elapsed: {0:N2}s" -f $sw.Elapsed.TotalSeconds)
+      - name: Restore NuGet package cache
+        id: nuget-cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.NUGET_PACKAGES }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'global.json', '**/nuget.config', '**/NuGet.Config') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
 
-      - name: Measure warm restore in same runner
+      - name: Measure restore
         shell: pwsh
         run: |
+          Write-Host "Cache hit: ${{ steps.nuget-cache.outputs.cache-hit }}"
           $sw = [System.Diagnostics.Stopwatch]::StartNew()
           dotnet restore .\MCPanel.Tests\MCPanel.Tests.csproj
           $sw.Stop()
           if ($LASTEXITCODE -ne 0) { throw "dotnet restore failed with exit code $LASTEXITCODE" }
-          Write-Host ("Warm restore elapsed: {0:N2}s" -f $sw.Elapsed.TotalSeconds)
+          Write-Host ("Restore elapsed: {0:N2}s" -f $sw.Elapsed.TotalSeconds)
