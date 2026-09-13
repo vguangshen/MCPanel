@@ -31,9 +31,11 @@ public partial class ReliabilityTests
         Assert.IsFalse(manager.Contains("PumpTomcatReaderAsync(", StringComparison.Ordinal));
         Assert.IsFalse(manager.Contains("DisposeProcessAfterCaptureAsync(", StringComparison.Ordinal));
 
-        // Shared Tomcat now also opens a visible Catalina CMD console instead of
-        // being launched as a hidden Windows service.
-        StringAssert.Contains(runtime, "LaunchTomcatConsole(tomcatRoot)");
+        // Shared Tomcat remains visible, but normal Start/Restart and explicit
+        // Catalina diagnostics intentionally use different launch semantics.
+        StringAssert.Contains(runtime, "internal static void LaunchTomcatStartConsole(string tomcatRoot)");
+        StringAssert.Contains(runtime, "call startup.bat");
+        StringAssert.Contains(runtime, "call catalina.bat run");
         StringAssert.Contains(runtime, "ProcessWindowStyle.Normal");
         Assert.IsFalse(runtime.Contains("TomcatWindowsServiceManager.Start();", StringComparison.Ordinal));
 
