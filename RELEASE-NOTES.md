@@ -1,7 +1,8 @@
-﻿# MCPanel 1.3.50
+# MCPanel 1.3.51
 
-- 修正环境页 Tomcat Server 的普通“启动”语义：不再复用 `catalina.bat run`，改为通过标准 `startup.bat` / `start` 链路打开普通 Tomcat CMD 窗口。
-- “以 Catalina 方式启动”继续独立使用 `catalina.bat run`，保留前台持续输出以及退出后暂停查看错误的诊断行为。
-- “重启”保持先停止再调用普通 `StartAsync`，因此重启后同样回到标准 `start` 模式，不会再误入 Catalina `run`。
-- 普通启动与 Catalina 启动继续共享同一个 Tomcat 安装目录与配置，不改变产品端口、绑定或现有停止逻辑。
-- 新增并校准回归测试，锁定 Start / Restart / Catalina 三条入口，并已通过完整 regression 与 Win-x64 publish 验证，防止后续再次合并或回退。
+- 清理 1.3.11 / 1.3.12 遗留的一次性 Tomcat 迁移脚本，移除不再参与当前构建和运行的历史维护文件。
+- 清理旧 Tomcat Windows Service 的注册/启动 API；保留旧服务检测、停止、删除与兼容入口，确保老版本安装仍可平滑退役历史服务。
+- 修正 Windows 登录恢复行为：与普通“启动/重启”一致使用标准 `startup.bat` / `start` 模式，不再隐式进入 `catalina.bat run`。
+- 修正 Tomcat 安装完成后的首次启动，同样使用标准 start 模式；`catalina.bat run` 仅保留给显式“以 Catalina 方式启动”的诊断操作。
+- 保留 .NET Framework 4.6.2 所需运行时兼容层、编译器 polyfill 和旧数据目录迁移逻辑，避免清理影响现有用户升级。
+- 已通过完整 regression 与 Win-x64 publish 验证。
