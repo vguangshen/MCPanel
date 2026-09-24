@@ -69,6 +69,7 @@ public partial class ReliabilityTests
         StringAssert.Contains(script, "RewriteModule");
         StringAssert.Contains(script, "W3SVC");
         StringAssert.Contains(script, "WAS");
+        StringAssert.Contains(script, "& $net start W3SVC");
         Assert.IsTrue(script.IndexOf("  } else {", StringComparison.Ordinal) <
             script.IndexOf("Enable-WindowsOptionalFeature", StringComparison.Ordinal),
             "Server 2008 的 IIS 7 分支不得执行较新的可选功能 PowerShell 命令。");
@@ -86,12 +87,16 @@ public partial class ReliabilityTests
         Assert.IsFalse(uninstall.Contains("RebootPending", StringComparison.Ordinal));
         StringAssert.Contains(uninstall, "if ($process.ExitCode -eq 3010) { $script:restartNeeded = $true }");
         StringAssert.Contains(uninstall, "if (Get-Service W3SVC -ErrorAction SilentlyContinue)");
+        StringAssert.Contains(uninstall, "& $net stop WAS /y");
         foreach (var action in new[] { "START", "STOP", "RESTART" })
         {
             var script = EnvironmentRuntimeService.BuildIisServiceActionScript(action);
-            StringAssert.Contains(script, "/" + action);
+            StringAssert.Contains(script, "System32\\net.exe");
+            StringAssert.Contains(script, action == "STOP" ? "& $net stop W3SVC" : "& $net start W3SVC");
             StringAssert.Contains(script, "$LASTEXITCODE -ne 0");
             StringAssert.Contains(script, "$service.WaitForStatus(");
+            if (action == "RESTART")
+                StringAssert.Contains(script, "& $net stop W3SVC");
         }
     }
 

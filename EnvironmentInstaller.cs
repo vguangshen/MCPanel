@@ -981,10 +981,9 @@ public sealed class EnvironmentInstaller : IDisposable
         sb.AppendLine("  if ($rewriteProcess.ExitCode -ne 0) { throw ('URL Rewrite 安装失败，退出码：' + $rewriteProcess.ExitCode) }");
         sb.AppendLine("  $moduleOutput = (& $appcmd list modules 2>&1 | Out-String)");
         sb.AppendLine("  if ($LASTEXITCODE -ne 0 -or $moduleOutput -notmatch 'RewriteModule') { throw 'URL Rewrite MSI 已完成，但 IIS 未检测到 RewriteModule。' }");
-        sb.AppendLine("  $iisreset = Join-Path $env:windir 'System32\\iisreset.exe'");
-        sb.AppendLine("  if (!(Test-Path -LiteralPath $iisreset)) { throw '未找到 IIS 重置工具 iisreset.exe。' }");
-        sb.AppendLine("  & $iisreset /START");
-        sb.AppendLine("  if ($LASTEXITCODE -ne 0) { throw ('IIS 启动失败，退出码：' + $LASTEXITCODE) }");
+        sb.AppendLine(@"  $net = Join-Path $env:windir 'System32\net.exe'");
+        sb.AppendLine("  if (!(Test-Path -LiteralPath $net)) { throw '未找到 Windows 服务管理工具 net.exe。' }");
+        sb.AppendLine("  if ((Get-Service -Name W3SVC -ErrorAction Stop).Status -ne 'Running') { & $net start W3SVC; if ($LASTEXITCODE -ne 0) { throw ('IIS 启动失败，退出码：' + $LASTEXITCODE) } }");
         sb.AppendLine("  foreach($serviceName in @('WAS','W3SVC')) { $service=Get-Service -Name $serviceName -ErrorAction Stop; if ($service.Status -ne 'Running') { Start-Service -Name $serviceName -ErrorAction Stop }; $service=Get-Service -Name $serviceName -ErrorAction Stop; $service.WaitForStatus('Running',[TimeSpan]::FromSeconds(30)); if ($service.Status -ne 'Running') { throw ($serviceName + ' 未进入 Running 状态。') } }");
         sb.AppendLine("  Remove-Item -LiteralPath $restartMarker -Force -ErrorAction SilentlyContinue");
         sb.AppendLine("} finally { try { Stop-Transcript | Out-Null } catch { } }");

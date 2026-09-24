@@ -14,8 +14,11 @@ before testing uninstall on a shared server.
 newer. The older IIS 7 path registers the installed .NET Framework 4 runtime
 separately; ASP.NET 2/3.5 role services are not installed there unless configured
 independently with their own prerequisites. Both paths check for `appcmd.exe`, the URL Rewrite module, and
-running WAS and W3SVC before reporting installation success. Start, stop and
-restart use `iisreset` and verify W3SVC reaches the expected state. A pending
+running WAS and W3SVC before reporting installation success. Start and stop
+use `NET START W3SVC` / `NET STOP W3SVC`; restart stops and starts W3SVC in
+sequence. Uninstall stops WAS and its dependents with `NET STOP WAS /y` before
+removing the role. All three service buttons verify W3SVC reaches the expected
+state. A pending
 install or uninstall remains visible as **继续安装** or **继续卸载** after restart.
 MCPanel launches the native Windows PowerShell executable (using `Sysnative`
 from a 32-bit process on 64-bit Windows) so IIS tools and feature commands use
@@ -59,6 +62,8 @@ Microsoft references:
 - [IIS 7 command line installation and `pkgmgr` options](https://learn.microsoft.com/en-us/iis/install/installing-iis-7/installing-iis-from-the-command-line)
 - [IIS 7.5 on Server 2008 R2, including `pkgmgr` IIS / WAS uninstall](https://learn.microsoft.com/en-us/iis/install/installing-iis-7/install-and-configure-iis-on-server-core)
 - [IIS 8.5 installation and DISM / PowerShell](https://learn.microsoft.com/en-us/iis/install/installing-iis-85/installing-iis-85-on-windows-server-2012-r2)
+- [Microsoft IIS service restart guidance: `NET STOP` / `NET START`](https://learn.microsoft.com/en-us/troubleshoot/developer/webapps/iis/www-administration-management/using-iisreset-restart-iis-result-error)
+- [IIS web server service commands and WAS dependencies](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/jj635851%28v%3Dws.11%29)
 - [ASP.NET 4.5 Windows component boundary](https://learn.microsoft.com/en-us/troubleshoot/developer/webapps/aspnet/configuration/install-aspnet-45-windows-8-server-2012)
 - [.NET Framework operating system requirements](https://learn.microsoft.com/en-us/dotnet/framework/get-started/system-requirements)
 - [Windows PowerShell 2.0 availability on Server 2008 SP2](https://devblogs.microsoft.com/powershell/tag/powershell-2-0-download/)

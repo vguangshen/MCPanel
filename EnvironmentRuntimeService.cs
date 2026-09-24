@@ -1110,19 +1110,19 @@ public sealed class EnvironmentRuntimeService
 
             try {
                 Invoke-Step 'Stop IIS services' {
-                    $iisreset = Join-Path $env:windir 'System32\iisreset.exe'
-                    if (Test-Path -LiteralPath $iisreset) {
-                        & $iisreset /stop 2>&1 | ForEach-Object { Write-Output $_ }
+                    $net = Join-Path $env:windir 'System32\net.exe'
+                    if (!(Test-Path -LiteralPath $net)) { throw '未找到 Windows 服务管理工具 net.exe。' }
+                    $was = Get-Service -Name WAS -ErrorAction SilentlyContinue
+                    $w3svc = Get-Service -Name W3SVC -ErrorAction SilentlyContinue
+                    if ($was -and $was.Status -ne 'Stopped') {
+                        & $net stop WAS /y
+                        if ($LASTEXITCODE -ne 0) { throw ('停止 WAS 失败，退出码：' + $LASTEXITCODE) }
                     }
-                    else {
-                        Write-Output '未找到 iisreset.exe，跳过 iisreset，继续停止 IIS 服务。'
+                    elseif ($w3svc -and $w3svc.Status -ne 'Stopped') {
+                        & $net stop W3SVC
+                        if ($LASTEXITCODE -ne 0) { throw ('停止 W3SVC 失败，退出码：' + $LASTEXITCODE) }
                     }
-                    foreach ($service in @('W3SVC', 'WAS', 'AppHostSvc')) {
-                        $svc = Get-Service -Name $service -ErrorAction SilentlyContinue
-                        if ($svc -and $svc.Status -ne 'Stopped') {
-                            Stop-Service -Name $service -Force -ErrorAction SilentlyContinue
-                        }
-                    }
+                    if ($w3svc) { $w3svc.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30)) }
                 }
 
                 $script:restartNeeded = $false
@@ -2903,10 +2903,26 @@ public sealed class EnvironmentRuntimeService
             throw new ArgumentOutOfRangeException(nameof(action));
 
         var expected = action == "STOP" ? "Stopped" : "Running";
-        return $@"$iisreset = Join-Path $env:windir 'System32\iisreset.exe'
-if (!(Test-Path -LiteralPath $iisreset)) {{ throw '未找到 IIS 重置工具 iisreset.exe。' }}
-& $iisreset /{action}
-if ($LASTEXITCODE -ne 0) {{ throw ('IIS {action} 失败，退出码：' + $LASTEXITCODE) }}
+        var command = action switch
+        {
+            "START" => @"if ($service.Status -ne 'Running') {
+    & $net start W3SVC
+    if ($LASTEXITCODE -ne 0) { throw ('IIS 启动失败，退出码：' + $LASTEXITCODE) }
+}",
+            "STOP" => @"if ($service.Status -ne 'Stopped') {
+    & $net stop W3SVC
+    if ($LASTEXITCODE -ne 0) { throw ('IIS 停止失败，退出码：' + $LASTEXITCODE) }
+}",
+            _ => @"& $net stop W3SVC
+if ($LASTEXITCODE -ne 0) { throw ('IIS 重启时停止失败，退出码：' + $LASTEXITCODE) }
+$service.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30))
+& $net start W3SVC
+if ($LASTEXITCODE -ne 0) { throw ('IIS 重启时启动失败，退出码：' + $LASTEXITCODE) }"
+        };
+        return $@"$net = Join-Path $env:windir 'System32\net.exe'
+if (!(Test-Path -LiteralPath $net)) {{ throw '未找到 Windows 服务管理工具 net.exe。' }}
+$service = Get-Service -Name 'W3SVC' -ErrorAction Stop
+{command}
 $service = Get-Service -Name 'W3SVC' -ErrorAction Stop
 $service.WaitForStatus('{expected}', [TimeSpan]::FromSeconds(30))
 if ($service.Status -ne '{expected}') {{ throw 'W3SVC 未进入 {expected} 状态。' }}";
