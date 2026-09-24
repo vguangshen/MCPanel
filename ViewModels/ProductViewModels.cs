@@ -1040,9 +1040,11 @@ public sealed class InstallationProgressViewModel : ObservableObject
     }
 }
 
-public sealed class ProductRow(IReadOnlyList<ProductItem> items)
+public sealed class ProductRow(IReadOnlyList<ProductItem> items, int columns = 3)
 {
     public IReadOnlyList<ProductItem> Items { get; } = items;
+    public GridLength SecondColumnWidth => columns >= 2 ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+    public GridLength ThirdColumnWidth => columns >= 3 ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
     public ProductItem? Item1 => Items.ElementAtOrDefault(0);
     public ProductItem? Item2 => Items.ElementAtOrDefault(1);
     public ProductItem? Item3 => Items.ElementAtOrDefault(2);
@@ -1399,6 +1401,5 @@ public sealed class DriveItem : ObservableObject
     private static string FormatSize(long usedBytes, long totalBytes) => $"{ToGb(usedBytes):N2} GB/{ToGb(totalBytes):N0} GB";
     private static double ToGb(long bytes) => bytes / 1024d / 1024d / 1024d;
 }
-
 
 

@@ -61,7 +61,10 @@ public partial class MainWindow
             var compactPageDensity = width < CompactShellBreakpoint || height < ShortViewportBreakpoint;
 
             ApplyIconOnlyNavigation(iconOnlyNavigation);
-            ApplyHomePageDensity(compactPageDensity);
+            var contentWidth = width - (iconOnlyNavigation ? IconOnlyNavigationWidth : width < CompactShellBreakpoint ? 190d : 226d) - (width < CompactShellBreakpoint ? 32d : 48d);
+            _model.SetProductColumnCount(contentWidth >= 850d ? 3 : contentWidth >= 580d ? 2 : 1);
+            _model.SetEnvironmentColumnCount(contentWidth >= 850d ? 3 : contentWidth >= 560d ? 2 : 1);
+            ApplyHomePageDensity(compactPageDensity, contentWidth);
             ApplyEnvironmentPageDensity(compactPageDensity);
 
             AccountApiPageControl.MinHeight = 0d;
@@ -120,7 +123,7 @@ public partial class MainWindow
         }
     }
 
-    private void ApplyHomePageDensity(bool compact)
+    private void ApplyHomePageDensity(bool compact, double contentWidth)
     {
         if (HomePage.Content is not Grid homeGrid)
         {
@@ -130,23 +133,52 @@ public partial class MainWindow
         // Keep the overview card at its proven 92 DIP height so the three hardware
         // lines never crowd one another. Recover compact-height space from the much
         // more flexible resource/service sections instead.
-        HomeSystemSummaryCard.Height = 92d;
+        var narrow = contentWidth < 620d;
+        HomeSystemSummaryCard.Height = narrow ? double.NaN : 92d;
         HomeSystemSummaryCard.Padding = compact
             ? new Thickness(18d, 10d, 18d, 10d)
             : new Thickness(22d, 16d, 22d, 16d);
+        if (HomeSystemSummaryCard.Child is Grid summaryGrid && summaryGrid.Children.Count >= 2)
+        {
+            summaryGrid.RowDefinitions.Clear();
+            summaryGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            summaryGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            summaryGrid.ColumnDefinitions[1].Width = narrow ? new GridLength(0d) : new GridLength(1.55d, GridUnitType.Star);
+            var heading = summaryGrid.Children[0];
+            var hardware = summaryGrid.Children[1];
+            Grid.SetRow(hardware, narrow ? 1 : 0);
+            Grid.SetColumn(hardware, narrow ? 0 : 1);
+            if (hardware is StackPanel hardwarePanel)
+                hardwarePanel.Margin = narrow ? new Thickness(0d, 10d, 0d, 0d) : new Thickness(24d, 0d, 0d, 0d);
+            if (heading is StackPanel headingPanel)
+                headingPanel.Margin = narrow ? new Thickness(0d) : new Thickness(0d, 0d, 24d, 0d);
+        }
 
         var resourceCard = homeGrid.Children
             .OfType<Border>()
             .FirstOrDefault(border => Grid.GetRow(border) == 1);
         if (resourceCard is not null)
         {
-            resourceCard.Height = compact ? 132d : 162d;
+            resourceCard.Height = narrow ? double.NaN : compact ? 132d : 162d;
             resourceCard.Padding = compact
                 ? new Thickness(14d, 7d, 14d, 7d)
                 : new Thickness(16d, 10d, 16d, 10d);
             resourceCard.Margin = compact
                 ? new Thickness(0d, 8d, 0d, 0d)
                 : new Thickness(0d, 10d, 0d, 0d);
+            if (resourceCard.Child is Grid resourceGrid && resourceGrid.Children.Count >= 3)
+            {
+                resourceGrid.RowDefinitions.Clear();
+                resourceGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                resourceGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                resourceGrid.ColumnDefinitions[0].Width = narrow ? new GridLength(1d, GridUnitType.Star) : new GridLength(260d);
+                resourceGrid.ColumnDefinitions[1].Width = new GridLength(narrow ? 0d : 1d);
+                Grid.SetRow(resourceGrid.Children[2], narrow ? 1 : 0);
+                Grid.SetColumn(resourceGrid.Children[2], narrow ? 0 : 2);
+                resourceGrid.Children[1].Visibility = narrow ? Visibility.Collapsed : Visibility.Visible;
+                if (resourceGrid.Children[2] is StackPanel diskPanel)
+                    diskPanel.Margin = narrow ? new Thickness(0d, 16d, 0d, 0d) : new Thickness(0d);
+            }
         }
 
         ApplyCircularMetricDensity(CpuProgress, compact);
@@ -176,6 +208,8 @@ public partial class MainWindow
                 {
                     items.Margin = compact ? new Thickness(6d) : new Thickness(10d);
                     items.UpdateLayout();
+                    if (items.ItemsPanelRoot is System.Windows.Controls.Primitives.UniformGrid serviceGrid)
+                        serviceGrid.Columns = contentWidth < 620d ? 1 : contentWidth < 850d ? 2 : 3;
                     ApplyServiceCardDensity(items, compact);
                 }
             }
@@ -268,9 +302,7 @@ public partial class MainWindow
                 : new Thickness(0d, 0d, 0d, 16d);
         }
 
-        var items = EnvironmentPage.Children
-            .OfType<ItemsControl>()
-            .FirstOrDefault(control => Grid.GetRow(control) == 1);
+        var items = EnvironmentItemsControl;
         if (items is null || !EnvironmentPage.IsVisible)
         {
             return;

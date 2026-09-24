@@ -42,6 +42,23 @@ public partial class AiAnalysisPage : UserControl, INotifyPropertyChanged, IDisp
 
     public ObservableCollection<AiTargetOption> Targets { get; }
 
+    private void AiPageScroll_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (AiPageLayout is null || AiContentGrid is null) return;
+        var narrow = e.NewSize.Width < 760d;
+        AiPageLayout.MinHeight = e.NewSize.Height;
+        AiPageLayout.RowDefinitions[1].Height = narrow ? GridLength.Auto : new GridLength(1d, GridUnitType.Star);
+        AiContentGrid.RowDefinitions[0].Height = narrow ? GridLength.Auto : new GridLength(1d, GridUnitType.Star);
+        AiContentGrid.ColumnDefinitions[0].Width = new GridLength(narrow ? 1d : 0.92d, GridUnitType.Star);
+        AiContentGrid.ColumnDefinitions[1].Width = narrow ? new GridLength(0d) : new GridLength(1.08d, GridUnitType.Star);
+        Grid.SetRow(AiResultCard, narrow ? 1 : 0);
+        Grid.SetColumn(AiResultCard, narrow ? 0 : 1);
+        AiLeftColumn.Margin = narrow ? new Thickness(0d) : new Thickness(0d, 0d, 7d, 0d);
+        AiResultCard.Margin = narrow ? new Thickness(0d, 12d, 0d, 0d) : new Thickness(7d, 0d, 0d, 0d);
+        LogPreviewBox.Height = narrow ? 190d : double.NaN;
+        AnalysisBox.Height = narrow ? 220d : double.NaN;
+    }
+
     public AiTargetOption? SelectedTarget
     {
         get => _selectedTarget;
@@ -99,6 +116,8 @@ public partial class AiAnalysisPage : UserControl, INotifyPropertyChanged, IDisp
         UpdateProviderStatus(settings);
     }
 
+    public void Activate() => LoadProviderSettings();
+
     private void TargetOption_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button { Tag: string value } ||
@@ -146,7 +165,8 @@ public partial class AiAnalysisPage : UserControl, INotifyPropertyChanged, IDisp
 
     private async Task<bool> CollectLogsAsync()
     {
-        if (_disposed || SelectedTarget is null || IsBusy)
+        var target = SelectedTarget;
+        if (_disposed || target is null || IsBusy)
         {
             return false;
         }
@@ -155,13 +175,19 @@ public partial class AiAnalysisPage : UserControl, INotifyPropertyChanged, IDisp
         try
         {
             IsBusy = true;
-            CollectionStatus = $"正在采集 {SelectedTarget.Name} 日志...";
-            _collectedLogs = await _logCollector.CollectAsync(SelectedTarget.Target, cancellation.Token);
-            LogPreviewBox.Text = _collectedLogs.Content;
-            CollectionStatus = _collectedLogs.Summary;
+            CollectionStatus = $"正在采集 {target.Name} 日志...";
+            var collected = await _logCollector.CollectAsync(target.Target, cancellation.Token);
+            if (_disposed || !ReferenceEquals(SelectedTarget, target))
+            {
+                return false;
+            }
+
+            _collectedLogs = collected;
+            LogPreviewBox.Text = collected.Content;
+            CollectionStatus = collected.Summary;
             OnPropertyChanged(nameof(LogFileCountText));
             OnPropertyChanged(nameof(LogEmptyVisibility));
-            return !string.IsNullOrWhiteSpace(_collectedLogs.Content);
+            return !string.IsNullOrWhiteSpace(collected.Content);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
@@ -187,6 +213,7 @@ public partial class AiAnalysisPage : UserControl, INotifyPropertyChanged, IDisp
             return;
         }
 
+        LoadProviderSettings();
         CancellationTokenSource? cancellation = null;
         try
         {
@@ -199,16 +226,30 @@ public partial class AiAnalysisPage : UserControl, INotifyPropertyChanged, IDisp
                 }
             }
 
+            var target = SelectedTarget;
+            if (target is null)
+            {
+                return;
+            }
+
+            var logs = _collectedLogs;
+            var issue = IssueBox.Text;
             IsBusy = true;
             cancellation = BeginOperation();
             _hasAnalysisResult = false;
             OnPropertyChanged(nameof(AnalysisEmptyVisibility));
-            AnalysisStatus = $"模型正在分析 {SelectedTarget.Name} 日志...";
-            AnalysisBox.Text = await _analysisService.AnalyzeAsync(
-                SelectedTarget.Name,
-                _collectedLogs!.Content,
-                IssueBox.Text,
+            AnalysisStatus = $"模型正在分析 {target.Name} 日志...";
+            var result = await _analysisService.AnalyzeAsync(
+                target.Name,
+                logs!.Content,
+                issue,
                 cancellation.Token);
+            if (_disposed || !ReferenceEquals(SelectedTarget, target))
+            {
+                return;
+            }
+
+            AnalysisBox.Text = result;
             _hasAnalysisResult = !string.IsNullOrWhiteSpace(AnalysisBox.Text);
             OnPropertyChanged(nameof(AnalysisEmptyVisibility));
             AnalysisStatus = $"分析完成 · {DateTime.Now:HH:mm:ss}";

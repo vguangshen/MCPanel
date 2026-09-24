@@ -72,32 +72,15 @@ public sealed class AiAnalysisService
     {
         try
         {
+            // The configuration file is edited outside the application. Refresh
+            // the cached section so changes take effect on the next analysis.
+            ConfigurationManager.RefreshSection("appSettings");
             return AiProviderSettings.FromAppSettings(ConfigurationManager.AppSettings);
         }
         catch
         {
             return AiProviderSettings.Default;
         }
-    }
-
-    internal async Task TestConnectionAsync(AiProviderSettings settings, CancellationToken token)
-    {
-        var endpoint = AiSettingsStore.Validate(settings);
-        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
-        {
-            Content = new StringContent(JsonSerializer.Serialize(new
-            {
-                model = settings.Model, messages = new[] { new { role = "user", content = "Reply OK." } },
-                max_tokens = 16, stream = false
-            }), Encoding.UTF8, "application/json")
-        };
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", settings.ApiKey);
-        using var response = await Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
-        var body = await ReadResponseTextAsync(response.Content, token);
-        if (!response.IsSuccessStatusCode) throw new InvalidOperationException($"连接失败：HTTP {(int)response.StatusCode} {response.ReasonPhrase}");
-        using var document = JsonDocument.Parse(body);
-        if (!document.RootElement.TryGetProperty("choices", out var choices) || choices.ValueKind != JsonValueKind.Array || choices.GetArrayLength() == 0)
-            throw new InvalidDataException("接口已响应，但不是兼容的模型返回结果。请检查完整接口地址。");
     }
 
     public async Task<string> AnalyzeAsync(

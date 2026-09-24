@@ -477,8 +477,8 @@
               Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=ListBox}, Converter={StaticResource SubtractConverter}, ConverterParameter=28}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="{Binding SecondColumnWidth}" />
+                <ColumnDefinition Width="{Binding ThirdColumnWidth}" />
             </Grid.ColumnDefinitions>
             <ContentControl Content="{Binding Item1}"
                             ContentTemplate="{StaticResource ProductCardTemplate}"

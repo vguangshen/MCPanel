@@ -88,6 +88,44 @@ internal sealed class ManualPlatformStore
             Write(records);
         }
     }
+
+    internal async Task<T> ApplyWithRollbackAsync<T>(
+        ManualPlatformDefinition definition,
+        Func<Task<T>> apply,
+        CancellationToken cancellationToken = default)
+    {
+        var previous = await Task.Run(
+            () => Load().FirstOrDefault(item => item.Id == definition.Id),
+            cancellationToken);
+        // Do not pass the cancellation token to the write: a cancelled Task.Run
+        // can report cancellation even when the record was already persisted.
+        await Task.Run(() => Save(definition));
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return await apply();
+        }
+        catch (Exception error)
+        {
+            try
+            {
+                await Task.Run(() =>
+                {
+                    if (previous is null) Remove(definition.Id);
+                    else Save(previous);
+                });
+            }
+            catch (Exception rollbackError)
+            {
+                throw new IOException(
+                    $"运行绑定失败，且无法恢复平台记录：{rollbackError.Message}",
+                    new AggregateException(error, rollbackError));
+            }
+
+            throw;
+        }
+    }
+
     internal void Remove(string id)
     {
         lock (Gate)

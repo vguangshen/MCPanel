@@ -7,7 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Threading;
-using System.Xml.Linq;
+using System.Collections.Specialized;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MCPanel.Tests;
@@ -223,20 +223,59 @@ public sealed partial class ReliabilityTests
     }
 
     [TestMethod]
-    public void AiSettingsSavePreservesUnrelatedConfigurationAndEscapesValues()
+    public void AiProviderSettingsReadConfiguredValues()
+    {
+        var values = new NameValueCollection
+        {
+            [AiProviderSettings.ProviderConfigKey] = "Local",
+            [AiProviderSettings.EndpointConfigKey] = "http://localhost:8080/v1/chat/completions",
+            [AiProviderSettings.ModelConfigKey] = "test-model",
+            [AiProviderSettings.ApiKeyConfigKey] = "test-key"
+        };
+
+        var settings = AiProviderSettings.FromAppSettings(values);
+        Assert.AreEqual("Local", settings.Provider);
+        Assert.AreEqual("http://localhost:8080/v1/chat/completions", settings.Endpoint);
+        Assert.AreEqual("test-model", settings.Model);
+        Assert.AreEqual("test-key", settings.ApiKey);
+    }
+
+    [TestMethod]
+    public async Task FailedManualBindingRestoresPreviousRecordAndRemovesNewRecord()
     {
         var root = CreateTemporaryDirectory();
         try
         {
-            var path = Path.Combine(root, "app.config");
-            File.WriteAllText(path, "<configuration><appSettings><add key='Keep' value='yes'/></appSettings><runtime/></configuration>");
-            AiSettingsStore.Save(new AiProviderSettings { Endpoint = "https://example.test/v1/chat/completions", Model = "test-model", ApiKey = "test-key&quote\"" }, path);
-            var document = XDocument.Load(path);
-            Assert.IsNotNull(document.Root!.Element("runtime"));
-            var settings = document.Root.Element("appSettings")!.Elements("add").ToDictionary(item => (string)item.Attribute("key")!, item => (string)item.Attribute("value")!);
-            Assert.AreEqual("yes", settings["Keep"]);
-            Assert.AreEqual("test-key&quote\"", settings[AiProviderSettings.ApiKeyConfigKey]);
+            var store = new ManualPlatformStore(Path.Combine(root, "manual-platforms.json"));
+            var previous = new ManualPlatformDefinition("existing", "原平台", root, false);
+            store.Save(previous);
+
+            foreach (var definition in new[]
+                     {
+                         previous with { Name = "未完成的修改" },
+                         new ManualPlatformDefinition("new", "未完成的新平台", root, false)
+                     })
+            {
+                try
+                {
+                    await store.ApplyWithRollbackAsync(
+                        definition,
+                        () => Task.FromException<string>(new InvalidOperationException("模拟绑定失败")));
+                    Assert.Fail("运行绑定失败时不得保留新平台记录。");
+                }
+                catch (InvalidOperationException ex)
+                {
+                    Assert.AreEqual("模拟绑定失败", ex.Message);
+                }
+            }
+
+            var records = store.Load();
+            Assert.AreEqual(1, records.Count);
+            Assert.AreEqual(previous, records[0]);
         }
-        finally { Directory.Delete(root, true); }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
     }
 }

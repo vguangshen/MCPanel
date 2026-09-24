@@ -46,8 +46,10 @@ internal static class ResponsiveWindowSizing
             workHeight * workAreaFill / designHeight);
         scale = Math.Max(0.1, Math.Min(maximumScale, scale));
 
-        var width = Math.Floor(designWidth * scale);
-        var height = Math.Floor(designHeight * scale);
+        window.MinWidth = Math.Min(600d, Math.Floor(workWidth * workAreaFill));
+        window.MinHeight = Math.Min(360d, Math.Floor(workHeight * workAreaFill));
+        var width = Math.Max(window.MinWidth, Math.Min(workWidth, Math.Floor(designWidth * scale)));
+        var height = Math.Max(window.MinHeight, Math.Min(workHeight, Math.Floor(designHeight * scale)));
         window.Width = width;
         window.Height = height;
         window.Left = topLeft.X + Math.Max(0, (workWidth - width) / 2);
