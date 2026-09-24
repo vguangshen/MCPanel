@@ -20,7 +20,7 @@ jobs:
         shell: pwsh
         run: dotnet build MCPanel.Tests/MCPanel.Tests.csproj --configuration Release --framework net462
 
-      - name: Verify IIS script generation and PowerShell bitness selection
+      - name: Run full reliability suite
         shell: pwsh
         run: |
-          dotnet test MCPanel.Tests/MCPanel.Tests.csproj --configuration Release --framework net462 --no-build --filter 'Name~IisInstaller|Name~IisUninstall|Name~NativePowerShell'
+          dotnet test MCPanel.Tests/MCPanel.Tests.csproj --configuration Release --framework net462 --no-build
