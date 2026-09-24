@@ -235,7 +235,7 @@
                                           Margin="10">
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
-                                                <UniformGrid Columns="3" />
+                                                <UniformGrid Columns="{Binding HomeServiceColumnCount}" />
                                             </ItemsPanelTemplate>
                                         </ItemsControl.ItemsPanel>
                                     </ItemsControl>

@@ -64,6 +64,7 @@ public partial class MainWindow
             var contentWidth = width - (iconOnlyNavigation ? IconOnlyNavigationWidth : width < CompactShellBreakpoint ? 190d : 226d) - (width < CompactShellBreakpoint ? 32d : 48d);
             _model.SetProductColumnCount(contentWidth >= 850d ? 3 : contentWidth >= 580d ? 2 : 1);
             _model.SetEnvironmentColumnCount(contentWidth >= 850d ? 3 : contentWidth >= 560d ? 2 : 1);
+            _model.SetHomeServiceColumnCount(contentWidth >= 850d ? 3 : contentWidth >= 620d ? 2 : 1);
             ApplyHomePageDensity(compactPageDensity, contentWidth);
             ApplyEnvironmentPageDensity(compactPageDensity);
 
@@ -208,8 +209,6 @@ public partial class MainWindow
                 {
                     items.Margin = compact ? new Thickness(6d) : new Thickness(10d);
                     items.UpdateLayout();
-                    if (items.ItemsPanelRoot is System.Windows.Controls.Primitives.UniformGrid serviceGrid)
-                        serviceGrid.Columns = contentWidth < 620d ? 1 : contentWidth < 850d ? 2 : 3;
                     ApplyServiceCardDensity(items, compact);
                 }
             }

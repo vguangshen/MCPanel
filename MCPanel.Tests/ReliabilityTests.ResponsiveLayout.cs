@@ -33,6 +33,7 @@ public sealed partial class ReliabilityTests
                     window.UpdateLayout();
                     var expectedColumns = width == 600d ? 1 : width == 760d ? 2 : 3;
                     Assert.AreEqual(expectedColumns, model.EnvironmentColumnCount);
+                    Assert.AreEqual(expectedColumns, model.HomeServiceColumnCount);
                     Assert.IsTrue(model.VisibleProductRows.All(row =>
                         expectedColumns >= 2 || row.SecondColumnWidth.Value == 0d));
 

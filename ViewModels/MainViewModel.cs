@@ -209,6 +209,9 @@ public sealed partial class MainViewModel : ObservableObject
     public int EnvironmentColumnCount { get => _environmentColumnCount; private set => SetProperty(ref _environmentColumnCount, value); }
     private int _environmentColumnCount = 3;
     public void SetEnvironmentColumnCount(int count) => EnvironmentColumnCount = Math.Max(1, Math.Min(3, count));
+    public int HomeServiceColumnCount { get => _homeServiceColumnCount; private set => SetProperty(ref _homeServiceColumnCount, value); }
+    private int _homeServiceColumnCount = 3;
+    public void SetHomeServiceColumnCount(int count) => HomeServiceColumnCount = Math.Max(1, Math.Min(3, count));
     public Visibility ProductNoResultsVisibility => _visibleProductCount == 0 && Products.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     public ObservableCollection<ProductCategoryFilter> ProductCategories { get; } = [];
     public ObservableCollection<DriveItem> Drives { get; } = [];
