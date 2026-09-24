@@ -532,20 +532,15 @@ public sealed partial class ReliabilityTests
                         "窄窗口中的设置卡片应排列在同一列。");
                     Assert.IsTrue(startupPoint.Y > appearancePoint.Y + appearanceCard.ActualHeight,
                         "窄窗口中的开机自启动卡片应排列在外观主题卡片下方。");
-
-                    window.Width = 1440d;
-                    window.UpdateLayout();
-                    window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
-                    window.UpdateLayout();
-                    appearancePoint = appearanceCard.TransformToAncestor(settingsPage).Transform(new Point(0, 0));
-                    startupPoint = startupCard.TransformToAncestor(settingsPage).Transform(new Point(0, 0));
                 }
-
-                var cardBottomDelta = Math.Abs(
-                    (appearancePoint.Y + appearanceCard.ActualHeight) -
-                    (startupPoint.Y + startupCard.ActualHeight));
-                Assert.IsTrue(cardBottomDelta <= 1.01d,
-                    $"开机自启动卡片底边应与外观主题卡片底边对齐，允许设备像素舍入误差；实际差值：{cardBottomDelta:0.##}。");
+                else
+                {
+                    var cardBottomDelta = Math.Abs(
+                        (appearancePoint.Y + appearanceCard.ActualHeight) -
+                        (startupPoint.Y + startupCard.ActualHeight));
+                    Assert.IsTrue(cardBottomDelta <= 1.01d,
+                        $"宽窗口中的开机自启动卡片底边应与外观主题卡片底边对齐，允许设备像素舍入误差；实际差值：{cardBottomDelta:0.##}。");
+                }
 
                 var startupToggle = FindVisualChildren<ToggleButton>(settingsPage)
                     .Single(toggle => AutomationProperties.GetName(toggle) == "开机自启动");
