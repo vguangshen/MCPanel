@@ -8,7 +8,10 @@ before testing uninstall on a shared server.
 | Windows | IIS path used by MCPanel | Prerequisite |
 | --- | --- | --- |
 | Server 2008 SP2 (IIS 7.0), Server 2008 R2 SP1 (IIS 7.5), Windows 7 SP1 | `pkgmgr /iu` and `/uu` for IIS and WAS; register ASP.NET 4 with `aspnet_regiis -ir` after installation | .NET Framework 4.6.2, Windows PowerShell 2.0 or later, compatible URL Rewrite MSI; graphical Windows installation. Server 2008 SP2 Server Core cannot run .NET Framework 4.6.2. Windows PowerShell 2.0 may need installation on Server 2008 SP2. |
-| Server 2012 / 2012 R2 and newer, Windows 8 / 8.1 / 10 / 11 | DISM PowerShell optional features for installation; `Uninstall-WindowsFeature Web-Server` on Server, DISM PowerShell on desktop | Required Windows feature payload and compatible URL Rewrite MSI; IIS Manager needs its management feature. |
+| Server 2012 / 2012 R2 and newer, Windows 8.1 / 10 / 11 | DISM PowerShell optional features for installation; `Uninstall-WindowsFeature Web-Server` on Server, DISM PowerShell on desktop | Required Windows feature payload and compatible URL Rewrite MSI; IIS Manager needs its management feature. |
+
+Windows 8.0 and Server 2008 before SP2 are outside the .NET Framework 4.6.2
+operating-system requirements for this application. Server 2008 R2 needs SP1.
 
 `IIS-ASPNET45` is a Windows component only on Windows 8 / Server 2012 and
 newer. The older IIS 7 path registers the installed .NET Framework 4 runtime
