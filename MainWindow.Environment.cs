@@ -316,7 +316,7 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
 
     private static string BuildEnvironmentUninstallConfirmation(EnvironmentItem item) => item.Kind switch
     {
-        EnvironmentKind.Iis => "确定卸载 IIS 吗？\n会禁用 MCPanel 使用的 IIS Windows 功能并卸载 URL Rewrite；Windows 可能要求重启后继续。",
+        EnvironmentKind.Iis => "确定卸载这台计算机的 IIS 吗？\n会卸载整个 Web Server 角色、相关 WAS 组件和 URL Rewrite；现有 IIS 站点及依赖 WAS 的应用也会受到影响。请先备份 IIS 配置和站点。Windows 可能要求重启后继续。",
         EnvironmentKind.Nginx => "确定卸载 Nginx 吗？\n会停止并删除 MCPanel 的 Nginx Windows 服务，然后删除 Nginx 组件目录和代理配置。",
         EnvironmentKind.MySql => "确定卸载 MySQL 吗？\n会停止并删除 MySQL80 服务，以及 MCPanel 的 MySQL 程序、数据和配置目录。",
         EnvironmentKind.SqlServer => "确定卸载 MCPanel 使用的 SQL Server 默认实例吗？\n会停止并移除 MSSQLSERVER 默认实例，以及 MCPanel 的数据、安装缓存和防火墙规则；其他 SQL Server 实例、共享 ODBC/OLE DB 驱动和全局程序目录会保留。",
@@ -911,4 +911,3 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
         }
     }
 }
-

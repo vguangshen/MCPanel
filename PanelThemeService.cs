@@ -9,9 +9,9 @@ internal static class PanelThemeService
     private static readonly IReadOnlyDictionary<string, (string Light, string Dark)> Palette =
         new Dictionary<string, (string Light, string Dark)>(StringComparer.Ordinal)
         {
-            ["PrimaryBrush"] = ("#1A73E8", "#4C8DFF"),
-            ["AccentBrush"] = ("#1A73E8", "#4C8DFF"),
-            ["PrimaryDarkBrush"] = ("#1765CC", "#6EA3FF"),
+            ["PrimaryBrush"] = ("#1A73E8", "#2B64B2"),
+            ["AccentBrush"] = ("#1A73E8", "#2B64B2"),
+            ["PrimaryDarkBrush"] = ("#1765CC", "#3570C4"),
             ["SurfaceBrush"] = ("#FFFFFF", "#1B2027"),
             ["PageBrush"] = ("#F5F7FB", "#101419"),
             ["SurfaceAltBrush"] = ("#F8FAFD", "#242B33"),
@@ -46,8 +46,8 @@ internal static class PanelThemeService
             ["DialogLineBrush"] = ("#DADCE0", "#3A4655"),
             ["DialogTextBrush"] = ("#202124", "#F3F6FA"),
             ["DialogMutedBrush"] = ("#5F6368", "#B7C1CF"),
-            ["DialogPrimaryBrush"] = ("#1A73E8", "#6EA3FF"),
-            ["DialogPrimaryHoverBrush"] = ("#1765CC", "#8AB5FF"),
+            ["DialogPrimaryBrush"] = ("#1A73E8", "#2B64B2"),
+            ["DialogPrimaryHoverBrush"] = ("#1765CC", "#3570C4"),
             ["DialogTonalBrush"] = ("#E8F0FE", "#263A5A"),
             ["DialogTonalTextBrush"] = ("#174EA6", "#B8F2E6"),
             ["DialogDangerBrush"] = ("#D93025", "#FF8A80")

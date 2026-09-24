@@ -58,9 +58,9 @@
     <Style x:Key="DangerDialogButton" TargetType="Button" BasedOn="{StaticResource DialogButton}">
         <Setter Property="MinWidth" Value="118" />
         <Setter Property="Margin" Value="0" />
-        <Setter Property="Foreground" Value="#C42B1C" />
-        <Setter Property="Background" Value="#14C42B1C" />
-        <Setter Property="BorderBrush" Value="#35C42B1C" />
+        <Setter Property="Foreground" Value="{DynamicResource DangerTextBrush}" />
+        <Setter Property="Background" Value="{DynamicResource DangerBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource DialogDangerBrush}" />
     </Style>
 
     <Style x:Key="GhostDialogButton" TargetType="Button" BasedOn="{StaticResource DialogButton}">

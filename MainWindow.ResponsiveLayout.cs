@@ -12,7 +12,7 @@ public partial class MainWindow
 {
     private const double ResponsiveLayoutEpsilon = 0.5d;
     private const double CompactShellBreakpoint = 1180d;
-    private const double CompactSettingsBreakpoint = 900d;
+    private const double CompactSettingsBreakpoint = 1180d;
     private const double CompactShellHeightBreakpoint = 760d;
     private const double StandardNavWidth = 226d;
     private const double CompactNavWidth = 190d;
@@ -126,7 +126,8 @@ public partial class MainWindow
             var compactWidth = responsiveWidth < CompactShellBreakpoint;
             var compactShell = compactWidth || responsiveHeight < CompactShellHeightBreakpoint;
             ApplyShellDensity(compactShell, compactWidth);
-            ApplyProductsHeaderDensity(compactWidth);
+            ApplyProductsHeaderDensity(responsiveWidth);
+            ApplySitesHeaderDensity(responsiveWidth);
             ApplyResponsivePageDensity(responsiveWidth, responsiveHeight);
             ApplySettingsResponsiveColumns(responsiveWidth < CompactSettingsBreakpoint);
         }
@@ -229,15 +230,31 @@ public partial class MainWindow
         }
     }
 
-    private void ApplyProductsHeaderDensity(bool compact)
+    private void ApplyProductsHeaderDensity(double width)
     {
         if (ProductsHeader.Child is not Grid headerGrid || headerGrid.ColumnDefinitions.Count < 3)
         {
             return;
         }
 
-        headerGrid.ColumnDefinitions[1].Width = new GridLength(compact ? 300d : 420d);
+        var stacked = width < 950d;
+        headerGrid.ColumnDefinitions[1].Width = new GridLength(stacked ? 0d : width < CompactShellBreakpoint ? 300d : 420d);
         headerGrid.ColumnDefinitions[2].Width = new GridLength(132d);
+        Grid.SetRow(ProductsSearchHost, stacked ? 1 : 0);
+        Grid.SetColumn(ProductsSearchHost, stacked ? 0 : 1);
+        Grid.SetColumnSpan(ProductsSearchHost, stacked ? 3 : 1);
+        ProductsSearchHost.Margin = stacked ? new Thickness(0d, 12d, 0d, 0d) : new Thickness(18d, 0d, 0d, 0d);
+        ProductsHeader.Padding = stacked ? new Thickness(16d, 12d, 16d, 12d) : new Thickness(20d, 16d, 20d, 16d);
+    }
+
+    private void ApplySitesHeaderDensity(double width)
+    {
+        var stacked = width < 1000d;
+        SitesHeaderGrid.ColumnDefinitions[1].Width = new GridLength(stacked ? 0d : 320d);
+        Grid.SetRow(WebsiteSearchHost, stacked ? 1 : 0);
+        Grid.SetColumn(WebsiteSearchHost, stacked ? 0 : 1);
+        Grid.SetColumnSpan(WebsiteSearchHost, stacked ? 3 : 1);
+        WebsiteSearchHost.Margin = stacked ? new Thickness(0d, 12d, 0d, 0d) : new Thickness(18d, 0d, 0d, 0d);
     }
 
     private void ApplySettingsResponsiveColumns(bool singleColumn)

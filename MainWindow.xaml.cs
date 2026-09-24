@@ -556,6 +556,11 @@ public partial class MainWindow : Window
             AccountApiPageControl.Deactivate();
         }
 
+        if (page == "AiAnalysis")
+        {
+            AiAnalysisPageControl.Activate();
+        }
+
         if (page == "Home")
         {
             _model.RefreshSystemState();

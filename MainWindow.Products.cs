@@ -34,6 +34,17 @@ public partial class MainWindow
         _model.WebsiteSearchKeyword = string.Empty;
         WebsiteSearchBox.Focus();
     }
+    private void ClearWebsiteFilters_Click(object sender, RoutedEventArgs e)
+    {
+        _model.ClearWebsiteFilters();
+        WebsiteSearchBox.Focus();
+    }
+    private void ClearProductFilters_Click(object sender, RoutedEventArgs e)
+    {
+        SearchBox.Clear();
+        _model.SelectProductCategory("全部");
+        SearchBox.Focus();
+    }
 
     private void WebsiteSearch_KeyDown(object sender, KeyEventArgs e)
     {
@@ -73,17 +84,19 @@ public partial class MainWindow
             var dialog = new PlatformBindingDialog(java, existing) { Owner = this };
             dialog.BindOperation = async (definition, token) =>
             {
-                await Task.Run(() => new ManualPlatformStore().Save(definition), token);
-                selectedProduct = definition.ToProduct();
-                selectedProduct.IsBusy = true;
-                if (existing is not null && definition.Path.Equals(existing.Path, StringComparison.OrdinalIgnoreCase) &&
-                    definition.JavaDocBase == existing.JavaDocBase && definition.Architecture == existing.Architecture &&
-                    definition.DetectedArchitecture == existing.DetectedArchitecture && definition.IisRuntime == existing.IisRuntime)
-                    return "平台名称已保存。";
-                var result = await Task.Run(async () => java
-                    ? await _deploymentService.RepairTomcatBindingAsync(selectedProduct, definition.Path, token)
-                    : await _deploymentService.RepairIisBindingAsync(selectedProduct, definition.Path, token), token);
-                return result.Message;
+                return await new ManualPlatformStore().ApplyWithRollbackAsync(definition, async () =>
+                {
+                    selectedProduct = definition.ToProduct();
+                    selectedProduct.IsBusy = true;
+                    if (existing is not null && definition.Path.Equals(existing.Path, StringComparison.OrdinalIgnoreCase) &&
+                        definition.JavaDocBase == existing.JavaDocBase && definition.Architecture == existing.Architecture &&
+                        definition.DetectedArchitecture == existing.DetectedArchitecture && definition.IisRuntime == existing.IisRuntime)
+                        return "平台名称已保存。";
+                    var result = await Task.Run(async () => java
+                        ? await _deploymentService.RepairTomcatBindingAsync(selectedProduct, definition.Path, token)
+                        : await _deploymentService.RepairIisBindingAsync(selectedProduct, definition.Path, token), token);
+                    return result.Message;
+                }, token);
             };
             PanelThemeService.Apply(_isDarkThemeActive, dialog.Resources);
             if (dialog.ShowDialog() != true) return;
@@ -798,6 +811,8 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
 
     private async void RefreshProducts_Click(object sender, RoutedEventArgs e)
     {
+        if (!RefreshProductsButton.IsEnabled) return;
+        RefreshProductsButton.IsEnabled = false;
         try
         {
             _model.ProductStoreStatus = "正在连接 regservice.itmc.cn 获取产品列表...";
@@ -815,9 +830,11 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
         {
             _model.ProductStoreStatus = $"在线刷新失败：{ex.Message}。当前显示旧包内置产品清单。";
         }
+        finally
+        {
+            RefreshProductsButton.IsEnabled = true;
+        }
     }
 }
-
-
 
 

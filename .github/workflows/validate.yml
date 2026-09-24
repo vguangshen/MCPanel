@@ -1,0 +1,62 @@
+name: Validate MCPanel
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-build-and-iis-scripts:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Ensure SharpSvn VC++ 2010 x64 runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # The vendored SharpSvn 1.8009.3299.43 x64 binary and SharpPlink
+          # import MSVCR100.dll. Install only Microsoft's signed x64 VC++ 2010 SP1 runtime.
+          $runtime = Join-Path $env:WINDIR 'System32\MSVCR100.dll'
+          if (Test-Path -LiteralPath $runtime) {
+            $version = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($runtime).FileVersion
+            Write-Host "SharpSvn runtime already available: $runtime ($version)."
+            exit 0
+          }
+
+          $url = 'https://download.microsoft.com/download/1/6/5/165255E7-1014-4D0A-B094-B6A430A6BFFC/vcredist_x64.exe'
+          $installer = Join-Path $env:RUNNER_TEMP 'vcredist2010-sp1-x64.exe'
+          Write-Host 'MSVCR100.dll is missing; downloading Microsoft VC++ 2010 SP1 x64 redistributable.'
+          Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+
+          $signature = Get-AuthenticodeSignature -FilePath $installer
+          if ($signature.Status -ne 'Valid' -or
+              $null -eq $signature.SignerCertificate -or
+              $signature.SignerCertificate.Subject -notmatch 'Microsoft Corporation') {
+            throw 'Downloaded VC++ 2010 x64 installer did not have a valid Microsoft Authenticode signature.'
+          }
+          Write-Host "Verified Microsoft signature: $($signature.SignerCertificate.Subject)"
+
+          $process = Start-Process -FilePath $installer -ArgumentList '/q', '/norestart' -Wait -PassThru
+          if ($process.ExitCode -notin @(0, 1638, 3010)) {
+            throw "VC++ 2010 x64 installer failed with exit code $($process.ExitCode)."
+          }
+          if (-not (Test-Path -LiteralPath $runtime)) {
+            throw "VC++ 2010 x64 installation completed but the required runtime is still missing: $runtime"
+          }
+          $version = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($runtime).FileVersion
+          Write-Host "SharpSvn runtime installed: $runtime ($version)."
+
+      - name: Build application and tests
+        shell: pwsh
+        run: dotnet build MCPanel.Tests/MCPanel.Tests.csproj --configuration Release --framework net462
+
+      - name: Run full reliability suite
+        shell: pwsh
+        run: |
+          dotnet test MCPanel.Tests/MCPanel.Tests.csproj --configuration Release --framework net462 --no-build

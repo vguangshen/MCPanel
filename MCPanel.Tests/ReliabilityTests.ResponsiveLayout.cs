@@ -14,6 +14,49 @@ namespace MCPanel.Tests;
 public sealed partial class ReliabilityTests
 {
     [TestMethod]
+    public void NarrowPagesReflowWithoutHorizontalOverflowAndRestoreColumns()
+    {
+        RunWebsiteUiTest(() =>
+        {
+            var window = CreateUiTestWindow();
+            try
+            {
+                window.Show();
+                var model = (MainViewModel)window.DataContext;
+                var ai = (AiAnalysisPage)window.FindName("AiAnalysisPageControl");
+                foreach (var width in new[] { 760d, 600d, 1280d })
+                {
+                    window.Width = width;
+                    window.Height = 500d;
+                    window.UpdateLayout();
+                    window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+                    window.UpdateLayout();
+                    var expectedColumns = width == 600d ? 1 : width == 760d ? 2 : 3;
+                    Assert.AreEqual(expectedColumns, model.EnvironmentColumnCount);
+                    Assert.AreEqual(expectedColumns, model.HomeServiceColumnCount);
+                    Assert.IsTrue(model.VisibleProductRows.All(row =>
+                        expectedColumns >= 2 || row.SecondColumnWidth.Value == 0d));
+
+                    var siteSearch = (FrameworkElement)window.FindName("WebsiteSearchHost");
+                    Assert.AreEqual(width < 1000d ? 1 : 0, Grid.GetRow(siteSearch));
+                    var productSearch = (FrameworkElement)window.FindName("ProductsSearchHost");
+                    Assert.AreEqual(width < 950d ? 1 : 0, Grid.GetRow(productSearch));
+
+                    ai.Visibility = Visibility.Visible;
+                    window.UpdateLayout();
+                    var aiScroll = (ScrollViewer)ai.FindName("AiPageScroll");
+                    var aiColumns = (Grid)ai.FindName("AiContentGrid");
+                    Assert.IsTrue(aiScroll.ExtentWidth <= aiScroll.ViewportWidth + 2d,
+                        $"{width} DIP 的 AI 页面出现横向溢出。");
+                    Assert.AreEqual(width < 1000d ? 0d : 1.08d, aiColumns.ColumnDefinitions[1].Width.Value, 0.1d);
+                    ai.Visibility = Visibility.Collapsed;
+                }
+            }
+            finally { window.Close(); }
+        });
+    }
+
+    [TestMethod]
     public void AccountAndSettingsReflowAndRecoverAcrossRepeatedResize()
     {
         Exception? failure = null;
@@ -218,7 +261,7 @@ public sealed partial class ReliabilityTests
                 window.UpdateLayout();
 
                 var environmentPage = (Grid)window.FindName("EnvironmentPage");
-                var environmentItems = environmentPage.Children.OfType<ItemsControl>().Single();
+                var environmentItems = (ItemsControl)window.FindName("EnvironmentItemsControl");
                 Assert.IsTrue(environmentPage.ActualWidth >= 880d,
                     $"图标导航后环境页应获得足够横向空间；实际 {environmentPage.ActualWidth:N1}。");
                 Assert.AreEqual(6, environmentItems.Items.Count);

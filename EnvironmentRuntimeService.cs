@@ -427,7 +427,7 @@ public sealed class EnvironmentRuntimeService
                 await RunSqlServerServiceActionAsync("start", cancellationToken);
                 return $"SQL Server 服务已启动。{FormatSqlServerConnectionText()}";
             case EnvironmentKind.Iis:
-                await RunElevatedPowerShellAsync("& (Join-Path $env:windir 'System32\\iisreset.exe') /START", cancellationToken);
+                await RunElevatedPowerShellAsync(BuildIisServiceActionScript("START"), cancellationToken);
                 return "IIS 已启动。";
             default:
                 throw new NotSupportedException("该环境不支持启动操作。");
@@ -481,7 +481,7 @@ public sealed class EnvironmentRuntimeService
                 await RunSqlServerServiceActionAsync("stop", cancellationToken);
                 return "SQL Server 服务已停止。";
             case EnvironmentKind.Iis:
-                await RunElevatedPowerShellAsync("& (Join-Path $env:windir 'System32\\iisreset.exe') /STOP", cancellationToken);
+                await RunElevatedPowerShellAsync(BuildIisServiceActionScript("STOP"), cancellationToken);
                 return "IIS 已停止。";
             default:
                 throw new NotSupportedException("该环境不支持停止操作。");
@@ -493,7 +493,7 @@ public sealed class EnvironmentRuntimeService
     {
         if (kind == EnvironmentKind.Iis)
         {
-            await RunElevatedPowerShellAsync("& (Join-Path $env:windir 'System32\\iisreset.exe') /RESTART", cancellationToken);
+            await RunElevatedPowerShellAsync(BuildIisServiceActionScript("RESTART"), cancellationToken);
             return "IIS 已重启。";
         }
 
@@ -993,32 +993,14 @@ public sealed class EnvironmentRuntimeService
         {
             await FileCompat.WriteAllTextAsync(
                 script,
-                BuildIisUninstallScript(Path.GetFileName(log)),
+                BuildIisUninstallScript(Path.GetFileName(log), File.Exists(IisPendingUninstallMarker)),
                 new UTF8Encoding(true),
                 cancellationToken);
-            var restartRequired = false;
-            try
-            {
-                var exitCode = await RunElevatedPowerShellFileAsync(script, cancellationToken, log);
-                restartRequired = exitCode == 3010;
-            }
-            catch
-            {
-                // Some Windows builds finish the CBS transaction successfully but the
-                // PowerShell wrapper still exits non-zero while the reboot is pending.
-                // Treat that state as resumable instead of reporting a hard uninstall failure.
-                restartRequired = IsWindowsRestartPending();
-                if (restartRequired)
-                {
-                    TryDeleteFile(IisUninstalledMarker);
-                    WriteIisUninstallContinuationMarker();
-                    return IisUninstallContinuationMessage;
-                }
-
-                throw;
-            }
-
-            restartRequired |= IsWindowsRestartPending();
+            // A Windows Update reboot flag can be unrelated to this uninstall. A
+            // failed script must remain a failure; only its explicit 3010 requests
+            // the IIS continuation flow.
+            var exitCode = await RunElevatedPowerShellFileAsync(script, cancellationToken, log);
+            var restartRequired = exitCode == 3010;
             if (restartRequired)
             {
                 TryDeleteFile(IisUninstalledMarker);
@@ -1056,36 +1038,7 @@ public sealed class EnvironmentRuntimeService
             new UTF8Encoding(false));
     }
 
-    private static bool IsWindowsRestartPending()
-    {
-        try
-        {
-            using var cbs = Registry.LocalMachine.OpenSubKey(
-                @"SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending");
-            if (cbs is not null)
-            {
-                return true;
-            }
-
-            using var windowsUpdate = Registry.LocalMachine.OpenSubKey(
-                @"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired");
-            if (windowsUpdate is not null)
-            {
-                return true;
-            }
-
-            // PendingFileRenameOperations can contain unrelated application updates
-            // (for example browser temp files), so it is not evidence that IIS CBS
-            // servicing needs a reboot.
-            return false;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    internal static string BuildIisUninstallScript(string logFileName = "uninstall-iis.log")
+    internal static string BuildIisUninstallScript(string logFileName = "uninstall-iis.log", bool isContinuation = false)
     {
         var storeDataRoot = EscapePowerShellPath(StoreDataRoot);
         var escapedLogFileName = EscapePowerShellPath(logFileName);
@@ -1143,8 +1096,11 @@ public sealed class EnvironmentRuntimeService
             $workRoot = Join-Path '{{storeDataRoot}}' 'Work'
             New-Item -ItemType Directory -Path $workRoot -Force | Out-Null
             $log = Join-Path $workRoot '{{escapedLogFileName}}'
+            $osVersion = [Environment]::OSVersion.Version
+            $legacyIis = $osVersion.Major -eq 6 -and $osVersion.Minor -lt 2
+            $continuingUninstall = ${{(isContinuation ? "true" : "false")}}
             Remove-Item -LiteralPath $log -Force -ErrorAction SilentlyContinue
-            Start-Transcript -Path $log -Force | Out-Null
+            Start-Transcript -Path $log | Out-Null
 
             function Invoke-Step([string]$name, [scriptblock]$body) {
                 Write-Output ''
@@ -1154,21 +1110,22 @@ public sealed class EnvironmentRuntimeService
 
             try {
                 Invoke-Step 'Stop IIS services' {
-                    $iisreset = Join-Path $env:windir 'System32\iisreset.exe'
-                    if (Test-Path -LiteralPath $iisreset) {
-                        & $iisreset /stop 2>&1 | ForEach-Object { Write-Output $_ }
+                    $net = Join-Path $env:windir 'System32\net.exe'
+                    if (!(Test-Path -LiteralPath $net)) { throw '未找到 Windows 服务管理工具 net.exe。' }
+                    $was = Get-Service -Name WAS -ErrorAction SilentlyContinue
+                    $w3svc = Get-Service -Name W3SVC -ErrorAction SilentlyContinue
+                    if ($was -and $was.Status -ne 'Stopped') {
+                        & $net stop WAS /y
+                        if ($LASTEXITCODE -ne 0) { throw ('停止 WAS 失败，退出码：' + $LASTEXITCODE) }
                     }
-                    else {
-                        Write-Output '未找到 iisreset.exe，跳过 iisreset，继续停止 IIS 服务。'
+                    elseif ($w3svc -and $w3svc.Status -ne 'Stopped') {
+                        & $net stop W3SVC
+                        if ($LASTEXITCODE -ne 0) { throw ('停止 W3SVC 失败，退出码：' + $LASTEXITCODE) }
                     }
-                    foreach ($service in @('W3SVC', 'WAS', 'AppHostSvc')) {
-                        $svc = Get-Service -Name $service -ErrorAction SilentlyContinue
-                        if ($svc -and $svc.Status -ne 'Stopped') {
-                            Stop-Service -Name $service -Force -ErrorAction SilentlyContinue
-                        }
-                    }
+                    if ($w3svc) { $w3svc.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30)) }
                 }
 
+                $script:restartNeeded = $false
                 Invoke-Step 'Remove URL Rewrite' {
                     $roots = @(
                         'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
@@ -1181,20 +1138,31 @@ public sealed class EnvironmentRuntimeService
                             if ($item.DisplayName -and $item.DisplayName -match 'URL Rewrite') {
                                 if ($item.PSChildName -match '^\{.*\}$') {
                                     $process = Start-Process msiexec.exe -ArgumentList @('/x', $item.PSChildName, '/qn', '/norestart') -Wait -PassThru -WindowStyle Hidden
-                                    if ($process.ExitCode -notin @(0, 1605, 1614, 3010)) {
+                                    if (@(0, 1605, 1614, 3010) -notcontains $process.ExitCode) {
                                         throw ('URL Rewrite 卸载失败，退出码：' + $process.ExitCode)
                                     }
+                                    if ($process.ExitCode -eq 3010) { $script:restartNeeded = $true }
                                 }
                             }
                         }
                     }
                 }
 
-                $script:restartNeeded = $false
-                if (Get-Command Uninstall-WindowsFeature -ErrorAction SilentlyContinue) {
+                if ($legacyIis) {
+                    Invoke-Step 'Remove IIS 7 role with pkgmgr' {
+                        $pkgmgr = Join-Path $env:windir 'System32\pkgmgr.exe'
+                        if (!(Test-Path -LiteralPath $pkgmgr)) { throw '未找到 Windows Server 2008 的 pkgmgr.exe。' }
+                        if (Get-Service W3SVC -ErrorAction SilentlyContinue) {
+                            $result = Start-Process -FilePath $pkgmgr -ArgumentList '/uu:IIS-WebServerRole;WAS-WindowsActivationService;WAS-ProcessModel' -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop
+                            if ($result.ExitCode -eq 3010) { $script:restartNeeded = $true }
+                            elseif ($result.ExitCode -ne 0) { throw ('IIS 7 卸载失败，pkgmgr 退出码：' + $result.ExitCode) }
+                        }
+                    }
+                }
+                elseif (Get-Command Uninstall-WindowsFeature -ErrorAction SilentlyContinue) {
                     Invoke-Step 'Remove Windows Server IIS role' {
                         $result = Uninstall-WindowsFeature -Name Web-Server -IncludeManagementTools -Restart:$false
-                        $script:restartNeeded = [bool]$result.RestartNeeded
+                        $script:restartNeeded = $script:restartNeeded -or ([string]$result.RestartNeeded -match '^(Yes|True)$')
                         Write-Output ('Server role success: ' + $result.Success)
                         Write-Output ('Server role restart needed: ' + $result.RestartNeeded)
                         $role = Get-WindowsFeature Web-Server
@@ -1215,16 +1183,26 @@ public sealed class EnvironmentRuntimeService
                             if ($state -and $state.State -eq 'Enabled') {
                                 Write-Output ('Disabling ' + $feature)
                                 $result = Disable-WindowsOptionalFeature -Online -FeatureName $feature -NoRestart
-                                if ($result.RestartNeeded) { $script:restartNeeded = $true }
+                                if ([string]$result.RestartNeeded -match '^(Yes|True)$') { $script:restartNeeded = $true }
                             }
                         }
                     }
                 }
 
                 Invoke-Step 'Verify IIS removal' {
-                    if (Get-Command Get-WindowsFeature -ErrorAction SilentlyContinue) {
+                    if ($legacyIis) {
+                        if (Get-Service W3SVC -ErrorAction SilentlyContinue) {
+                            if ($continuingUninstall -and !$script:restartNeeded) {
+                                throw '重启后 IIS 服务仍存在；请检查 Windows 组件安装日志，避免重复提示卸载完成。'
+                            }
+                            $script:restartNeeded = $true
+                        }
+                    }
+                    elseif (Get-Command Get-WindowsFeature -ErrorAction SilentlyContinue) {
                         if ((Get-WindowsFeature Web-Server).Installed) {
-                            throw 'IIS 角色仍处于安装状态。'
+                            if (!$script:restartNeeded -or $continuingUninstall) {
+                                throw 'IIS 角色仍处于安装状态。'
+                            }
                         }
                     }
                     else {
@@ -1238,9 +1216,6 @@ public sealed class EnvironmentRuntimeService
                             throw 'IIS-WebServerRole 仍处于启用状态。'
                         }
                     }
-                    $cbsRebootPending = Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending'
-                    $wuRebootPending = Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired'
-                    if ($cbsRebootPending -or $wuRebootPending) { $script:restartNeeded = $true }
                     Write-Output ('Restart needed: ' + $script:restartNeeded)
                 }
             }
@@ -1529,12 +1504,18 @@ public sealed class EnvironmentRuntimeService
             return new EnvironmentRuntimeState(false, false, IisUninstallContinuationMessage, RuntimeStatusKind.Unknown);
         }
 
-        if (File.Exists(IisUninstalledMarker))
+        if (EnvironmentInstaller.HasIisInstallContinuation)
+        {
+            return new EnvironmentRuntimeState(false, false, EnvironmentInstaller.IisInstallContinuationMessage, RuntimeStatusKind.Unknown);
+        }
+
+        var serviceExists = ServiceExists("W3SVC");
+        if (File.Exists(IisUninstalledMarker) && !serviceExists)
         {
             return new EnvironmentRuntimeState(false, false, "IIS 已卸载。", RuntimeStatusKind.NotInstalled);
         }
 
-        return ServiceExists("W3SVC") ? Installed(ServiceStatus("W3SVC"), "IIS 已安装，可管理 Default Web Site。") : NotInstalled();
+        return serviceExists ? Installed(ServiceStatus("W3SVC"), "IIS 已安装，可管理 Default Web Site。") : NotInstalled();
     }
 
     private static EnvironmentRuntimeState GetMySqlState(ComponentLocator locator)
@@ -2916,6 +2897,37 @@ public sealed class EnvironmentRuntimeService
         }
     }
 
+    internal static string BuildIisServiceActionScript(string action)
+    {
+        if (action is not ("START" or "STOP" or "RESTART"))
+            throw new ArgumentOutOfRangeException(nameof(action));
+
+        var expected = action == "STOP" ? "Stopped" : "Running";
+        var command = action switch
+        {
+            "START" => @"if ($service.Status -ne 'Running') {
+    & $net start W3SVC
+    if ($LASTEXITCODE -ne 0) { throw ('IIS 启动失败，退出码：' + $LASTEXITCODE) }
+}",
+            "STOP" => @"if ($service.Status -ne 'Stopped') {
+    & $net stop W3SVC
+    if ($LASTEXITCODE -ne 0) { throw ('IIS 停止失败，退出码：' + $LASTEXITCODE) }
+}",
+            _ => @"& $net stop W3SVC
+if ($LASTEXITCODE -ne 0) { throw ('IIS 重启时停止失败，退出码：' + $LASTEXITCODE) }
+$service.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30))
+& $net start W3SVC
+if ($LASTEXITCODE -ne 0) { throw ('IIS 重启时启动失败，退出码：' + $LASTEXITCODE) }"
+        };
+        return $@"$net = Join-Path $env:windir 'System32\net.exe'
+if (!(Test-Path -LiteralPath $net)) {{ throw '未找到 Windows 服务管理工具 net.exe。' }}
+$service = Get-Service -Name 'W3SVC' -ErrorAction Stop
+{command}
+$service = Get-Service -Name 'W3SVC' -ErrorAction Stop
+$service.WaitForStatus('{expected}', [TimeSpan]::FromSeconds(30))
+if ($service.Status -ne '{expected}') {{ throw 'W3SVC 未进入 {expected} 状态。' }}";
+    }
+
     private static async Task RunElevatedPowerShellAsync(string command, CancellationToken cancellationToken)
     {
         var workDirectory = ComponentPaths.WorkRoot;
@@ -2966,7 +2978,7 @@ public sealed class EnvironmentRuntimeService
             $ProgressPreference = 'SilentlyContinue'
             $log = '{{EscapePowerShellPath(logPath)}}'
             try {
-                Start-Transcript -Path $log -Append | Out-Null
+                Start-Transcript -Path $log | Out-Null
                 $global:LASTEXITCODE = 0
                 {{command}}
                 if ($LASTEXITCODE -ne $null -and $LASTEXITCODE -ne 0) {
@@ -3140,4 +3152,3 @@ public sealed class EnvironmentRuntimeService
     internal static bool HasIisUninstallContinuation => File.Exists(IisPendingUninstallMarker);
     internal static string IisUninstallContinuationMessage => "IIS 组件卸载已暂存，请重启设备后点击“继续卸载”。";
 }
-

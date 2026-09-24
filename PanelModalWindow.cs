@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 
@@ -62,8 +63,9 @@ public class PanelModalWindow : Window
         {
             Left = bounds.Left;
             Top = bounds.Top;
-            Width = Math.Max(StandardCardWidth + 24d, bounds.Width);
-            Height = Math.Max(StandardCardHeight + 24d, bounds.Height);
+            Width = bounds.Width;
+            Height = bounds.Height;
+            FitCardToOverlay();
             return;
         }
 
@@ -72,6 +74,25 @@ public class PanelModalWindow : Window
         Height = Math.Min(workArea.Height, Math.Max(StandardCardHeight + 40d, 700d));
         Left = workArea.Left + Math.Max(0d, (workArea.Width - Width) / 2d);
         Top = workArea.Top + Math.Max(0d, (workArea.Height - Height) / 2d);
+        FitCardToOverlay();
+    }
+
+    private void FitCardToOverlay()
+    {
+        if (Content is not Border card) return;
+        card.MaxWidth = Math.Max(1d, Width - 24d);
+        card.MaxHeight = Math.Max(1d, Height - 24d);
+        if (card.Child is not Grid body) return;
+        if (Height < StandardCardHeight + 24d && body.Parent is Border)
+        {
+            card.Child = null;
+            card.Child = new System.Windows.Controls.ScrollViewer
+            {
+                Content = body,
+                VerticalScrollBarVisibility = System.Windows.Controls.ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = System.Windows.Controls.ScrollBarVisibility.Disabled
+            };
+        }
     }
 
     private static bool TryGetWindowBounds(Window window, out Rect bounds)

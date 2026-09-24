@@ -488,8 +488,9 @@ public sealed class EnvironmentItem(EnvironmentKind kind, string title, string o
         _statusKind = state.StatusKind;
         _iisUninstallRestartRequired = Kind == EnvironmentKind.Iis &&
             !state.IsInstalled && EnvironmentRuntimeService.HasIisUninstallContinuation;
-        _installRestartRequired = Kind == EnvironmentKind.SqlServer &&
-            !state.IsInstalled && EnvironmentInstaller.HasSqlServerInstallContinuation;
+        _installRestartRequired = !state.IsInstalled && (Kind == EnvironmentKind.SqlServer &&
+            EnvironmentInstaller.HasSqlServerInstallContinuation || Kind == EnvironmentKind.Iis &&
+            EnvironmentInstaller.HasIisInstallContinuation);
         IsInstalled = state.IsInstalled;
         IsRunning = state.IsRunning;
         Progress = state.IsInstalled ? 100 : 0;
@@ -498,8 +499,8 @@ public sealed class EnvironmentItem(EnvironmentKind kind, string title, string o
         ProgressStageText = "状态";
         DownloadSpeedText = string.Empty;
         StatusText = state.StatusText;
-        BadgeText = _iisUninstallRestartRequired ? "需重启" : RuntimeStatusVisuals.Text(state.StatusKind);
-        BadgeBrush = _iisUninstallRestartRequired ? Brushes.Goldenrod : RuntimeStatusVisuals.Brush(state.StatusKind);
+        BadgeText = _iisUninstallRestartRequired || _installRestartRequired ? "需重启" : RuntimeStatusVisuals.Text(state.StatusKind);
+        BadgeBrush = _iisUninstallRestartRequired || _installRestartRequired ? Brushes.Goldenrod : RuntimeStatusVisuals.Brush(state.StatusKind);
         RaiseStateProperties();
     }
 

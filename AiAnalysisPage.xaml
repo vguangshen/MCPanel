@@ -140,7 +140,8 @@
         </ResourceDictionary>
     </UserControl.Resources>
 
-    <Grid MinHeight="0"
+    <ScrollViewer x:Name="AiPageScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" SizeChanged="AiPageScroll_SizeChanged">
+    <Grid x:Name="AiPageLayout" MinHeight="0"
           Focusable="True"
           KeyboardNavigation.TabNavigation="Local"
           ClipToBounds="True">
@@ -159,10 +160,10 @@
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock Text="AI 日志分析" FontSize="24" FontWeight="SemiBold"
                                Foreground="{DynamicResource TextBrush}" />
-                    <TextBlock Text="采集真实组件日志，由已配置的大模型定位故障根因并生成可执行的修复步骤。"
+                    <TextBlock Text="采集真实组件日志，由已配置的大模型定位故障根因并生成可执行的修复步骤。" TextWrapping="Wrap"
                                FontSize="13" Margin="0,7,0,0"
                                Foreground="{DynamicResource MutedBrush}" />
-                    <TextBlock Text="模型配置读取自 MCPanel.exe.config，修改后重新开始分析即可生效。"
+                    <TextBlock Text="在程序目录的 MCPanel.exe.config 中填写 Ai.Endpoint、Ai.Model 和 Ai.ApiKey；保存后返回本页即可加载。" TextWrapping="Wrap"
                                FontSize="12" Margin="0,5,0,0"
                                Foreground="{DynamicResource MutedBrush}" />
                     <TextBlock Text="开始分析前请检查左侧脱敏后的日志预览；点击分析后，日志会发送到已配置的模型服务。"
@@ -181,13 +182,14 @@
             </Grid>
         </Border>
 
-        <Grid Grid.Row="1">
+        <Grid x:Name="AiContentGrid" Grid.Row="1">
+            <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="0.92*" />
                 <ColumnDefinition Width="1.08*" />
             </Grid.ColumnDefinitions>
 
-            <Grid Margin="0,0,7,0">
+            <Grid x:Name="AiLeftColumn" Margin="0,0,7,0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
@@ -206,10 +208,11 @@
                             <TextBlock Text="分析组件" FontSize="13" FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextBrush}" />
                             <ComboBox x:Name="TargetComboBox"
-                                      Margin="0,8,0,0"
-                                      Style="{StaticResource AiComboBox}"
-                                      ItemContainerStyle="{StaticResource AiComboBoxItem}"
-                                      SelectionChanged="TargetComboBox_SelectionChanged">
+                                       Margin="0,8,0,0"
+                                       Style="{StaticResource AiComboBox}"
+                                       ItemContainerStyle="{StaticResource AiComboBoxItem}"
+                                       IsEnabled="{Binding CanInteract}"
+                                       SelectionChanged="TargetComboBox_SelectionChanged">
                                 <ComboBoxItem Content="Tomcat" Tag="Tomcat" />
                                 <ComboBoxItem Content="IIS" Tag="Iis" />
                                 <ComboBoxItem Content="Nginx" Tag="Nginx" />
@@ -224,6 +227,7 @@
                                        Foreground="{DynamicResource TextBrush}" />
                             <TextBox x:Name="IssueBox" Height="64" Margin="0,8,0,0" Padding="10,8"
                                      AcceptsReturn="True" TextWrapping="Wrap"
+                                     IsEnabled="{Binding CanInteract}"
                                      VerticalScrollBarVisibility="Auto"
                                      Background="{DynamicResource InputBrush}"
                                      Foreground="{DynamicResource TextBrush}"
@@ -278,7 +282,7 @@
                 </Border>
             </Grid>
 
-            <Border Grid.Column="1" Style="{DynamicResource Card}" Padding="18,16" Margin="7,0,0,0">
+            <Border x:Name="AiResultCard" Grid.Column="1" Style="{DynamicResource Card}" Padding="18,16" Margin="7,0,0,0">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -318,4 +322,5 @@
             </Border>
         </Grid>
     </Grid>
+    </ScrollViewer>
 </UserControl>

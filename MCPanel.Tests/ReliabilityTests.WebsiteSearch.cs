@@ -41,6 +41,13 @@ public sealed partial class ReliabilityTests
                 Assert.AreEqual("找到 1 / 4 个网站", model.WebsiteSearchCountText);
                 model.WebsiteSearchKeyword = " ";
                 Assert.AreEqual(3, model.VisibleCustomWebsites.Cast<object>().Count());
+                model.WebsiteTypeFilter = 1;
+                Assert.AreEqual("找到 0 / 4 个网站", model.WebsiteSearchCountText);
+                Assert.AreEqual(Visibility.Visible, model.WebsiteNoResultsVisibility);
+                model.ClearWebsiteFilters();
+                Assert.AreEqual(0, model.WebsiteTypeFilter);
+                Assert.AreEqual(string.Empty, model.WebsiteSearchKeyword);
+                Assert.AreEqual(Visibility.Collapsed, model.WebsiteNoResultsVisibility);
                 Assert.AreEqual(1, model.InstalledProducts.Count);
                 Assert.AreSame(first, model.CustomWebsites[0]);
                 model.CustomWebsites.Clear();
@@ -210,4 +217,3 @@ public sealed partial class ReliabilityTests
         if (failure is not null) Assert.Fail(failure.ToString());
     }
 }
-

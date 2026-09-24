@@ -623,7 +623,13 @@
         <Setter Property="Margin" Value="0,0,8,8" />
     </Style>
 
-    <Style x:Key="EnvironmentTonalButton" TargetType="Button" BasedOn="{StaticResource EnvironmentPrimaryButton}">
+    <Style x:Key="EnvironmentTonalButton" TargetType="Button" BasedOn="{StaticResource WebsiteActionButton}">
+        <Setter Property="MinWidth" Value="82" />
+        <Setter Property="Width" Value="78" />
+        <Setter Property="Height" Value="30" />
+        <Setter Property="Padding" Value="8,0" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Margin" Value="0,0,8,8" />
         <Setter Property="Background" Value="{DynamicResource TonalBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource TonalTextBrush}" />
     </Style>

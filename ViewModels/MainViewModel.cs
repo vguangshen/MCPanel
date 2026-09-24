@@ -169,8 +169,13 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
     private int VisibleWebsiteCount => WebsiteView?.Cast<object>().Count() ?? 0;
-    public string WebsiteSearchCountText => string.IsNullOrWhiteSpace(WebsiteSearchKeyword)
+    public string WebsiteSearchCountText => string.IsNullOrWhiteSpace(WebsiteSearchKeyword) && WebsiteTypeFilter == 0
         ? InstalledProductCountText : $"找到 {VisibleWebsiteCount} / {InstalledProducts.Count + CustomWebsites.Count} 个网站";
+    public void ClearWebsiteFilters()
+    {
+        WebsiteSearchKeyword = string.Empty;
+        WebsiteTypeFilter = 0;
+    }
     public Visibility InstalledWebsiteGroupVisibility => VisibleInstalledWebsites.IsEmpty ? Visibility.Collapsed : Visibility.Visible;
     public Visibility CustomWebsiteGroupVisibility => VisibleCustomWebsites.IsEmpty ? Visibility.Collapsed : Visibility.Visible;
     public Visibility WebsiteNoResultsVisibility => VisibleWebsiteCount == 0 && InstalledProducts.Count + CustomWebsites.Count > 0
@@ -193,6 +198,21 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(WebsiteContentVisibility));
     }
     public ObservableCollection<ProductRow> VisibleProductRows { get; } = [];
+    private int _productColumnCount = 3;
+    public void SetProductColumnCount(int count)
+    {
+        count = Math.Max(1, Math.Min(3, count));
+        if (_productColumnCount == count) return;
+        _productColumnCount = count;
+        RebuildVisibleProductRows();
+    }
+    public int EnvironmentColumnCount { get => _environmentColumnCount; private set => SetProperty(ref _environmentColumnCount, value); }
+    private int _environmentColumnCount = 3;
+    public void SetEnvironmentColumnCount(int count) => EnvironmentColumnCount = Math.Max(1, Math.Min(3, count));
+    public int HomeServiceColumnCount { get => _homeServiceColumnCount; private set => SetProperty(ref _homeServiceColumnCount, value); }
+    private int _homeServiceColumnCount = 3;
+    public void SetHomeServiceColumnCount(int count) => HomeServiceColumnCount = Math.Max(1, Math.Min(3, count));
+    public Visibility ProductNoResultsVisibility => _visibleProductCount == 0 && Products.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     public ObservableCollection<ProductCategoryFilter> ProductCategories { get; } = [];
     public ObservableCollection<DriveItem> Drives { get; } = [];
     public InstallationProgressViewModel InstallationProgress { get; } = new();
@@ -300,13 +320,14 @@ public sealed partial class MainViewModel : ObservableObject
             .ToList();
 
         VisibleProductRows.Clear();
-        for (var index = 0; index < matches.Count; index += 3)
+        for (var index = 0; index < matches.Count; index += _productColumnCount)
         {
-            VisibleProductRows.Add(new ProductRow(matches.Skip(index).Take(3).ToArray()));
+            VisibleProductRows.Add(new ProductRow(matches.Skip(index).Take(_productColumnCount).ToArray(), _productColumnCount));
         }
 
         _visibleProductCount = matches.Count;
         OnPropertyChanged(nameof(ProductCountText));
+        OnPropertyChanged(nameof(ProductNoResultsVisibility));
     }
 
     private void RefreshProductCategories()
@@ -746,4 +767,3 @@ public sealed partial class MainViewModel : ObservableObject
         RefreshSystemState();
     }
 }
-

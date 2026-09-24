@@ -101,7 +101,9 @@ public partial class PlatformBindingDialog : PanelModalWindow
         catch (OperationCanceledException) { if (!_closed) StatusText.Text = "操作已取消，可修改后重试。"; }
         catch (Exception ex)
         {
-            if (!_closed) StatusText.Text = ex.GetBaseException().Message;
+            if (!_closed) StatusText.Text = ex is IOException && ex.InnerException is AggregateException
+                ? ex.Message
+                : ex.GetBaseException().Message;
             EnvironmentOperationDiagnostics.RecordFailure("平台绑定", name, ex);
         }
         finally
