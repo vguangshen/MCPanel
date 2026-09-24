@@ -524,6 +524,23 @@ public sealed partial class ReliabilityTests
                     "开机自启动卡片应排列在软件更新卡片下方。");
                 Assert.IsTrue(startupCard.ActualHeight > 82d,
                     "开机自启动卡片应在保留内容空间的基础上适当拉长。");
+                var appearanceColumn = (Grid)appearanceCard.Parent;
+                var startupColumn = (Grid)startupCard.Parent;
+                if (Grid.GetRow(appearanceColumn) != Grid.GetRow(startupColumn))
+                {
+                    Assert.AreEqual(Grid.GetColumn(appearanceColumn), Grid.GetColumn(startupColumn),
+                        "窄窗口中的设置卡片应排列在同一列。");
+                    Assert.IsTrue(startupPoint.Y > appearancePoint.Y + appearanceCard.ActualHeight,
+                        "窄窗口中的开机自启动卡片应排列在外观主题卡片下方。");
+
+                    window.Width = 1440d;
+                    window.UpdateLayout();
+                    window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+                    window.UpdateLayout();
+                    appearancePoint = appearanceCard.TransformToAncestor(settingsPage).Transform(new Point(0, 0));
+                    startupPoint = startupCard.TransformToAncestor(settingsPage).Transform(new Point(0, 0));
+                }
+
                 var cardBottomDelta = Math.Abs(
                     (appearancePoint.Y + appearanceCard.ActualHeight) -
                     (startupPoint.Y + startupCard.ActualHeight));
