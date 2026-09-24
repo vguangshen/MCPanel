@@ -1,0 +1,26 @@
+name: Validate MCPanel
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-build-and-iis-scripts:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build application and tests
+        shell: pwsh
+        run: dotnet build MCPanel.Tests/MCPanel.Tests.csproj --configuration Release --framework net462
+
+      - name: Verify IIS script generation and PowerShell bitness selection
+        shell: pwsh
+        run: |
+          dotnet test MCPanel.Tests/MCPanel.Tests.csproj --configuration Release --framework net462 --no-build --filter 'Name~IisInstaller|Name~IisUninstall|Name~NativePowerShell'

@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MCPanel.Tests;
@@ -52,16 +53,58 @@ public partial class ReliabilityTests
     }
 
     [TestMethod]
-    public void Iis138_UsesWindowsFeaturesWithoutAspnetRegiis_AndValidatesRewriteAndServices()
+    public void IisInstallerSelectsLegacyPkgmgrAndModernFeaturesAndValidatesServices()
     {
         var script = EnvironmentInstaller.BuildIisScript(@"C:\Temp\URLRewrite.msi");
+        StringAssert.Contains(script, "$legacyIis=$osVersion.Major -eq 6 -and $osVersion.Minor -lt 2");
+        StringAssert.Contains(script, "pkgmgr.exe");
+        StringAssert.Contains(script, "/iu:IIS-WebServerRole;IIS-WebServer;");
+        StringAssert.Contains(script, "aspnet_regiis.exe");
+        StringAssert.Contains(script, "& $aspnetRegiis -ir");
+        StringAssert.Contains(script, "$framework64=Join-Path $env:windir");
+        Assert.IsFalse(script.Contains("[Environment]::Is64BitOperatingSystem", StringComparison.Ordinal));
         StringAssert.Contains(script, "IIS-ASPNET45");
         StringAssert.Contains(script, "NetFx3");
         StringAssert.Contains(script, "RestartNeeded");
         StringAssert.Contains(script, "RewriteModule");
         StringAssert.Contains(script, "W3SVC");
         StringAssert.Contains(script, "WAS");
-        Assert.IsFalse(script.Contains("aspnet_regiis", StringComparison.OrdinalIgnoreCase));
+        Assert.IsTrue(script.IndexOf("  } else {", StringComparison.Ordinal) <
+            script.IndexOf("Enable-WindowsOptionalFeature", StringComparison.Ordinal),
+            "Server 2008 的 IIS 7 分支不得执行较新的可选功能 PowerShell 命令。");
+    }
+
+    [TestMethod]
+    public void IisUninstallAndServiceActionsCheckRealOutcomeOnLegacyWindows()
+    {
+        var uninstall = EnvironmentRuntimeService.BuildIisUninstallScript("uninstall-iis-test.log", isContinuation: true);
+        StringAssert.Contains(uninstall, "$continuingUninstall = $true");
+        StringAssert.Contains(uninstall, "/uu:IIS-WebServerRole;WAS-WindowsActivationService;WAS-ProcessModel");
+        StringAssert.Contains(uninstall, "if ($legacyIis)");
+        StringAssert.Contains(uninstall, "-notcontains $process.ExitCode");
+        Assert.IsFalse(uninstall.Contains(" -notin ", StringComparison.Ordinal));
+        Assert.IsFalse(uninstall.Contains("RebootPending", StringComparison.Ordinal));
+        StringAssert.Contains(uninstall, "if ($process.ExitCode -eq 3010) { $script:restartNeeded = $true }");
+        StringAssert.Contains(uninstall, "if (Get-Service W3SVC -ErrorAction SilentlyContinue)");
+        foreach (var action in new[] { "START", "STOP", "RESTART" })
+        {
+            var script = EnvironmentRuntimeService.BuildIisServiceActionScript(action);
+            StringAssert.Contains(script, "/" + action);
+            StringAssert.Contains(script, "$LASTEXITCODE -ne 0");
+            StringAssert.Contains(script, "$service.WaitForStatus(");
+        }
+    }
+
+    [TestMethod]
+    public void NativePowerShellUsesSysnativeFor32BitAppOn64BitWindows()
+    {
+        var root = @"C:\Windows";
+        Assert.AreEqual(Path.Combine(root, "Sysnative", "WindowsPowerShell", "v1.0", "powershell.exe"),
+            ProcessRunner.ResolveWindowsPowerShellPath(root, is64BitOs: true, is64BitProcess: false));
+        Assert.AreEqual(Path.Combine(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+            ProcessRunner.ResolveWindowsPowerShellPath(root, is64BitOs: true, is64BitProcess: true));
+        Assert.AreEqual(Path.Combine(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+            ProcessRunner.ResolveWindowsPowerShellPath(root, is64BitOs: false, is64BitProcess: false));
     }
 
     [TestMethod]

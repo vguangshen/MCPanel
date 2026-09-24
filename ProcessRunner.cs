@@ -70,12 +70,26 @@ internal static class ProcessRunner
         var fullScriptPath = Path.GetFullPath(scriptPath);
         var arguments = $"-NoProfile -ExecutionPolicy Bypass -File {Compat.QuoteCommandLineArgument(fullScriptPath)}";
         return Start(
-            "powershell.exe",
+            NativeWindowsPowerShellPath(),
             arguments,
             Path.GetDirectoryName(fullScriptPath),
             elevated,
             captureOutput);
     }
+
+    private static string NativeWindowsPowerShellPath() =>
+        ResolveWindowsPowerShellPath(
+            Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+            Environment.Is64BitOperatingSystem,
+            Environment.Is64BitProcess);
+
+    internal static string ResolveWindowsPowerShellPath(string windowsDirectory, bool is64BitOs, bool is64BitProcess) =>
+        Path.Combine(
+            windowsDirectory,
+            is64BitOs && !is64BitProcess ? "Sysnative" : "System32",
+            "WindowsPowerShell",
+            "v1.0",
+            "powershell.exe");
 
     public static Process StartFile(
         string fileName,
@@ -178,7 +192,7 @@ internal static class ProcessRunner
         bool captureOutput = false,
         TimeSpan? timeout = null) =>
         RunAsync(
-            "powershell.exe",
+            NativeWindowsPowerShellPath(),
             $"-NoProfile -ExecutionPolicy Bypass -File {Compat.QuoteCommandLineArgument(Path.GetFullPath(scriptPath))}",
             Path.GetDirectoryName(Path.GetFullPath(scriptPath)),
             elevated,

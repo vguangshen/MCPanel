@@ -904,6 +904,22 @@ public sealed class EnvironmentInstaller : IDisposable
             "IIS-ServerSideIncludes", "IIS-BasicAuthentication", "IIS-WindowsAuthentication", "IIS-ODBCLogging"
         };
         var legacyFeatures = new[] { "IIS-NetFxExtensibility", "IIS-ASPNET" };
+        // IIS 7/7.5 predates the DISM PowerShell module and has no IIS-ASPNET45
+        // feature. pkgmgr is the documented Windows Server 2008 feature installer.
+        var iis7Features = new[]
+        {
+            "IIS-WebServerRole", "IIS-WebServer", "IIS-CommonHttpFeatures", "IIS-StaticContent",
+            "IIS-DefaultDocument", "IIS-DirectoryBrowsing", "IIS-HttpErrors", "IIS-HttpRedirect",
+            "IIS-ApplicationDevelopment", "IIS-ASP", "IIS-CGI", "IIS-ISAPIExtensions",
+            "IIS-ISAPIFilter", "IIS-ServerSideIncludes", "IIS-Security", "IIS-RequestFiltering",
+            "IIS-URLAuthorization", "IIS-BasicAuthentication", "IIS-WindowsAuthentication",
+            "IIS-HealthAndDiagnostics", "IIS-HttpLogging", "IIS-RequestMonitor",
+            "IIS-HttpTracing", "IIS-ODBCLogging", "IIS-Performance",
+            "IIS-HttpCompressionStatic", "IIS-HttpCompressionDynamic", "IIS-WebServerManagementTools",
+            "IIS-ManagementConsole", "IIS-ManagementScriptingTools", "IIS-IIS6ManagementCompatibility",
+            "IIS-Metabase", "WAS-WindowsActivationService", "WAS-ProcessModel",
+            "WAS-NetFxEnvironment", "WAS-ConfigurationAPI"
+        };
         var log = Path.Combine(GetTempDirectory(), "install-iis.log");
         var restartMarker = IisInstallRestartMarkerPath;
         var sb = new StringBuilder();
@@ -912,14 +928,34 @@ public sealed class EnvironmentInstaller : IDisposable
         sb.AppendLine($"$restartMarker='{EscapePowerShellPath(restartMarker)}'");
         sb.AppendLine("$restartNeeded=$false");
         sb.AppendLine("Remove-Item -LiteralPath $restartMarker -Force -ErrorAction SilentlyContinue");
-        sb.AppendLine("Start-Transcript -Path $log -Append | Out-Null");
+        sb.AppendLine("Remove-Item -LiteralPath $log -Force -ErrorAction SilentlyContinue");
+        sb.AppendLine("Start-Transcript -Path $log | Out-Null");
         sb.AppendLine("function Test-RestartNeeded($result) { if ($null -eq $result -or $null -eq $result.RestartNeeded) { return $false }; $text=$result.RestartNeeded.ToString(); return $text -eq 'True' -or $text -eq 'Yes' }");
         sb.AppendLine("function Mark-RestartRequired($reason) { $dir=Split-Path $restartMarker -Parent; New-Item -ItemType Directory -Path $dir -Force | Out-Null; Set-Content -LiteralPath $restartMarker -Value $reason -Encoding UTF8; Write-Output $reason }");
         sb.AppendLine("try {");
+        sb.AppendLine("  $osVersion=[Environment]::OSVersion.Version");
+        sb.AppendLine("  $legacyIis=$osVersion.Major -eq 6 -and $osVersion.Minor -lt 2");
+        sb.AppendLine("  if ($legacyIis) {");
+        sb.AppendLine(@"    $pkgmgr=Join-Path $env:windir 'System32\pkgmgr.exe'");
+        sb.AppendLine("    if (!(Test-Path -LiteralPath $pkgmgr)) { throw 'Windows Server 2008 的 pkgmgr.exe 不存在，无法安装 IIS 7。' }");
+        sb.AppendLine($"    $pkgmgrArgs='/iu:{string.Join(";", iis7Features)}'");
+        sb.AppendLine("    $result=Start-Process -FilePath $pkgmgr -ArgumentList $pkgmgrArgs -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop");
+        sb.AppendLine("    if ($result.ExitCode -eq 3010) { $restartNeeded=$true }");
+        sb.AppendLine("    elseif ($result.ExitCode -ne 0) { throw ('IIS 7 组件安装失败，pkgmgr 退出码：' + $result.ExitCode) }");
+        sb.AppendLine("    if ($restartNeeded) { Mark-RestartRequired 'IIS 7 功能安装要求重启后继续。'; throw 'IIS_RESTART_REQUIRED' }");
+        // Windows PowerShell 2 can load the CLR 2 Environment type even when
+        // the MCPanel process itself targets .NET 4.6.2.
+        sb.AppendLine(@"    $framework64=Join-Path $env:windir 'Microsoft.NET\Framework64\v4.0.30319\aspnet_regiis.exe'");
+        sb.AppendLine("    $framework=if (Test-Path -LiteralPath $framework64) { 'Framework64' } else { 'Framework' }");
+        sb.AppendLine(@"    $aspnetRegiis=Join-Path $env:windir ('Microsoft.NET\' + $framework + '\v4.0.30319\aspnet_regiis.exe')");
+        sb.AppendLine("    if (!(Test-Path -LiteralPath $aspnetRegiis)) { throw '未找到 .NET Framework 4 的 aspnet_regiis.exe。请先安装 .NET Framework 4.6.2。' }");
+        sb.AppendLine("    & $aspnetRegiis -ir");
+        sb.AppendLine("    if ($LASTEXITCODE -ne 0) { throw ('ASP.NET 4 注册失败，退出码：' + $LASTEXITCODE) }");
+        sb.AppendLine("  } else {");
         foreach (var feature in requiredFeatures)
         {
-            sb.AppendLine($"  $featureResult=Enable-WindowsOptionalFeature -Online -FeatureName {feature} -All -NoRestart -ErrorAction Stop");
-            sb.AppendLine("  if (Test-RestartNeeded $featureResult) { $restartNeeded=$true }");
+            sb.AppendLine($"    $featureResult=Enable-WindowsOptionalFeature -Online -FeatureName {feature} -All -NoRestart -ErrorAction Stop");
+            sb.AppendLine("    if (Test-RestartNeeded $featureResult) { $restartNeeded=$true }");
         }
         sb.AppendLine("  try {");
         sb.AppendLine("    $netFx3=Get-WindowsOptionalFeature -Online -FeatureName NetFx3 -ErrorAction Stop");
@@ -930,7 +966,8 @@ public sealed class EnvironmentInstaller : IDisposable
             sb.AppendLine("    if (Test-RestartNeeded $legacyResult) { $restartNeeded=$true }");
         }
         sb.AppendLine("  } catch { Write-Output ('兼容性提示：ASP.NET 2.0/3.5 功能未完全启用；现代 ASP.NET 4.x/IIS 功能继续安装。原因：' + $_.Exception.Message) }");
-        sb.AppendLine("  if ($restartNeeded) { Mark-RestartRequired 'Windows 功能安装要求重启后继续 IIS 安装。'; throw 'IIS_RESTART_REQUIRED' }");
+        sb.AppendLine("    if ($restartNeeded) { Mark-RestartRequired 'Windows 功能安装要求重启后继续 IIS 安装。'; throw 'IIS_RESTART_REQUIRED' }");
+        sb.AppendLine("  }");
         sb.AppendLine(@"  $appcmd = Join-Path $env:windir 'System32\inetsrv\appcmd.exe'");
         sb.AppendLine(@"  if (!(Test-Path $appcmd)) { throw '未找到 IIS 配置工具 appcmd.exe。' }");
         sb.AppendLine(@"  $docs=@('default.html','default.asp','default.aspx','index.php','index.asp','index.aspx')");
