@@ -1,7 +1,9 @@
-# MCPanel 1.3.55
+# MCPanel 1.3.56
 
-- 继续精简 GitHub Release 的 SharpSvn 前置依赖：移除 Chocolatey `vcredist2010` 安装路径，改为仅下载并静默安装 Microsoft 官方 VC++ 2010 SP1 x64 Redistributable，不再下载或安装无用的 x86 运行库。
-- 下载后的 `vcredist_x64.exe` 在执行前强制通过 Authenticode 校验，要求签名状态为 `Valid` 且签名者为 Microsoft Corporation；安装后再次确认 `C:\Windows\System32\MSVCR100.dll` 存在。
-- 独立 CI 审计确认直接 x64 路径下载约 0.70 秒、下载 + 验签 + 安装总计约 10.85 秒，最终 `MSVCR100.dll` 版本为 10.00.40219.325；此前 Chocolatey 路径通常约 30–40 秒。
-- 保留 v1.3.54 的预装 .NET 10 SDK 校验、`global.json`、NuGet 依赖指纹缓存，以及 250 项 regression / Win-x64 publish / SHA-256 / update manifest 完整发布链。
-- 未修改 MCPanel 业务逻辑、SharpSvn/SVN 行为、Tomcat 兼容逻辑、旧数据迁移或 Legacy HTTPS manifest，本次仅继续收缩发布基础设施的冗余耗时。
+- AI 日志分析统一从 `MCPanel.exe.config` 读取设置，移除旧 AI 设置弹窗及残留保存逻辑；分析期间锁定目标和输入，避免异步结果显示到错误组件。
+- 重新调整首页、产品、网站、环境和 AI 页面的窄屏布局：卡片按可用宽度排列，弹窗限制在窗口范围内；统一深浅主题的按钮、主色和危险操作样式。
+- 网站及产品筛选无匹配项时显示可恢复的空状态；避免在线产品列表并发刷新；手动绑定失败时恢复原有记录。
+- 完善 Web 服务器全链路：Server 2008 SP2 / 2008 R2 SP1 的 IIS 7/7.5 使用微软文档的 `pkgmgr` 路径安装或卸载，并注册 ASP.NET 4；现代 Windows 继续使用相应 Windows 功能接口。启动、停止、重启验证服务命令返回值和 W3SVC 的最终状态，改进安装/卸载的重启续跑与错误报告。
+- 增加 Windows 完整回归测试和 [IIS 版本、官方出处与实机验收步骤](https://github.com/vguangshen/MCPanel/blob/main/docs/iis-compatibility.md)。发布包仍为 x64，并附 SHA-256 校验文件和更新清单。
+
+兼容性边界：Server 2008 / 2008 R2 尚未在实机或虚拟机上完成安装、卸载及网站功能的全链路测试；默认 URL Rewrite MSI 在各目标系统上的签名、架构和兼容性也需核实。x86 Server 2008 需要另行构建和验证，当前 x64 发布包不适用。
