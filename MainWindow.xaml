@@ -615,6 +615,9 @@
                         </Grid>
                     </Border>
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <ScrollViewer.Resources>
+                            <Style TargetType="ScrollBar" BasedOn="{StaticResource ModernVerticalScrollBar}" />
+                        </ScrollViewer.Resources>
                     <ItemsControl x:Name="EnvironmentItemsControl"
                                   ItemsSource="{Binding EnvironmentItems}"
                                   ItemTemplate="{StaticResource EnvironmentCardTemplate}">
