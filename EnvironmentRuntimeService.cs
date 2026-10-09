@@ -1655,14 +1655,7 @@ public sealed class EnvironmentRuntimeService
                         timeout: TimeSpan.FromSeconds(3));
                     if (probe is not null && probe.ExitCode == 0)
                     {
-                        var xml = XDocument.Parse("<configuration>" + probe.StandardOutput + "</configuration>");
-                        var names = xml.Descendants("defaultDocument")
-                            .Elements("files")
-                            .Elements("add")
-                            .Select(element => (string?)element.Attribute("value"))
-                            .Where(value => !string.IsNullOrWhiteSpace(value))
-                            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-                        result = RequiredIisDefaultDocuments.All(names.Contains);
+                        result = HasRequiredIisDefaultDocuments(probe.StandardOutput);
                     }
                 }
             }
@@ -1675,6 +1668,18 @@ public sealed class EnvironmentRuntimeService
             _iisDocumentProbeTimestamp = DateTime.UtcNow;
             return result;
         }
+    }
+
+    internal static bool HasRequiredIisDefaultDocuments(string configurationXml)
+    {
+        var document = XDocument.Parse("<configuration>" + configurationXml + "</configuration>");
+        var names = document.Descendants("defaultDocument")
+            .Elements("files")
+            .Elements("add")
+            .Select(element => (string?)element.Attribute("value"))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return RequiredIisDefaultDocuments.All(names.Contains);
     }
 
     private static EnvironmentRuntimeState GetMySqlState(ComponentLocator locator)
