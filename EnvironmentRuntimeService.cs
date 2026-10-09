@@ -1569,6 +1569,15 @@ public sealed class EnvironmentRuntimeService
     // Microsoft's supported appcmd command lists the installed/active IIS modules.
     // An unreadable result is unknown, not a missing module. Cache to keep
     // periodic environment-card refreshes from spawning appcmd continuously.
+    internal static void InvalidateIisModuleProbe()
+    {
+        lock (IisModuleProbeLock)
+        {
+            _iisModuleProbeTimestamp = DateTime.MinValue;
+            _iisModuleProbeResult = null;
+        }
+    }
+
     internal static bool? TryProbeIisRewriteModule()
     {
         lock (IisModuleProbeLock)
