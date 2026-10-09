@@ -70,7 +70,14 @@ internal static class EnvironmentInstallWorker
 
             try
             {
-                await installer.InstallAsync(item, reporter.Report, CancellationToken.None).ConfigureAwait(true);
+                if (kind == EnvironmentKind.Iis && string.Equals(selectedReleaseId, "iis-repair", StringComparison.Ordinal))
+                {
+                    await installer.RepairIisConfigurationAsync(reporter.Report, CancellationToken.None).ConfigureAwait(true);
+                }
+                else
+                {
+                    await installer.InstallAsync(item, reporter.Report, CancellationToken.None).ConfigureAwait(true);
+                }
             }
             finally
             {
@@ -367,6 +374,11 @@ END;";
             WorkerArgument,
             Compat.QuoteCommandLineArgument(kind.ToString()),
             Compat.QuoteCommandLineArgument(progressPath));
+        if (kind == EnvironmentKind.Iis && string.Equals(selectedReleaseId, "iis-repair", StringComparison.Ordinal))
+        {
+            arguments += " " + Compat.QuoteCommandLineArgument("iis-repair");
+        }
+
         if (kind is EnvironmentKind.MySql or EnvironmentKind.SqlServer)
         {
             var releaseId = kind == EnvironmentKind.MySql
@@ -477,6 +489,16 @@ END;";
         if (string.IsNullOrWhiteSpace(args[index + 2]))
         {
             return false;
+        }
+
+        if (kind == EnvironmentKind.Iis && index + 3 < args.Length)
+        {
+            if (!string.Equals(args[index + 3], "iis-repair", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            selectedReleaseId = "iis-repair";
         }
 
         if (kind is EnvironmentKind.MySql or EnvironmentKind.SqlServer)
