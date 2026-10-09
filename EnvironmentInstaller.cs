@@ -157,6 +157,7 @@ public sealed class EnvironmentInstaller : IDisposable
         progress(InstallingProgress(35, repairOnly ? "正在修复 IIS 配置..." : "正在启用 IIS 组件...", 8));
         await RunElevatedPowerShellAsync(script, progress, 10, 95, cancellationToken, requireExistingAdministrator: true);
         TryDeleteFile(repairMarker);
+        EnvironmentRuntimeService.InvalidateIisModuleProbe();
         TryDeleteFile(IisInstallRestartMarkerPath);
         TryDeleteFile(IisPendingUninstallMarker);
         TryDeleteFile(IisUninstalledMarker);
