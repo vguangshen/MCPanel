@@ -142,6 +142,7 @@ public sealed class EnvironmentItem(EnvironmentKind kind, string title, string o
     private bool _isFlipAnimating;
     private bool _installRestartRequired;
     private bool _iisUninstallRestartRequired;
+    private bool _iisConfigurationRepairRequired;
     private string _credentialNotice = string.Empty;
     private string _tomcatPortNotice = string.Empty;
     private string? _installDirectory;
@@ -242,12 +243,15 @@ public sealed class EnvironmentItem(EnvironmentKind kind, string title, string o
                 : _detectedSqlServerDisplayName!;
         }
     }
-    public string? SelectedInstallReleaseId => IsMySqlModule
-        ? SelectedMySqlReleaseId
+    public string? SelectedInstallReleaseId => IsIisModule && _iisConfigurationRepairRequired && !_installRestartRequired
+        ? "iis-repair"
+        : IsMySqlModule ? SelectedMySqlReleaseId
         : IsSqlServerModule ? SelectedSqlServerReleaseId : null;
-    public string ActionText => IsInstalled
-        ? "已安装"
-        : IsBusy ? "安装中" : _iisUninstallRestartRequired ? "继续卸载" : _installRestartRequired ? "继续安装" : "安装";
+    public string ActionText => IsBusy ? "安装中"
+        : _iisUninstallRestartRequired ? "继续卸载"
+        : _installRestartRequired ? "继续安装"
+        : IsIisModule && _iisConfigurationRepairRequired ? "修复配置"
+        : IsInstalled ? "已安装" : "安装";
     public bool CanInstall => !IsBusy && (!IsSqlServerModule || SelectedSqlServerRelease.IsSupported);
     public bool CanSelectMySqlVersion => IsMySqlModule && !IsInstalled && !IsBusy;
     public bool CanSelectSqlServerVersion => IsSqlServerModule && !IsInstalled && !IsBusy;
@@ -259,7 +263,9 @@ public sealed class EnvironmentItem(EnvironmentKind kind, string title, string o
     public bool IsSqlServerModule => Kind == EnvironmentKind.SqlServer;
     public bool IsCredentialModule => Kind is EnvironmentKind.MySql or EnvironmentKind.SqlServer;
     public bool CanFlipCard => IsCredentialModule || IsTomcatModule;
-    public Visibility InstallButtonVisibility => IsInstalled ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility InstallButtonVisibility => IsInstalled &&
+        !(_iisConfigurationRepairRequired || _installRestartRequired || _iisUninstallRestartRequired)
+        ? Visibility.Collapsed : Visibility.Visible;
     public Visibility MySqlVersionSelectorVisibility => CanSelectMySqlVersion ? Visibility.Visible : Visibility.Collapsed;
     public Visibility SqlServerVersionSelectorVisibility => CanSelectSqlServerVersion ? Visibility.Visible : Visibility.Collapsed;
     public Visibility ServiceControlsVisibility => IsInstalled ? Visibility.Visible : Visibility.Collapsed;
@@ -486,10 +492,11 @@ public sealed class EnvironmentItem(EnvironmentKind kind, string title, string o
         }
 
         _statusKind = state.StatusKind;
+        _iisConfigurationRepairRequired = IsIisModule && state.NeedsConfigurationRepair;
         _iisUninstallRestartRequired = Kind == EnvironmentKind.Iis &&
             !state.IsInstalled && EnvironmentRuntimeService.HasIisUninstallContinuation;
-        _installRestartRequired = !state.IsInstalled && (Kind == EnvironmentKind.SqlServer &&
-            EnvironmentInstaller.HasSqlServerInstallContinuation || Kind == EnvironmentKind.Iis &&
+        _installRestartRequired = (Kind == EnvironmentKind.SqlServer && !state.IsInstalled &&
+            EnvironmentInstaller.HasSqlServerInstallContinuation) || (Kind == EnvironmentKind.Iis &&
             EnvironmentInstaller.HasIisInstallContinuation);
         IsInstalled = state.IsInstalled;
         IsRunning = state.IsRunning;
@@ -499,8 +506,11 @@ public sealed class EnvironmentItem(EnvironmentKind kind, string title, string o
         ProgressStageText = "状态";
         DownloadSpeedText = string.Empty;
         StatusText = state.StatusText;
-        BadgeText = _iisUninstallRestartRequired || _installRestartRequired ? "需重启" : RuntimeStatusVisuals.Text(state.StatusKind);
-        BadgeBrush = _iisUninstallRestartRequired || _installRestartRequired ? Brushes.Goldenrod : RuntimeStatusVisuals.Brush(state.StatusKind);
+        BadgeText = _iisUninstallRestartRequired || _installRestartRequired ? "需重启"
+            : _iisConfigurationRepairRequired ? "需修复"
+            : RuntimeStatusVisuals.Text(state.StatusKind);
+        BadgeBrush = _iisUninstallRestartRequired || _installRestartRequired || _iisConfigurationRepairRequired
+            ? Brushes.Goldenrod : RuntimeStatusVisuals.Brush(state.StatusKind);
         RaiseStateProperties();
     }
 
@@ -536,6 +546,7 @@ public sealed class EnvironmentItem(EnvironmentKind kind, string title, string o
     {
         OnPropertyChanged(nameof(OptionLabel));
         OnPropertyChanged(nameof(ActionText));
+        OnPropertyChanged(nameof(SelectedInstallReleaseId));
         OnPropertyChanged(nameof(CanInstall));
         OnPropertyChanged(nameof(CanSelectMySqlVersion));
         OnPropertyChanged(nameof(CanSelectSqlServerVersion));
