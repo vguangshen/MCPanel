@@ -84,6 +84,12 @@ public sealed class EnvironmentInstaller : IDisposable
     internal static string IisInstallContinuationMessage =>
         "IIS 或 URL Rewrite 安装需要重启 Windows 才能继续。请重启设备后再次点击“继续安装”。";
 
+    internal static string IisConfigurationRepairMarkerPath => Path.Combine(
+        ComponentPaths.RuntimeStateRoot,
+        "iis-configuration-repair.pending");
+
+    internal static bool HasIisConfigurationRepairPending => File.Exists(IisConfigurationRepairMarkerPath);
+
     public async Task InstallAsync(EnvironmentItem item, Action<InstallProgress> progress, CancellationToken cancellationToken = default)
     {
         var downloads = EnvironmentDownloadSettings.Load();
@@ -114,20 +120,43 @@ public sealed class EnvironmentInstaller : IDisposable
         }
     }
 
-    private async Task InstallIisAsync(EnvironmentDownloadSettings downloads, Action<InstallProgress> progress, CancellationToken cancellationToken)
+    internal Task RepairIisConfigurationAsync(Action<InstallProgress> progress, CancellationToken cancellationToken = default)
+    {
+        if (!new EnvironmentRuntimeService().GetState(EnvironmentKind.Iis).IsInstalled)
+        {
+            throw new InvalidOperationException("未检测到 IIS Web 服务，无法只修复配置；请先安装 IIS。");
+        }
+
+        return InstallIisAsync(EnvironmentDownloadSettings.Load(), progress, cancellationToken, repairOnly: true);
+    }
+
+    private async Task InstallIisAsync(EnvironmentDownloadSettings downloads, Action<InstallProgress> progress, CancellationToken cancellationToken, bool repairOnly = false)
     {
         TryDeleteFile(IisPendingUninstallMarker);
         TryDeleteFile(IisUninstalledMarker);
-        progress(new InstallProgress(5, "正在下载 URL Rewrite 组件...", InstallProgressStage.Downloading, 0));
         var temp = GetTempDirectory();
-        var rewriteMsi = await DownloadAbsoluteFileAsync(downloads.IisUrlRewriteUrl, GetPackageDirectory(), "URLRewrite.msi", progress, 5, 20, cancellationToken);
+        var rewriteMsi = Path.Combine(GetPackageDirectory(), "URLRewrite.msi");
+        // A configuration-only repair needs no network connection when URL Rewrite
+        // is already registered in IIS. The script independently rechecks the module.
+        if (!repairOnly || EnvironmentRuntimeService.TryProbeIisRewriteModule() != true)
+        {
+            progress(new InstallProgress(5, "正在下载 URL Rewrite 组件...", InstallProgressStage.Downloading, 0));
+            rewriteMsi = await DownloadAbsoluteFileAsync(downloads.IisUrlRewriteUrl, GetPackageDirectory(), "URLRewrite.msi", progress, 5, 20, cancellationToken);
+        }
 
-        progress(InstallingProgress(25, "正在生成 IIS 安装脚本...", 0));
+        progress(InstallingProgress(25, repairOnly ? "正在生成 IIS 配置修复脚本..." : "正在生成 IIS 安装脚本...", 0));
         var script = Path.Combine(temp, "install-iis.ps1");
-        await FileCompat.WriteAllTextAsync(script, BuildIisScript(rewriteMsi), new UTF8Encoding(true), cancellationToken);
+        await FileCompat.WriteAllTextAsync(script, BuildIisScript(rewriteMsi, repairOnly), new UTF8Encoding(true), cancellationToken);
 
-        progress(InstallingProgress(35, "正在启用 IIS 组件...", 8));
+        // Persist an incomplete-configuration state before starting the elevated script.
+        // A failed or interrupted repair must never make an existing W3SVC disappear
+        // from the UI, and successful completion is the only time we clear this marker.
+        var repairMarker = IisConfigurationRepairMarkerPath;
+        Directory.CreateDirectory(Path.GetDirectoryName(repairMarker)!);
+        AtomicFile.WriteAllText(repairMarker, "IIS 配置尚未完成，请执行修复配置。", Encoding.UTF8);
+        progress(InstallingProgress(35, repairOnly ? "正在修复 IIS 配置..." : "正在启用 IIS 组件...", 8));
         await RunElevatedPowerShellAsync(script, progress, 10, 95, cancellationToken, requireExistingAdministrator: true);
+        TryDeleteFile(repairMarker);
         TryDeleteFile(IisInstallRestartMarkerPath);
         TryDeleteFile(IisPendingUninstallMarker);
         TryDeleteFile(IisUninstalledMarker);
@@ -889,7 +918,7 @@ public sealed class EnvironmentInstaller : IDisposable
         AtomicFile.WriteAllText(path, text, encoding);
     }
 
-    internal static string BuildIisScript(string rewriteMsi)
+    internal static string BuildIisScript(string rewriteMsi, bool repairOnly = false)
     {
         var requiredFeatures = new[]
         {
@@ -933,6 +962,8 @@ public sealed class EnvironmentInstaller : IDisposable
         sb.AppendLine("function Test-RestartNeeded($result) { if ($null -eq $result -or $null -eq $result.RestartNeeded) { return $false }; $text=$result.RestartNeeded.ToString(); return $text -eq 'True' -or $text -eq 'Yes' }");
         sb.AppendLine("function Mark-RestartRequired($reason) { $dir=Split-Path $restartMarker -Parent; New-Item -ItemType Directory -Path $dir -Force | Out-Null; Set-Content -LiteralPath $restartMarker -Value $reason -Encoding UTF8; Write-Output $reason }");
         sb.AppendLine("try {");
+        if (!repairOnly)
+        {
         sb.AppendLine("  $osVersion=[Environment]::OSVersion.Version");
         sb.AppendLine("  $legacyIis=$osVersion.Major -eq 6 -and $osVersion.Minor -lt 2");
         sb.AppendLine("  if ($legacyIis) {");
@@ -968,6 +999,7 @@ public sealed class EnvironmentInstaller : IDisposable
         sb.AppendLine("  } catch { Write-Output ('兼容性提示：ASP.NET 2.0/3.5 功能未完全启用；现代 ASP.NET 4.x/IIS 功能继续安装。原因：' + $_.Exception.Message) }");
         sb.AppendLine("    if ($restartNeeded) { Mark-RestartRequired 'Windows 功能安装要求重启后继续 IIS 安装。'; throw 'IIS_RESTART_REQUIRED' }");
         sb.AppendLine("  }");
+        }
         sb.AppendLine(@"  $appcmd = Join-Path $env:windir 'System32\inetsrv\appcmd.exe'");
         sb.AppendLine(@"  if (!(Test-Path $appcmd)) { throw '未找到 IIS 配置工具 appcmd.exe。' }");
         sb.AppendLine(@"  $docs=@('default.html','default.asp','default.aspx','index.php','index.asp','index.aspx')");
@@ -985,12 +1017,16 @@ public sealed class EnvironmentInstaller : IDisposable
         sb.AppendLine(@"  if ($LASTEXITCODE -ne 0) { throw ('无法启用 ASP ParentPaths；appcmd 退出码：' + $LASTEXITCODE) }");
         var escapedRewriteMsi = EscapePowerShellPath(rewriteMsi);
         sb.AppendLine($"  $rewriteMsi = '{escapedRewriteMsi}'");
-        sb.AppendLine("  if (!(Test-Path -LiteralPath $rewriteMsi)) { throw '未找到 URL Rewrite 安装包。' }");
-        sb.AppendLine("  $rewriteProcess = Start-Process msiexec.exe -ArgumentList ('/i \"' + $rewriteMsi + '\" /qn /norestart') -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop");
-        sb.AppendLine("  if ($rewriteProcess.ExitCode -eq 3010) { Mark-RestartRequired 'URL Rewrite 安装完成，但 Windows Installer 要求重启后继续。'; throw 'IIS_RESTART_REQUIRED' }");
-        sb.AppendLine("  if ($rewriteProcess.ExitCode -ne 0) { throw ('URL Rewrite 安装失败，退出码：' + $rewriteProcess.ExitCode) }");
         sb.AppendLine("  $moduleOutput = (& $appcmd list modules 2>&1 | Out-String)");
-        sb.AppendLine("  if ($LASTEXITCODE -ne 0 -or $moduleOutput -notmatch 'RewriteModule') { throw 'URL Rewrite MSI 已完成，但 IIS 未检测到 RewriteModule。' }");
+        sb.AppendLine("  if ($LASTEXITCODE -ne 0) { throw '无法查询 IIS 已注册的模块。' }");
+        sb.AppendLine("  if ($moduleOutput -notmatch 'RewriteModule') {");
+        sb.AppendLine("    if (!(Test-Path -LiteralPath $rewriteMsi)) { throw '未找到 URL Rewrite 安装包。' }");
+        sb.AppendLine("    $rewriteProcess = Start-Process msiexec.exe -ArgumentList ('/i \"' + $rewriteMsi + '\" /qn /norestart') -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop");
+        sb.AppendLine("    if ($rewriteProcess.ExitCode -eq 3010) { Mark-RestartRequired 'URL Rewrite 安装完成，但 Windows Installer 要求重启后继续。'; throw 'IIS_RESTART_REQUIRED' }");
+        sb.AppendLine("    if ($rewriteProcess.ExitCode -ne 0) { throw ('URL Rewrite 安装失败，退出码：' + $rewriteProcess.ExitCode) }");
+        sb.AppendLine("    $moduleOutput = (& $appcmd list modules 2>&1 | Out-String)");
+        sb.AppendLine("    if ($LASTEXITCODE -ne 0 -or $moduleOutput -notmatch 'RewriteModule') { throw 'URL Rewrite MSI 已完成，但 IIS 未检测到 RewriteModule。' }");
+        sb.AppendLine("  }");
         sb.AppendLine(@"  $net = Join-Path $env:windir 'System32\net.exe'");
         sb.AppendLine("  if (!(Test-Path -LiteralPath $net)) { throw '未找到 Windows 服务管理工具 net.exe。' }");
         sb.AppendLine("  if ((Get-Service -Name W3SVC -ErrorAction Stop).Status -ne 'Running') { & $net start W3SVC; if ($LASTEXITCODE -ne 0) { throw ('IIS 启动失败，退出码：' + $LASTEXITCODE) } }");
