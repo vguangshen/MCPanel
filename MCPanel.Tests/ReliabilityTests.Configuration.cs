@@ -816,6 +816,20 @@ public sealed partial class ReliabilityTests
     }
 
     [TestMethod]
+    public void IisInstallScriptAddsOnlyMissingDefaultDocumentsWithQuotedAppCmdArguments()
+    {
+        var script = EnvironmentInstaller.BuildIisScript(Path.Combine(Path.GetTempPath(), "URLRewrite.msi"));
+
+        StringAssert.Contains(script, "& $appcmd list config /section:defaultDocument");
+        StringAssert.Contains(script, "SelectNodes('//defaultDocument/files/add')");
+        StringAssert.Contains(script, "if ($existingDocs -contains $doc) { continue }");
+        StringAssert.Contains(script, "\"/+files.[value='$doc']\"");
+        StringAssert.Contains(script, "if ($LASTEXITCODE -ne 0) { throw ('无法添加 IIS 默认文档 ");
+        StringAssert.Contains(script, "if ($LASTEXITCODE -ne 0) { throw ('无法启用 ASP ParentPaths");
+        Assert.IsFalse(script.Contains("/+files.[value=$doc]", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public void NginxUninstallRefusesSharedRuntimeRoot()
     {
         Assert.ThrowsException<InvalidOperationException>(
