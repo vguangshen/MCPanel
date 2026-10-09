@@ -27,7 +27,8 @@ public sealed record EnvironmentRuntimeState(
     string? DetectedMySqlReleaseId = null,
     string? DetectedMySqlVersion = null,
     string? DetectedSqlServerReleaseId = null,
-    string? DetectedSqlServerDisplayName = null);
+    string? DetectedSqlServerDisplayName = null,
+    bool NeedsConfigurationRepair = false);
 
 public sealed record EnvironmentRuntimeSnapshot(
     IReadOnlyDictionary<EnvironmentKind, EnvironmentRuntimeState> States,
@@ -42,6 +43,9 @@ public sealed record TomcatStartupProgress(
 public sealed class EnvironmentRuntimeService
 {
     private static readonly SemaphoreSlim ElevatedActionLock = new(1, 1);
+    private static readonly object IisModuleProbeLock = new();
+    private static DateTime _iisModuleProbeTimestamp = DateTime.MinValue;
+    private static bool? _iisModuleProbeResult;
 
     public EnvironmentRuntimeState GetState(EnvironmentKind kind)
     {
@@ -1499,23 +1503,111 @@ public sealed class EnvironmentRuntimeService
 
     private static EnvironmentRuntimeState GetIisState(ComponentLocator locator)
     {
-        if (File.Exists(IisPendingUninstallMarker))
+        var serviceExists = ServiceExists("W3SVC");
+        return EvaluateIisState(
+            serviceExists,
+            serviceExists ? ServiceStatus("W3SVC") : RuntimeStatusKind.NotInstalled,
+            File.Exists(IisPendingUninstallMarker),
+            EnvironmentInstaller.HasIisInstallContinuation,
+            File.Exists(IisUninstalledMarker),
+            EnvironmentInstaller.HasIisConfigurationRepairPending,
+            serviceExists ? TryProbeIisRewriteModule() : null);
+    }
+
+    // W3SVC is the IIS WWW publishing service, not a proof that optional
+    // configuration (including the third-party URL Rewrite module) succeeded.
+    // Keep core installation separate from the optional repair state.
+    internal static EnvironmentRuntimeState EvaluateIisState(
+        bool serviceExists,
+        RuntimeStatusKind serviceStatus,
+        bool pendingUninstall,
+        bool pendingInstallRestart,
+        bool uninstalledMarker,
+        bool repairPending,
+        bool? rewriteModuleInstalled)
+    {
+        if (pendingUninstall)
         {
             return new EnvironmentRuntimeState(false, false, IisUninstallContinuationMessage, RuntimeStatusKind.Unknown);
         }
 
-        if (EnvironmentInstaller.HasIisInstallContinuation)
+        if (!serviceExists)
         {
-            return new EnvironmentRuntimeState(false, false, EnvironmentInstaller.IisInstallContinuationMessage, RuntimeStatusKind.Unknown);
+            if (pendingInstallRestart)
+            {
+                return new EnvironmentRuntimeState(false, false, EnvironmentInstaller.IisInstallContinuationMessage, RuntimeStatusKind.Unknown);
+            }
+
+            return uninstalledMarker
+                ? new EnvironmentRuntimeState(false, false, "IIS 已卸载。", RuntimeStatusKind.NotInstalled)
+                : NotInstalled();
         }
 
-        var serviceExists = ServiceExists("W3SVC");
-        if (File.Exists(IisUninstalledMarker) && !serviceExists)
+        if (pendingInstallRestart)
         {
-            return new EnvironmentRuntimeState(false, false, "IIS 已卸载。", RuntimeStatusKind.NotInstalled);
+            return Installed(serviceStatus, "IIS Web 服务已安装，但 Windows 功能或 URL Rewrite 仍需重启后继续安装。");
         }
 
-        return serviceExists ? Installed(ServiceStatus("W3SVC"), "IIS 已安装，可管理 Default Web Site。") : NotInstalled();
+        if (repairPending || rewriteModuleInstalled == false)
+        {
+            var detail = rewriteModuleInstalled == false
+                ? "未检测到 URL Rewrite 模块。"
+                : "上次 IIS 安装或配置中断。";
+            return new EnvironmentRuntimeState(
+                true,
+                serviceStatus == RuntimeStatusKind.Running,
+                "IIS 已安装。" + detail + "配置尚未完成，请点击“修复配置”。",
+                serviceStatus,
+                NeedsConfigurationRepair: true);
+        }
+
+        return Installed(serviceStatus, rewriteModuleInstalled == true
+            ? "IIS 已安装，URL Rewrite 已检测到，可管理网站。"
+            : "IIS 已安装，可管理网站；URL Rewrite 状态暂无法核验。");
+    }
+
+    // Microsoft's supported appcmd command lists the installed/active IIS modules.
+    // An unreadable result is unknown, not a missing module. Cache to keep
+    // periodic environment-card refreshes from spawning appcmd continuously.
+    internal static bool? TryProbeIisRewriteModule()
+    {
+        lock (IisModuleProbeLock)
+        {
+            if (DateTime.UtcNow - _iisModuleProbeTimestamp < TimeSpan.FromSeconds(30))
+            {
+                return _iisModuleProbeResult;
+            }
+
+            bool? result = null;
+            try
+            {
+                var appcmd = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+                    "System32", "inetsrv", "appcmd.exe");
+                if (File.Exists(appcmd))
+                {
+                    var probe = ProcessRunner.RunSynchronously(
+                        appcmd,
+                        "list modules",
+                        ComponentPaths.ApplicationRoot,
+                        captureOutput: true,
+                        timeout: TimeSpan.FromSeconds(3));
+                    if (probe is not null && probe.ExitCode == 0)
+                    {
+                        result = probe.StandardOutput.Contains(
+                            "RewriteModule", StringComparison.OrdinalIgnoreCase);
+                    }
+                }
+            }
+            catch
+            {
+                // Failure to inspect the module does not mean IIS is uninstalled.
+            }
+
+            _iisModuleProbeResult = result;
+            _iisModuleProbeTimestamp = DateTime.UtcNow;
+            return result;
+        }
     }
 
     private static EnvironmentRuntimeState GetMySqlState(ComponentLocator locator)
