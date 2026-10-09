@@ -1,6 +1,9 @@
 name: Validate MCPanel
 
 on:
+  push:
+    branches:
+      - test/iis-windows-validation
   pull_request:
     branches:
       - main
@@ -12,7 +15,7 @@ permissions:
 jobs:
   windows-build-and-iis-scripts:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
 
@@ -59,4 +62,21 @@ jobs:
       - name: Run full reliability suite
         shell: pwsh
         run: |
-          dotnet test MCPanel.Tests/MCPanel.Tests.csproj --configuration Release --framework net462 --no-build
+          dotnet test MCPanel.Tests/MCPanel.Tests.csproj --configuration Release --framework net462 --no-build --filter 'TestCategory!=IisIntegration' --logger 'trx;LogFileName=reliability.trx' --results-directory artifacts/test-results
+
+      - name: Test real IIS installation and configuration repair
+        shell: pwsh
+        env:
+          MCPANEL_IIS_INTEGRATION: '1'
+        run: |
+          dotnet test MCPanel.Tests/MCPanel.Tests.csproj --configuration Release --framework net462 --no-build --filter 'TestCategory=IisIntegration' --logger 'trx;LogFileName=iis-integration.trx' --results-directory artifacts/test-results
+
+      - name: Preserve test results and IIS transcript
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-validation-results
+          path: |
+            artifacts/test-results/**
+            MCPanel.Tests/bin/Release/net462/StoreData/Work/install-iis.log
+          if-no-files-found: warn
