@@ -176,6 +176,7 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
         item.BadgeText = progress.State switch
         {
             "failed" => "失败",
+            "needs-repair" => "需修复",
             "restart-required" => "需重启",
             "completed" => "已完成",
             _ => progress.Stage == InstallProgressStage.Downloading ? "下载中" : "安装中"
@@ -183,6 +184,7 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
         item.BadgeBrush = progress.State switch
         {
             "failed" => Brushes.IndianRed,
+            "needs-repair" => Brushes.Goldenrod,
             "restart-required" => Brushes.Goldenrod,
             _ => RuntimeStatusVisuals.Brush(RuntimeStatusKind.Starting)
         };
@@ -777,10 +779,14 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
         var logPath = !string.IsNullOrWhiteSpace(attachedLog) && File.Exists(attachedLog)
             ? attachedLog
             : fallbackLog;
-        var fullMessage = $"{item.Title}{operation}失败：{exception.Message}";
+        var iisCoreInstalledButNeedsRepair = item.Kind == EnvironmentKind.Iis &&
+            _runtimeService.GetState(EnvironmentKind.Iis).NeedsConfigurationRepair;
+        var fullMessage = iisCoreInstalledButNeedsRepair
+            ? "IIS Web 服务已安装，但附加配置尚未完成：" + exception.Message
+            : $"{item.Title}{operation}失败：{exception.Message}";
         item.StatusText = CompactEnvironmentStatus(fullMessage);
-        item.BadgeText = "失败";
-        item.BadgeBrush = Brushes.IndianRed;
+        item.BadgeText = iisCoreInstalledButNeedsRepair ? "需修复" : "失败";
+        item.BadgeBrush = iisCoreInstalledButNeedsRepair ? Brushes.Goldenrod : Brushes.IndianRed;
         ShowOperationFailureDialog(fullMessage, logPath, dialogTitle);
     }
 
