@@ -134,13 +134,17 @@ internal static class EnvironmentInstallWorker
                     Path.Combine(
                         ComponentPaths.WorkRoot,
                         $"environment-install-{kind.ToString().ToLowerInvariant()}.log"));
-            var detail = restartRequired ? ex.Message : "安装失败：" + ex.Message;
+            var iisNeedsRepair = kind == EnvironmentKind.Iis && !restartRequired &&
+                new EnvironmentRuntimeService().GetState(EnvironmentKind.Iis).NeedsConfigurationRepair;
+            var detail = restartRequired ? ex.Message : iisNeedsRepair
+                ? "IIS Web 服务已安装，但附加配置尚未完成：" + ex.Message
+                : "安装失败：" + ex.Message;
             if (!string.IsNullOrWhiteSpace(logPath))
             {
                 detail += $"{Environment.NewLine}{Environment.NewLine}完整诊断日志：{logPath}";
             }
             reporter.Write(
-                restartRequired ? "restart-required" : "failed",
+                restartRequired ? "restart-required" : iisNeedsRepair ? "needs-repair" : "failed",
                 0,
                 detail,
                 force: true,
