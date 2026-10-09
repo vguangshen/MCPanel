@@ -5,6 +5,7 @@ using Microsoft.Win32;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Xml.Linq;
 using ServiceControllerStatus = System.ServiceProcess.ServiceControllerStatus;
 
 namespace MCPanel;
@@ -46,6 +47,10 @@ public sealed class EnvironmentRuntimeService
     private static readonly object IisModuleProbeLock = new();
     private static DateTime _iisModuleProbeTimestamp = DateTime.MinValue;
     private static bool? _iisModuleProbeResult;
+    private static DateTime _iisDocumentProbeTimestamp = DateTime.MinValue;
+    private static bool? _iisDocumentProbeResult;
+    private static readonly string[] RequiredIisDefaultDocuments =
+        ["default.html", "default.asp", "default.aspx", "index.php", "index.asp", "index.aspx"];
 
     public EnvironmentRuntimeState GetState(EnvironmentKind kind)
     {
@@ -1511,7 +1516,8 @@ public sealed class EnvironmentRuntimeService
             EnvironmentInstaller.HasIisInstallContinuation,
             File.Exists(IisUninstalledMarker),
             EnvironmentInstaller.HasIisConfigurationRepairPending,
-            serviceExists ? TryProbeIisRewriteModule() : null);
+            serviceExists ? TryProbeIisRewriteModule() : null,
+            serviceExists ? TryProbeIisDefaultDocuments() : null);
     }
 
     // W3SVC is the IIS WWW publishing service, not a proof that optional
@@ -1524,7 +1530,8 @@ public sealed class EnvironmentRuntimeService
         bool pendingInstallRestart,
         bool uninstalledMarker,
         bool repairPending,
-        bool? rewriteModuleInstalled)
+        bool? rewriteModuleInstalled,
+        bool? defaultDocumentsConfigured = null)
     {
         if (pendingUninstall)
         {
@@ -1548,11 +1555,13 @@ public sealed class EnvironmentRuntimeService
             return Installed(serviceStatus, "IIS Web 服务已安装，但 Windows 功能或 URL Rewrite 仍需重启后继续安装。");
         }
 
-        if (repairPending || rewriteModuleInstalled == false)
+        if (repairPending || rewriteModuleInstalled == false || defaultDocumentsConfigured == false)
         {
             var detail = rewriteModuleInstalled == false
                 ? "未检测到 URL Rewrite 模块。"
-                : "上次 IIS 安装或配置中断。";
+                : defaultDocumentsConfigured == false
+                    ? "默认文档配置不完整。"
+                    : "上次 IIS 安装或配置中断。";
             return new EnvironmentRuntimeState(
                 true,
                 serviceStatus == RuntimeStatusKind.Running,
@@ -1575,6 +1584,8 @@ public sealed class EnvironmentRuntimeService
         {
             _iisModuleProbeTimestamp = DateTime.MinValue;
             _iisModuleProbeResult = null;
+            _iisDocumentProbeTimestamp = DateTime.MinValue;
+            _iisDocumentProbeResult = null;
         }
     }
 
@@ -1615,6 +1626,53 @@ public sealed class EnvironmentRuntimeService
 
             _iisModuleProbeResult = result;
             _iisModuleProbeTimestamp = DateTime.UtcNow;
+            return result;
+        }
+    }
+
+    internal static bool? TryProbeIisDefaultDocuments()
+    {
+        lock (IisModuleProbeLock)
+        {
+            if (DateTime.UtcNow - _iisDocumentProbeTimestamp < TimeSpan.FromSeconds(30))
+            {
+                return _iisDocumentProbeResult;
+            }
+
+            bool? result = null;
+            try
+            {
+                var appcmd = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+                    "System32", "inetsrv", "appcmd.exe");
+                if (File.Exists(appcmd))
+                {
+                    var probe = ProcessRunner.RunSynchronously(
+                        appcmd,
+                        "list config /section:defaultDocument",
+                        ComponentPaths.ApplicationRoot,
+                        captureOutput: true,
+                        timeout: TimeSpan.FromSeconds(3));
+                    if (probe is not null && probe.ExitCode == 0)
+                    {
+                        var xml = XDocument.Parse("<configuration>" + probe.StandardOutput + "</configuration>");
+                        var names = xml.Descendants("defaultDocument")
+                            .Elements("files")
+                            .Elements("add")
+                            .Select(element => (string?)element.Attribute("value"))
+                            .Where(value => !string.IsNullOrWhiteSpace(value))
+                            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                        result = RequiredIisDefaultDocuments.All(names.Contains);
+                    }
+                }
+            }
+            catch
+            {
+                // Missing permissions or malformed output is unknown, not an IIS failure.
+            }
+
+            _iisDocumentProbeResult = result;
+            _iisDocumentProbeTimestamp = DateTime.UtcNow;
             return result;
         }
     }
