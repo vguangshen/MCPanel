@@ -830,6 +830,78 @@ public sealed partial class ReliabilityTests
     }
 
     [TestMethod]
+    public void IisStatusSeparatesCoreServiceFromIncompleteOptionalConfiguration()
+    {
+        var complete = EnvironmentRuntimeService.EvaluateIisState(
+            true, RuntimeStatusKind.Running, false, false, false, false, true);
+        Assert.IsTrue(complete.IsInstalled);
+        Assert.IsTrue(complete.IsRunning);
+        Assert.IsFalse(complete.NeedsConfigurationRepair);
+
+        var missingRewrite = EnvironmentRuntimeService.EvaluateIisState(
+            true, RuntimeStatusKind.Running, false, false, false, false, false);
+        Assert.IsTrue(missingRewrite.IsInstalled);
+        Assert.IsTrue(missingRewrite.IsRunning);
+        Assert.IsTrue(missingRewrite.NeedsConfigurationRepair);
+        StringAssert.Contains(missingRewrite.StatusText, "URL Rewrite");
+
+        var interruptedConfig = EnvironmentRuntimeService.EvaluateIisState(
+            true, RuntimeStatusKind.Stopped, false, false, false, true, null);
+        Assert.IsTrue(interruptedConfig.IsInstalled);
+        Assert.IsFalse(interruptedConfig.IsRunning);
+        Assert.IsTrue(interruptedConfig.NeedsConfigurationRepair);
+
+        var pendingRestart = EnvironmentRuntimeService.EvaluateIisState(
+            true, RuntimeStatusKind.Running, false, true, false, true, null);
+        Assert.IsTrue(pendingRestart.IsInstalled);
+        Assert.IsTrue(pendingRestart.IsRunning);
+        Assert.IsFalse(pendingRestart.NeedsConfigurationRepair);
+        StringAssert.Contains(pendingRestart.StatusText, "需重启");
+
+        var notInstalled = EnvironmentRuntimeService.EvaluateIisState(
+            false, RuntimeStatusKind.NotInstalled, false, false, false, true, false);
+        Assert.IsFalse(notInstalled.IsInstalled);
+        Assert.AreEqual(RuntimeStatusKind.NotInstalled, notInstalled.StatusKind);
+    }
+
+    [TestMethod]
+    public void IisEnvironmentCardOffersRepairButKeepsInstalledControls()
+    {
+        var item = new EnvironmentItem(EnvironmentKind.Iis, "IIS", "", "IIS web server");
+        var partial = EnvironmentRuntimeService.EvaluateIisState(
+            true, RuntimeStatusKind.Running, false, false, false, true, false);
+        item.ApplyRuntimeState(partial);
+        Assert.IsTrue(item.IsInstalled);
+        Assert.IsTrue(item.IsRunning);
+        Assert.AreEqual("修复配置", item.ActionText);
+        Assert.AreEqual("iis-repair", item.SelectedInstallReleaseId);
+        Assert.AreEqual(Visibility.Visible, item.InstallButtonVisibility);
+        Assert.AreEqual(Visibility.Visible, item.ServiceControlsVisibility);
+        Assert.AreEqual(Visibility.Visible, item.IisManagementVisibility);
+        Assert.AreEqual("需修复", item.BadgeText);
+
+        item.ApplyRuntimeState(EnvironmentRuntimeService.EvaluateIisState(
+            true, RuntimeStatusKind.Running, false, false, false, false, true));
+        Assert.AreEqual(Visibility.Collapsed, item.InstallButtonVisibility);
+        Assert.AreEqual("已安装", item.ActionText);
+        Assert.IsNull(item.SelectedInstallReleaseId);
+    }
+
+    [TestMethod]
+    public void IisRepairScriptSkipsFeatureEnablementAndChecksRewriteBeforeInstalling()
+    {
+        var script = EnvironmentInstaller.BuildIisScript(
+            Path.Combine(Path.GetTempPath(), "URLRewrite.msi"), repairOnly: true);
+
+        Assert.IsFalse(script.Contains("Enable-WindowsOptionalFeature", StringComparison.Ordinal));
+        Assert.IsFalse(script.Contains("pkgmgr.exe", StringComparison.Ordinal));
+        StringAssert.Contains(script, "if ($moduleOutput -notmatch 'RewriteModule')");
+        StringAssert.Contains(script, "& $appcmd list modules");
+        StringAssert.Contains(script, "if ($existingDocs -contains $doc) { continue }");
+        StringAssert.Contains(script, "if ($LASTEXITCODE -ne 0) { throw ('无法启用 ASP ParentPaths");
+    }
+
+    [TestMethod]
     public void NginxUninstallRefusesSharedRuntimeRoot()
     {
         Assert.ThrowsException<InvalidOperationException>(
