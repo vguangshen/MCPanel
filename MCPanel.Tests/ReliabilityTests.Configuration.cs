@@ -865,6 +865,30 @@ public sealed partial class ReliabilityTests
     }
 
     [TestMethod]
+    public void IisDefaultDocumentProbeRecognizesIncompleteAndCompleteAppCmdXml()
+    {
+        const string prefix = "<system.webServer><defaultDocument><files>";
+        const string suffix = "</files></defaultDocument></system.webServer>";
+        const string allDocuments = "<add value='default.html' /><add value='default.asp' />" +
+            "<add value='default.aspx' /><add value='index.php' />" +
+            "<add value='index.asp' /><add value='index.aspx' />";
+
+        Assert.IsTrue(EnvironmentRuntimeService.HasRequiredIisDefaultDocuments(
+            prefix + allDocuments + suffix));
+        Assert.IsFalse(EnvironmentRuntimeService.HasRequiredIisDefaultDocuments(
+            prefix + "<add value='default.aspx' /><add value='index.html' />" + suffix));
+        Assert.IsTrue(EnvironmentRuntimeService.HasRequiredIisDefaultDocuments(
+            prefix + allDocuments.Replace("default.html", "DEFAULT.HTML", StringComparison.Ordinal) + suffix));
+
+        var partialState = EnvironmentRuntimeService.EvaluateIisState(
+            true, RuntimeStatusKind.Running, false, false, false, false, true,
+            defaultDocumentsConfigured: false);
+        Assert.IsTrue(partialState.IsInstalled);
+        Assert.IsTrue(partialState.NeedsConfigurationRepair);
+        StringAssert.Contains(partialState.StatusText, "默认文档");
+    }
+
+    [TestMethod]
     public void IisEnvironmentCardOffersRepairButKeepsInstalledControls()
     {
         var item = new EnvironmentItem(EnvironmentKind.Iis, "IIS", "", "IIS web server");
