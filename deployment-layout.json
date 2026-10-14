@@ -4,6 +4,7 @@
     "AccountApi",
     "Runtime",
     "Downloads",
+    "Diagnostics",
     "Tools",
     "web",
     "Cache",

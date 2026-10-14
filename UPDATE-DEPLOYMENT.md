@@ -103,6 +103,32 @@ manifest before extraction. Local updates can use the same ZIP. Keep the adjacen
 
 ## Replacement rules
 
+### Recover an older client's read-only diagnostic backup failure
+
+Versions 1.3.58 and 1.3.59 start an updater copied from the currently installed
+program. If its error mentions `UnauthorizedAccessException` under
+`StoreData\Updates\Rollback\Current\Diagnostics`, publishing a newer binary
+does not replace that already installed updater before it runs.
+
+Exit MCPanel from its tray menu, download `Repair-Update.ps1` from the new Release,
+and run the script against the actual installation directory:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\path\Repair-Update.ps1" -InstallDirectory "D:\MCPanel"
+```
+
+Add `-WhatIf` to preview the two moves. The script moves top-level `Diagnostics`
+to `StoreData\Diagnostics\Recovered-<unique-id>` and renames an existing
+`Rollback\Current` to `Rollback\Current.failed-<unique-id>`. It retains the
+files and configuration. Session 0 service wrappers keep running. Start the
+installed panel and retry online update after the script completes.
+
+Newer updaters always preserve `Diagnostics`, including when using an old
+directory manifest, and clear read-only attributes only on the program or
+rollback entries they own before deleting those entries.
+
+### Normal replacement
+
 The updater replaces only application program files. The canonical list of
 top-level entries preserved by publishing, packaging, and in-app replacement is
 maintained in `deployment-layout.json`; keep that file beside the executable in

@@ -7,7 +7,7 @@ internal static class DeploymentLayoutManifest
 {
     private const string ManifestFileName = "deployment-layout.json";
     private static readonly Lazy<IReadOnlyCollection<string>> PreservedNames =
-        new(LoadPreservedTopLevelNames, LazyThreadSafetyMode.ExecutionAndPublication);
+        new(() => LoadPreservedTopLevelNames(ComponentPaths.ApplicationRoot), LazyThreadSafetyMode.ExecutionAndPublication);
     private static readonly Lazy<IReadOnlyCollection<string>> PreservedSettings =
         new(LoadPreservedAppSettingKeys, LazyThreadSafetyMode.ExecutionAndPublication);
 
@@ -15,7 +15,7 @@ internal static class DeploymentLayoutManifest
     // shipped by a previous release. New packages always carry the JSON file.
     private static readonly string[] FallbackNames =
     [
-        "StoreData", "AccountApi", "Runtime", "Downloads", "Tools", "web", "Cache", "Frp",
+        "StoreData", "AccountApi", "Runtime", "Downloads", "Diagnostics", "Tools", "web", "Cache", "Frp",
         "Nginx", "MySQL", "MSSQL", "Tomcat", "SSMS", "Navicat Premium Lite",
         "config.ini", "config.ini.previous", "device.identity", "database.config",
         "database.config.previous", "logs"
@@ -41,11 +41,11 @@ internal static class DeploymentLayoutManifest
         return fallback;
     }
 
-    private static IReadOnlyCollection<string> LoadPreservedTopLevelNames()
+    internal static IReadOnlyCollection<string> LoadPreservedTopLevelNames(string applicationRoot)
     {
         try
         {
-            var path = Path.Combine(ComponentPaths.ApplicationRoot, ManifestFileName);
+            var path = Path.Combine(applicationRoot, ManifestFileName);
             if (!File.Exists(path))
             {
                 return CreateFallback();
@@ -59,9 +59,12 @@ internal static class DeploymentLayoutManifest
                 .Select(name => name.Trim())
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
-            return names is { Length: > 0 }
-                ? new HashSet<string>(names, StringComparer.OrdinalIgnoreCase)
-                : CreateFallback();
+            // A helper can carry a manifest from an older installation. Known
+            // operational data must stay protected even if that manifest has
+            // not yet learned a newer preserved directory such as Diagnostics.
+            var preserved = new HashSet<string>(FallbackNames, StringComparer.OrdinalIgnoreCase);
+            if (names is not null) preserved.UnionWith(names);
+            return preserved;
         }
         catch
         {

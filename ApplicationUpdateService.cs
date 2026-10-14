@@ -948,7 +948,9 @@ internal void LaunchUpdater(
         var rollbackRoot = Path.Combine(ComponentPaths.GetUpdatesRoot(installRoot), "Rollback", "Current");
         var existingConfigFile = Path.Combine(installRoot, "MCPanel.exe.config");
         var preservedAppSettings = DeploymentConfigurationSettings.Capture(existingConfigFile);
-        TryDeleteDirectory(rollbackRoot);
+        // A failed cleanup must stop before any installed files are replaced.
+        // File.Copy cannot overwrite read-only files left in an old snapshot.
+        if (Directory.Exists(rollbackRoot)) DeleteUpdateEntry(rollbackRoot);
         Directory.CreateDirectory(rollbackRoot);
         var replacementStarted = false;
         try
@@ -1211,9 +1213,28 @@ internal void LaunchUpdater(
         foreach (var entry in Directory.EnumerateFileSystemEntries(installRoot))
         {
             if (PreservedTopLevelNames.Contains(Path.GetFileName(entry))) continue;
-            if (Directory.Exists(entry)) Directory.Delete(entry, true);
-            else File.Delete(entry);
+            DeleteUpdateEntry(entry);
         }
+    }
+
+    private static void DeleteUpdateEntry(string entry)
+    {
+        var attributes = File.GetAttributes(entry);
+        var isDirectory = (attributes & FileAttributes.Directory) != 0;
+        var isLink = (attributes & FileAttributes.ReparsePoint) != 0;
+        if (isDirectory && !isLink)
+        {
+            foreach (var child in Directory.EnumerateFileSystemEntries(entry))
+                DeleteUpdateEntry(child);
+        }
+
+        // Only entries owned by the replacement/rollback operation reach this
+        // helper. Never traverse a link or alter its target's attributes.
+        if (!isLink && (attributes & FileAttributes.ReadOnly) != 0)
+            File.SetAttributes(entry, attributes & ~FileAttributes.ReadOnly);
+
+        if (isDirectory) Directory.Delete(entry, false);
+        else File.Delete(entry);
     }
 
     private static void CopyDirectory(string source, string destination)
@@ -1648,7 +1669,7 @@ internal void LaunchUpdater(
 
     private static void TryDeleteDirectory(string path)
     {
-        try { if (Directory.Exists(path)) Directory.Delete(path, true); } catch { }
+        try { if (Directory.Exists(path)) DeleteUpdateEntry(path); } catch { }
     }
 
 }
