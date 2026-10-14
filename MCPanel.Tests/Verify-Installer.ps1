@@ -24,7 +24,10 @@ function Invoke-Setup([string]$Directory, [string]$Package = $PackageFile, [stri
         if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log -Tail 50 | Write-Host }
         throw ('Installer failed: ' + $exitCode)
     }
-    if ($ExpectedExitCode -ne 0 -and $exitCode -eq 0) { throw 'Expected the installer to stop without modifying the application.' }
+    if ($ExpectedExitCode -ne 0 -and $exitCode -eq 0) {
+        if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log -Tail 70 | Write-Host }
+        throw ('Expected the installer to stop without modifying the application: ' + $Directory)
+    }
     return $exitCode
 }
 

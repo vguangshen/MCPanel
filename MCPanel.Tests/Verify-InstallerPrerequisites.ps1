@@ -27,8 +27,9 @@ class RuntimeFixture {
     var root = Environment.GetEnvironmentVariable("MCPANEL_SETUP_TEST_STATE");
     Directory.CreateDirectory(root);
     var name = Path.GetFileName(Process.GetCurrentProcess().MainModule.FileName).StartsWith("dotnet") ? "dotnet" : "vc";
-    File.AppendAllText(Path.Combine(root, "calls.txt"), name + Environment.NewLine);
     var exit = Environment.GetEnvironmentVariable("MCPANEL_SETUP_TEST_RUNTIME_EXIT") ?? "0";
+    File.AppendAllText(Path.Combine(root, "calls.txt"), name + Environment.NewLine);
+    File.AppendAllText(Path.Combine(root, "exit-codes.txt"), exit + Environment.NewLine);
     if (exit == "0" || exit == "3010") File.WriteAllText(Path.Combine(root, name + ".done"), "installed");
     return int.Parse(exit);
   }
@@ -79,7 +80,14 @@ try {
     $env:MCPANEL_SETUP_TEST_STATE = Join-Path $CaseRoot 'failure-state'
     $env:MCPANEL_SETUP_TEST_RUNTIME_EXIT = '1603'
     $failed = Join-Path $CaseRoot 'runtime-failure'
-    $null = Invoke-Setup $failed -Package '' -Exe $testSetup -ExpectedExitCode 1
+    try { $null = Invoke-Setup $failed -Package '' -Exe $testSetup -ExpectedExitCode 1 }
+    catch {
+        Write-Host ('Fixture failure-state directory: ' + $env:MCPANEL_SETUP_TEST_STATE)
+        if (Test-Path -LiteralPath $env:MCPANEL_SETUP_TEST_STATE) {
+            Get-ChildItem -LiteralPath $env:MCPANEL_SETUP_TEST_STATE -File | ForEach-Object { Write-Host ($_.Name + ': ' + [IO.File]::ReadAllText($_.FullName)) }
+        }
+        throw
+    }
     if (Test-Path -LiteralPath (Join-Path $failed 'MCPanel.exe')) { throw 'Prerequisite failure still installed the main program.' }
     Write-Host 'Passed: failed prerequisite installation leaves the main application unmodified.'
 
