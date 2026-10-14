@@ -56,11 +56,11 @@ jobs:
         shell: pwsh
         run: dotnet build MCPanel.Tests/MCPanel.Tests.csproj --configuration Release --framework net462
 
+      - name: Verify legacy updater failure and recovery
+        shell: pwsh
+        run: .\MCPanel.Tests\Verify-UpdateCompatibility.ps1
+
       - name: Run full reliability suite
         shell: pwsh
         run: |
           dotnet test MCPanel.Tests/MCPanel.Tests.csproj --configuration Release --framework net462 --no-build
-
-      - name: Verify legacy updater failure and recovery
-        shell: pwsh
-        run: .\MCPanel.Tests\Verify-UpdateCompatibility.ps1
