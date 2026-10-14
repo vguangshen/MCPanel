@@ -1,0 +1,21 @@
+{
+  "compiler": {
+    "version": "6.7.3",
+    "url": "https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe",
+    "sha256": "9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732"
+  },
+  "dotnet": {
+    "name": ".NET Framework 4.8",
+    "minimumRelease": 394802,
+    "url": "https://download.visualstudio.microsoft.com/download/pr/2d6bb6b2-226a-4baa-bdec-798822606ff1/9b7b8746971ed51a1770ae4293618187/ndp48-web.exe",
+    "sha256": "0bba3094588c4bfec301939985222a20b340bf03431563dec8b2b4478b06fffa",
+    "arguments": "/q /norestart"
+  },
+  "visualCpp": {
+    "name": "Visual C++ 2010 SP1 x64",
+    "minimumVersion": "10.0.40219.325",
+    "url": "https://download.microsoft.com/download/1/6/5/165255E7-1014-4D0A-B094-B6A430A6BFFC/vcredist_x64.exe",
+    "sha256": "f3b7a76d84d23f91957aa18456a14b4e90609e4ce8194c5653384ed38dada6f3",
+    "arguments": "/q /norestart"
+  }
+}

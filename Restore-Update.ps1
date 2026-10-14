@@ -53,7 +53,7 @@ try {
         if (!(Test-Path -LiteralPath (Join-Path $payload $name) -PathType Leaf)) { throw ('Incomplete package: ' + $name) }
     }
     $layout = Get-Content -LiteralPath (Join-Path $payload 'deployment-layout.json') -Raw | ConvertFrom-Json
-    $preserved = @('StoreData', 'AccountApi', 'Runtime', 'Downloads', 'Diagnostics', 'Tools', 'web', 'Cache', 'Frp',
+    $preserved = @('StoreData', 'Maintenance', 'AccountApi', 'Runtime', 'Downloads', 'Diagnostics', 'Tools', 'web', 'Cache', 'Frp',
         'Nginx', 'MySQL', 'MSSQL', 'Tomcat', 'SSMS', 'Navicat Premium Lite', 'config.ini', 'config.ini.previous',
         'device.identity', 'database.config', 'database.config.previous', 'logs') + @($layout.preservedTopLevelNames)
 

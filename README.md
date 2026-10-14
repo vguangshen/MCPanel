@@ -2,6 +2,42 @@
 
 Modern WPF panel for configuring and installing .NET and Java software.
 
+## Install MCPanel
+
+Download [MCPanel-Setup.exe](https://github.com/vguangshen/MCPanel/releases/latest/download/MCPanel-Setup.exe)
+and choose an installation directory. The small Chinese native installer runs
+without .NET, checks for .NET Framework 4.6.2 or newer and Visual C++ 2010 SP1 x64,
+and downloads only missing dependencies from Microsoft. The application package
+and dependency installers are bound to SHA-256 pins. The installer does not force
+a Windows restart; when a prerequisite requests one, restart before launching.
+
+Close the panel from its system-tray menu before installing over an existing copy.
+If component services hold the program open, stop those services before retrying.
+Repair/upgrade retains database and website data and merges original configuration,
+including recovery from a missing executable and an existing rollback snapshot.
+Uninstall removes owned panel files while retaining configuration and operational
+data; registered component services that depend on the panel must be handled
+before uninstalling it. In-app updates preserve the uninstaller and refresh its
+file-ownership manifest. The portable ZIP remains available as a separate asset.
+
+Build an installer for an existing version-matched release ZIP:
+
+```powershell
+.\Build-OnlineInstaller.ps1 -PackageFile 'C:\MCPanel-1.3.62.zip'
+```
+
+Pass `-PackageUrl 'https://downloads.example.com/MCPanel-1.3.62.zip'` to use your
+own HTTPS download site; serve the exact same ZIP. The generated native EXE pins
+that version and checksum. Its stable release asset name supports the download
+link above without changing website code for each release. `Installer/dependencies.json`
+is the pinned source for runtime and compiler metadata. Chinese translation is
+vendored from the official Inno Setup 6.7.3 tag with its attribution.
+
+For offline administrative deployment, place the matching official ZIP on the
+computer and run `MCPanel-Setup.exe /PACKAGEFILE="C:\MCPanel-1.3.62.zip"`.
+Missing Microsoft runtime packages still require network access. Silent deployment
+supports standard Inno options such as `/VERYSILENT /NORESTART /DIR="D:\MCPanel"`.
+
 ## Current Scope
 
 - Material-style shell with navigation for Home, Sites, Products, Environment, AI diagnostics, and settings.
