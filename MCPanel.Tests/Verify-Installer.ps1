@@ -97,7 +97,7 @@ try {
 
     # Ownership is untrusted local metadata; it must never turn uninstall into
     # deletion of settings, operational data or files outside the installation.
-    [IO.File]::AppendAllText((Join-Path $install 'Maintenance\program-files.lst'), "StoreData\keep.txt`r`n..\outside.txt`r`nMCPanel.exe.config`r`n")
+    [IO.File]::AppendAllText((Join-Path $install 'Maintenance\program-files.lst'), "StoreData\keep.txt`r`nStoreData.\keep.txt`r`nStoreData \keep.txt`r`n..\outside.txt`r`nMCPanel.exe.config`r`nMCPanel.exe.config.`r`n")
     [IO.File]::WriteAllText((Join-Path $root 'outside.txt'), 'keep outside installation')
     $null = Invoke-Setup $install -Exe $uninstall
     if (Test-Path -LiteralPath $executable) { throw 'Uninstaller left the main program installed.' }

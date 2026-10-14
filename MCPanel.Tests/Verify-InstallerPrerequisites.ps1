@@ -69,6 +69,13 @@ try {
     $env:MCPANEL_SETUP_TEST_VC = 'missing'
     $env:MCPANEL_SETUP_TEST_RUNTIME_EXIT = '0'
     $env:MCPANEL_SETUP_TEST_STATE = Join-Path $CaseRoot 'missing-state'
+    [IO.File]::WriteAllText((Join-Path $web 'application.zip'), 'corrupt downloaded payload')
+    $badDownload = Join-Path $CaseRoot 'download-checksum-failure'
+    $null = Invoke-Setup $badDownload -Package '' -Exe $testSetup -ExpectedExitCode 1
+    if ((Test-Path -LiteralPath (Join-Path $badDownload 'MCPanel.exe')) -or
+        (Test-Path -LiteralPath (Join-Path $env:MCPANEL_SETUP_TEST_STATE 'calls.txt'))) { throw 'Download checksum failure modified the application or installed prerequisites.' }
+    [IO.File]::Copy($PackageFile, (Join-Path $web 'application.zip'), $true)
+    Write-Host 'Passed: a downloaded package checksum failure stops before prerequisite or application installation.'
     $install = Join-Path $CaseRoot 'downloaded'
     $null = Invoke-Setup $install -Package '' -Exe $testSetup
     $calls = [IO.File]::ReadAllLines((Join-Path $env:MCPANEL_SETUP_TEST_STATE 'calls.txt'))
@@ -89,6 +96,7 @@ try {
         throw
     }
     if (Test-Path -LiteralPath (Join-Path $failed 'MCPanel.exe')) { throw 'Prerequisite failure still installed the main program.' }
+    if (([IO.File]::ReadAllLines((Join-Path $env:MCPANEL_SETUP_TEST_STATE 'calls.txt')) -join ',') -ne 'dotnet') { throw 'A failed prerequisite did not stop the remaining installation steps.' }
     Write-Host 'Passed: failed prerequisite installation leaves the main application unmodified.'
 
     $env:MCPANEL_SETUP_TEST_STATE = Join-Path $CaseRoot 'restart-state'

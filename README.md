@@ -31,7 +31,7 @@ own HTTPS download site; serve the exact same ZIP. The generated native EXE pins
 that version and checksum. Its stable release asset name supports the download
 link above without changing website code for each release. `Installer/dependencies.json`
 is the pinned source for runtime and compiler metadata. Chinese translation is
-vendored unmodified from the official Inno Setup 6.7.3 tag with its attribution.
+vendored from the official Inno Setup 6.7.3 tag with its attribution.
 
 For offline administrative deployment, place the matching official ZIP on the
 computer and run `MCPanel-Setup.exe /PACKAGEFILE="C:\MCPanel-1.3.62.zip"`.

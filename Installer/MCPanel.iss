@@ -174,7 +174,7 @@ begin
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
-var PackagePath, ActualVersion, Phase: String;
+var PackagePath, ActualVersion, Phase, DownloadError: String;
 begin
   Result := '';
   if ProgramDeployed then exit;
@@ -193,9 +193,13 @@ begin
       RaiseException('本地安装包校验失败，原程序未修改。请使用与安装器版本一致的官方 ZIP。');
     if not DotNetAvailable then DownloadPage.Add('{#DotNetUrl}', 'dotnet48.exe', '{#DotNetHash}');
     if not VisualCppAvailable then DownloadPage.Add('{#VcUrl}', 'vcredist2010-x64.exe', '{#VcHash}');
+    DownloadError := '';
     DownloadPage.Show;
-    try DownloadPage.Download;
+    try
+      try DownloadPage.Download;
+      except DownloadError := GetExceptionMessage; end;
     finally DownloadPage.Hide; end;
+    if DownloadError <> '' then RaiseException(DownloadError);
     Phase := '解压并校验主程序';
     PayloadRoot := ExpandConstant('{tmp}\Payload');
     ExtractArchive(PackagePath, PayloadRoot, '', True, nil);

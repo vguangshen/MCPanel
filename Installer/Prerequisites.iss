@@ -39,25 +39,32 @@ begin
 end;
 
 procedure RunPrerequisite(const Name, FileName, Arguments: String; IsDotNet: Boolean);
-var ExitCode: Integer; Progress: TOutputProgressWizardPage; Available: Boolean;
+var ExitCode: Integer; Progress: TOutputProgressWizardPage; Available, Started: Boolean; LaunchError: String;
 begin
   Progress := CreateOutputProgressPage('正在安装必备运行库', '请稍候，正在准备 MCPanel 的运行环境。');
   Progress.SetText('正在安装 ' + Name, '安装程序不会自动重启电脑，请等待此步骤完成。');
+  Started := False;
+  LaunchError := '';
   Progress.Show;
   try
-    Progress.SetProgress(0, 100);
-    if not Exec(ExpandConstant('{tmp}\') + FileName, Arguments, '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
-      RaiseException('无法启动 ' + Name + ' 安装程序：' + SysErrorMessage(ExitCode));
-    Log('Prerequisite ' + Name + ' returned ' + IntToStr(ExitCode));
-    if (ExitCode = 3010) or (ExitCode = 1641) then RuntimeRestartRequired := True
-    else begin
-      if (ExitCode <> 0) and (ExitCode <> 1638) then
-        RaiseException(Name + ' 安装失败（代码 ' + IntToStr(ExitCode) + '）。主程序未修改，请解决运行库安装问题后重试。');
-      if IsDotNet then Available := DotNetAvailable else Available := VisualCppAvailable;
-      if not Available then RaiseException(Name + ' 安装后仍未满足要求。主程序未修改，请重启 Windows 后重试。');
-    end;
-    Progress.SetProgress(100, 100);
+    try
+      Progress.SetProgress(0, 100);
+      Started := Exec(ExpandConstant('{tmp}\') + FileName, Arguments, '', SW_HIDE, ewWaitUntilTerminated, ExitCode);
+      Progress.SetProgress(100, 100);
+    except LaunchError := GetExceptionMessage; end;
   finally Progress.Hide; end;
+  // Hide invokes CurPageChanged in the script engine. Raise errors only after
+  // that callback so a page transition cannot consume a pending exception.
+  if LaunchError <> '' then RaiseException(LaunchError);
+  if not Started then RaiseException('无法启动 ' + Name + ' 安装程序：' + SysErrorMessage(ExitCode));
+  Log('Prerequisite ' + Name + ' returned ' + IntToStr(ExitCode));
+  if (ExitCode = 3010) or (ExitCode = 1641) then RuntimeRestartRequired := True
+  else begin
+    if (ExitCode <> 0) and (ExitCode <> 1638) then
+      RaiseException(Name + ' 安装失败（代码 ' + IntToStr(ExitCode) + '）。主程序未修改，请解决运行库安装问题后重试。');
+    if IsDotNet then Available := DotNetAvailable else Available := VisualCppAvailable;
+    if not Available then RaiseException(Name + ' 安装后仍未满足要求。主程序未修改，请重启 Windows 后重试。');
+  end;
 end;
 
 procedure InstallPrerequisites;

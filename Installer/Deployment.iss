@@ -9,13 +9,29 @@ begin
 end;
 
 function SafeProgramName(const Name: String): Boolean;
-var TopLevel: String; Separator: Integer;
+var TopLevel, Segment: String; Separator, I: Integer;
 begin
   Result := False;
   if Name = '' then exit;
   if (Name[1] = '\') or (Pos(':', Name) > 0) or (Pos('/', Name) > 0) or
-    (Pos('*', Name) > 0) or (Pos('?', Name) > 0) or
+    (Pos('*', Name) > 0) or (Pos('?', Name) > 0) or (Pos('"', Name) > 0) or
+    (Pos('<', Name) > 0) or (Pos('>', Name) > 0) or (Pos('|', Name) > 0) or
     (Pos('\..\', '\' + Name + '\') > 0) or (Pos('\.\', '\' + Name + '\') > 0) then exit;
+  // Win32 strips trailing dots/spaces. Reject aliases of preserved paths and
+  // configuration before resolving any untrusted uninstall ownership entry.
+  Segment := '';
+  for I := 1 to Length(Name) + 1 do begin
+    if I <= Length(Name) then begin
+      if Ord(Name[I]) < 32 then exit;
+      if Name[I] <> '\' then begin
+        Segment := Segment + Name[I];
+        continue;
+      end;
+    end;
+    if Segment = '' then exit;
+    if (Segment[Length(Segment)] = '.') or (Segment[Length(Segment)] = ' ') then exit;
+    Segment := '';
+  end;
   Separator := Pos('\', Name + '\');
   TopLevel := Copy(Name, 1, Separator - 1);
   Result := (PreservedNames.IndexOf(TopLevel) < 0) and (CompareText(Name, 'MCPanel.exe.config') <> 0);
