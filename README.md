@@ -128,3 +128,29 @@ the matching `v<version>` GitHub Release. MCPanel retrieves the release and asse
 through the GitHub API over HTTPS, sends the token only to `api.github.com`,
 follows signed asset redirects without forwarding the token, and verifies the
 ZIP SHA-256 before any extraction or replacement.
+
+## Recover an interrupted update
+
+The updater prepares and merges the incoming program before changing installed
+files. Unchanged dependencies stay in place even when another process has them
+open. Changed files are checked for locks, replaced with a rename journal, and
+rolled back individually on failure. `MCPanel.exe` stays present until the final
+atomic executable replacement; rollback never deletes untouched dependencies.
+
+Versions 1.3.58 through 1.3.60 run the updater from the installed version. For an
+installation whose executable/configuration is already missing, download
+`Restore-Update.ps1` from the 1.3.61 release and run it in administrator PowerShell:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\Downloads\Restore-Update.ps1" -InstallDirectory "D:\MCPanel"
+```
+
+It downloads the pinned 1.3.61 package and verifies its SHA-256, restores the
+program, and preserves original settings from the installation or rollback
+snapshot. Database/website data and rollback copies are retained. It never runs
+the old online updater or stops component services. Close the interactive panel
+from its tray menu first. If a changed program file is locked, recovery reports
+the exact path before modifying installed files. Add `-WhatIf` for a preview.
+
+For offline recovery, place the official ZIP and its matching `.zip.sha256`
+sidecar together and add `-PackageFile 'C:\Downloads\MCPanel-1.3.61.zip'`.

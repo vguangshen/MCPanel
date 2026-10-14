@@ -179,7 +179,8 @@ jobs:
           $hash = "$zip.sha256"
           $manifest = Join-Path $env:MCPANEL_UPDATES_DIR 'update-manifest.json'
           $repair = Join-Path $env:MCPANEL_PUBLISH_DIR 'Repair-Update.ps1'
-          gh release create $tag $zip $hash $manifest $repair `
+          $restore = Join-Path $env:MCPANEL_PUBLISH_DIR 'Restore-Update.ps1'
+          gh release create $tag $zip $hash $manifest $repair $restore `
             --target '${{ github.sha }}' `
             --title "MCPanel $version" `
             --notes-file RELEASE-NOTES.md

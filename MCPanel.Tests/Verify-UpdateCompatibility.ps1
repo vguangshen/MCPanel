@@ -17,7 +17,7 @@ function New-Case([string]$Name) {
     $staging = Join-Path $install ('StoreData\Updates\Staging\' + [Guid]::NewGuid().ToString('N'))
     $payload = Join-Path $staging 'Payload'
     Write-Text (Join-Path $install 'MCPanel.exe') 'old'
-    Write-Text (Join-Path $install 'MCPanel.exe.config') '<configuration><appSettings><add key="Ai.Model" value="custom-model" /></appSettings></configuration>'
+    Write-Text (Join-Path $install 'MCPanel.exe.config') '<configuration><appSettings><add key="Ai.Model" value="custom-model" /><add key="Ai.ApiKey" value="" /><add key="Ai.Endpoint" value="https://example.com/中文" /></appSettings></configuration>'
     # Deliberately invalid executable bytes prevent any UI/service startup after
     # the real updater finishes its file transaction; restart failure is benign.
     Write-Text (Join-Path $payload 'MCPanel.exe') 'new'
@@ -104,6 +104,68 @@ try {
         if ([IO.File]::ReadAllText($file.FullName) -ne 'IIS diagnostics') { throw 'Repair changed diagnostic contents.' }
     }
     Write-Host 'Passed: the one-time repair lets the real 1.3.58 updater finish without deleting diagnostic files.'
+
+    $lockedCase = New-Case 'legacy-readable-locked-library'
+    & (Join-Path $PSScriptRoot '..\Repair-Update.ps1') -InstallDirectory $lockedCase.Install
+    $lockedLibrary = Join-Path $lockedCase.Install 'System.Buffers.dll'
+    Write-Text $lockedLibrary 'shared runtime'
+    Write-Text (Join-Path $lockedCase.Payload 'System.Buffers.dll') 'shared runtime'
+    Write-Text (Join-Path $lockedCase.Install 'StoreData\user-data.txt') 'keep database and website settings'
+    $libraryHandle = [IO.File]::Open($lockedLibrary, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    try {
+        $lockedFailure = Invoke-Updater $legacy $lockedCase $layout
+        if ($lockedFailure.Result.Success -or $lockedFailure.ExitCode -eq 0) { throw 'Expected the real legacy updater to fail on a readable but deletion-locked DLL.' }
+        if (Test-Path -LiteralPath (Join-Path $lockedCase.Install 'MCPanel.exe')) { throw 'The missing-EXE regression was not reproduced.' }
+        if (!(Test-Path -LiteralPath (Join-Path $lockedCase.Install 'StoreData\Updates\Rollback\Current\MCPanel.exe.config'))) { throw 'Legacy rollback did not retain the original configuration.' }
+        Write-Host 'Reproduced: real 1.3.58 deletes MCPanel.exe, then both replacement and rollback fail on a readable but deletion-locked DLL.'
+
+        $recoveryPackage = Join-Path $root 'recovery.zip'
+        Compress-Archive -Path (Join-Path $lockedCase.Payload '*') -DestinationPath $recoveryPackage
+        # Include the actual shipped layout in the otherwise inert test payload.
+        $recoveryPayload = Join-Path $root 'recovery-payload'
+        Expand-Archive -LiteralPath $recoveryPackage -DestinationPath $recoveryPayload
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\deployment-layout.json') -Destination $recoveryPayload
+        Compress-Archive -Path (Join-Path $recoveryPayload '*') -DestinationPath $recoveryPackage -Force
+        Write-Text ($recoveryPackage + '.sha256') ((Get-FileHash -LiteralPath $recoveryPackage -Algorithm SHA256).Hash + '  recovery.zip')
+        $restore = Join-Path $PSScriptRoot '..\Restore-Update.ps1'
+        & $restore -InstallDirectory $lockedCase.Install -PackageFile $recoveryPackage -WhatIf
+        if (Test-Path -LiteralPath (Join-Path $lockedCase.Install 'MCPanel.exe')) { throw 'Recovery preview changed installed files.' }
+        & $restore -InstallDirectory $lockedCase.Install -PackageFile $recoveryPackage
+        & $restore -InstallDirectory $lockedCase.Install -PackageFile $recoveryPackage
+        if ([IO.File]::ReadAllText((Join-Path $lockedCase.Install 'MCPanel.exe')) -ne 'new') { throw 'Recovery did not restore the missing executable.' }
+        [xml]$recoveredConfig = Get-Content -LiteralPath (Join-Path $lockedCase.Install 'MCPanel.exe.config') -Raw -Encoding UTF8
+        $settings = @{}
+        foreach ($setting in $recoveredConfig.configuration.appSettings.add) { $settings[[string]$setting.key] = [string]$setting.value }
+        if ($settings['Ai.Model'] -ne 'custom-model' -or $settings['Ai.ApiKey'] -ne '' -or $settings['Ai.Endpoint'] -ne 'https://example.com/中文') { throw 'Recovery lost original or explicitly empty/Unicode settings.' }
+        if ([IO.File]::ReadAllText((Join-Path $lockedCase.Install 'StoreData\user-data.txt')) -ne 'keep database and website settings') { throw 'Recovery modified operational data.' }
+        if ([IO.File]::ReadAllText($lockedLibrary) -ne 'shared runtime') { throw 'Recovery replaced the unchanged locked runtime.' }
+        Write-Host 'Passed: missing-EXE recovery previews safely, restores original settings, skips an unchanged locked DLL, and can run again.'
+    } finally { $libraryHandle.Dispose() }
+
+    $fixedLockedCase = New-Case 'fixed-readable-locked-library'
+    & (Join-Path $PSScriptRoot '..\Repair-Update.ps1') -InstallDirectory $fixedLockedCase.Install
+    $fixedLibrary = Join-Path $fixedLockedCase.Install 'System.Buffers.dll'
+    Write-Text $fixedLibrary 'shared runtime'
+    Write-Text (Join-Path $fixedLockedCase.Payload 'System.Buffers.dll') 'shared runtime'
+    $libraryHandle = [IO.File]::Open($fixedLibrary, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    try {
+        $fixedLocked = Invoke-Updater $CurrentBuild $fixedLockedCase $layout
+        if (!$fixedLocked.Result.Success -or $fixedLocked.ExitCode -ne 0) { throw ('Fixed updater failed with an unchanged locked DLL: ' + $fixedLocked.Result.Message) }
+        Write-Host 'Passed: the fixed real updater leaves the unchanged locked DLL in place and completes the executable switch.'
+    } finally { $libraryHandle.Dispose() }
+
+    $changedLockedCase = New-Case 'fixed-changed-locked-library'
+    & (Join-Path $PSScriptRoot '..\Repair-Update.ps1') -InstallDirectory $changedLockedCase.Install
+    $changedLibrary = Join-Path $changedLockedCase.Install 'System.Buffers.dll'
+    Write-Text $changedLibrary 'old runtime'
+    Write-Text (Join-Path $changedLockedCase.Payload 'System.Buffers.dll') 'new runtime'
+    $libraryHandle = [IO.File]::Open($changedLibrary, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    try {
+        $changedLocked = Invoke-Updater $CurrentBuild $changedLockedCase $layout
+        if ($changedLocked.Result.Success -or $changedLocked.ExitCode -eq 0) { throw 'Changed locked DLL should stop the update.' }
+        if ([IO.File]::ReadAllText((Join-Path $changedLockedCase.Install 'MCPanel.exe')) -ne 'old') { throw 'Locked changed DLL left the old executable missing or replaced.' }
+        Write-Host 'Passed: a changed locked DLL stops the fixed real updater before any installed program files change.'
+    } finally { $libraryHandle.Dispose() }
 } finally {
     foreach ($directory in @($root) + $helperRoots) {
         if (Test-Path -LiteralPath $directory) {
