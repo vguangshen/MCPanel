@@ -2,6 +2,9 @@
   #error Build with Build-OnlineInstaller.ps1.
 #endif
 #include GeneratedDirectory + "\Header.iss"
+#if DecodeVer(VER) != ExpectedCompilerVersion
+  #error Build with the pinned Inno Setup compiler from Installer/dependencies.json.
+#endif
 
 [Setup]
 #ifdef InstallerTestBuild
@@ -23,12 +26,12 @@ UninstallFilesDir={app}\Maintenance
 SetupIconFile=..\Assets\AppIcon\mcpanel-logo.ico
 OutputBaseFilename=MCPanel-Setup
 VersionInfoVersion={#AppVersion}.0
-ArchitecturesAllowed=x64compatible
-ArchitecturesInstallIn64BitMode=x64compatible
+ArchitecturesAllowed=x64os
+ArchitecturesInstallIn64BitMode=x64os
 MinVersion=6.1sp1
 PrivilegesRequired=admin
 WizardStyle=modern
-WizardSizePercent=110
+WizardSizePercent=120
 DisableWelcomePage=yes
 DisableProgramGroupPage=yes
 DisableReadyPage=yes

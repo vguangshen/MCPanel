@@ -73,6 +73,7 @@ $vcLS = ([uint32]$vcMinimum.Build -shl 16) -bor [uint32]$vcMinimum.Revision
 $maximumRelativeLength = ($files | ForEach-Object { $_.Length } | Measure-Object -Maximum).Maximum
 $header = @(
     (Define 'AppVersion' $version), (Define 'PackageUrl' $PackageUrl), (Define 'PackageHash' $hash),
+    (Define 'ExpectedCompilerVersion' $catalog.compiler.version),
     (Define 'RequiredSpace' ([string]([Math]::Max(104857600L, $expandedBytes * 4)))),
     (Define 'DotNetUrl' $catalog.dotnet.url), (Define 'DotNetHash' $catalog.dotnet.sha256),
     (Define 'DotNetArguments' $catalog.dotnet.arguments),
@@ -104,10 +105,8 @@ if (!$CompilerPath) {
         if ($install.ExitCode -ne 0) { throw ('Inno Setup compiler installation failed: ' + $install.ExitCode) }
     }
 }
-$compilerHelp = (& $CompilerPath '/?' 2>&1 | Out-String)
-if ($compilerHelp -notmatch ('Inno Setup ' + [regex]::Escape($catalog.compiler.version) + '(?:\s|$)')) {
-    throw ('The pinned Inno Setup compiler engine was not found: ' + $compilerHelp)
-}
+# The script checks the actual engine's VER preprocessor constant. ISCC.exe has
+# no useful FileVersion, and its /? output does not load/report the engine.
 & $CompilerPath ('/DGeneratedDirectory=' + $work) ('/O' + $OutputDirectory) (Join-Path $PSScriptRoot 'Installer\MCPanel.iss')
 if ($LASTEXITCODE -ne 0) { throw ('Inno Setup compilation failed: ' + $LASTEXITCODE) }
 $setup = Join-Path $OutputDirectory 'MCPanel-Setup.exe'

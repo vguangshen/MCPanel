@@ -75,3 +75,11 @@ jobs:
         shell: pwsh
         run: |
           dotnet test MCPanel.Tests/MCPanel.Tests.csproj --configuration Release --framework net462 --no-build
+
+      - name: Upload native installer preview
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-installer-preview
+          path: ${{ runner.temp }}/MCPanelInstallerPreview/installer.png
+          if-no-files-found: ignore

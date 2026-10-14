@@ -9,11 +9,11 @@ $PackageFile = [IO.Path]::GetFullPath($PackageFile)
 $root = Join-Path ([IO.Path]::GetTempPath()) ('MCI-' + [Guid]::NewGuid().ToString('N').Substring(0, 10))
 [IO.Directory]::CreateDirectory($root) | Out-Null
 
-function Invoke-Setup([string]$Directory, [string]$Package = $PackageFile, [string]$Exe = $InstallerFile, [int]$ExpectedExitCode = 0) {
+function Invoke-Setup([string]$Directory, [string]$Package = $PackageFile, [string]$Exe = $InstallerFile, [int]$ExpectedExitCode = 0, [string]$ExtraArguments = '') {
     $info = [Diagnostics.ProcessStartInfo]::new()
     $info.FileName = $Exe
     $log = Join-Path $root ([Guid]::NewGuid().ToString('N') + '.log')
-    $info.Arguments = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- "/DIR=' + $Directory + '" "/PACKAGEFILE=' + $Package + '" "/LOG=' + $log + '"'
+    $info.Arguments = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- "/DIR=' + $Directory + '" "/PACKAGEFILE=' + $Package + '" "/LOG=' + $log + '" ' + $ExtraArguments
     $info.UseShellExecute = $false
     $process = [Diagnostics.Process]::Start($info)
     try {
@@ -95,6 +95,9 @@ try {
         if ([IO.File]::ReadAllText((Join-Path $install ($name + '\keep.txt'))) -ne $name) { throw ('Uninstaller removed operational data: ' + $name) }
     }
     Write-Host 'Passed: uninstall removes only owned program files and preserves configuration, business data and outside files.'
+
+    & (Join-Path $PSScriptRoot 'Verify-InstallerPrerequisites.ps1') -PackageFile $PackageFile -CaseRoot $root
+    & (Join-Path $PSScriptRoot 'Verify-InstallerUI.ps1') -InstallerFile $InstallerFile -InstallDirectory (Join-Path $root 'preview')
 } finally {
     if (Test-Path -LiteralPath $root) {
         Get-ChildItem -LiteralPath $root -File -Recurse -Force | ForEach-Object { $_.IsReadOnly = $false }
