@@ -179,7 +179,8 @@ public sealed class ComponentLocatorAndDownloadTests
         var manifestPath = Path.Combine(AppContext.BaseDirectory, "deployment-layout.json");
 
         Assert.IsTrue(File.Exists(manifestPath));
-        Assert.AreEqual(20, DeploymentLayoutManifest.PreservedTopLevelNames.Count);
+        Assert.AreEqual(21, DeploymentLayoutManifest.PreservedTopLevelNames.Count);
+        Assert.IsTrue(DeploymentLayoutManifest.PreservedTopLevelNames.Contains("Diagnostics"));
         Assert.IsTrue(File.ReadAllText(manifestPath).Contains("\"web\"", StringComparison.Ordinal));
     }
 
