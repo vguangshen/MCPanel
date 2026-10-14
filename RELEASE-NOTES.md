@@ -1,15 +1,15 @@
-# MCPanel 1.3.60
+# MCPanel 1.3.61
 
-- 修复安装目录内有 IIS 诊断文件、旧回滚副本含只读文件时，更新备份可能报“访问被拒绝”的问题。更新前严格清理旧回滚副本；清理失败时在替换程序前中止。
-- `Diagnostics` 纳入保留数据目录，更新、发布和打包均保留诊断资料；新版更新器即使携带旧版目录清单，也会保留这些已知数据目录。
-- 程序文件与回滚副本的清理支持只读属性，失败回滚仍恢复原程序文件；清理不跟随目录链接。
-- 增加 `Repair-Update.ps1` 一次性恢复工具。1.3.58 / 1.3.59 使用自身的旧更新器；遇到此错误时，先彻底退出 MCPanel，再运行恢复工具，随后重试在线更新。工具把诊断目录和失败回滚副本移动到 `StoreData` 下保留，不删除文件、不修改连接配置，也不停止 Session 0 的组件服务。
-- 增加只读诊断、锁定文件、旧目录清单、失败回滚和恢复脚本的行为测试，并在 Windows CI 中运行真实 1.3.58 更新器的复现与恢复验证。
+- 修复更新中 DLL 可以读取但无法删除时，主程序被先删除、回滚又被同一 DLL 阻断的问题。新文件及配置先在暂存目录准备，原 EXE 保留到最后一次原子替换。
+- 内容相同的运行库保留原位，即使被其他进程打开也不反复删除。需要变更的文件先检查占用；提交期间出现新占用时，仅撤回已完成的改动，并继续尝试其余文件的恢复。
+- 更新事务增加安装目录锁，避免两个更新器同时替换程序。继续保留诊断、组件、数据库、站点和其他运行数据；成功更新后清理旧程序回滚副本。
+- 新增 `Restore-Update.ps1`，用于 1.3.58–1.3.60 旧更新器造成的程序缺失。恢复工具校验并安装完整 1.3.61 包，从原目录或回滚副本恢复自定义配置，保留原文件，跳过内容相同的被占用 DLL，无需再调用旧更新器。
+- Windows CI 增加真实 1.3.58 更新器删除 EXE 的复现、新版更新器验证和恢复工具端到端验证，并覆盖文件锁、只读 EXE、提交失败回滚和更新互斥。
 
-恢复命令（把脚本路径替换为实际下载位置）：
+程序缺失时，下载本 Release 的 `Restore-Update.ps1`，在管理员 PowerShell 执行：
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\path\Repair-Update.ps1" -InstallDirectory "D:\MCPanel"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\Downloads\Restore-Update.ps1" -InstallDirectory "D:\MCPanel"
 ```
 
-可先添加 `-WhatIf` 预览。MCPanel 窗口关闭会进入托盘，运行前请从托盘菜单退出。
+请从托盘菜单退出面板。恢复工具自动下载并校验本版本；原文件保留在 `StoreData\Updates\Recovery`，原有回滚副本保留。看到 `Recovery complete` 后直接启动 `MCPanel.exe`。支持 `-WhatIf` 预览；离线使用时，通过 `-PackageFile` 指定与 `.zip.sha256` 同目录的完整 ZIP 包。

@@ -90,7 +90,7 @@ internal sealed class ApplicationUpdatePlan
     public bool DeletePackageFileAfterApply { get; set; }
 }
 
-public sealed class ApplicationUpdateService
+public sealed partial class ApplicationUpdateService
 {
     private const int MaxManifestBytes = 1024 * 1024;
     internal const string GitHubReleaseManifestFormat = "mcpanel-github-release-v1";
@@ -940,55 +940,6 @@ internal void LaunchUpdater(
         }
     }
 
-    internal static void ApplyTransaction(ApplicationUpdatePlan plan)
-    {
-        ValidateTransactionPlan(plan);
-        var installRoot = plan.InstallDirectory;
-        var payloadRoot = plan.PayloadDirectory;
-        var rollbackRoot = Path.Combine(ComponentPaths.GetUpdatesRoot(installRoot), "Rollback", "Current");
-        var existingConfigFile = Path.Combine(installRoot, "MCPanel.exe.config");
-        var preservedAppSettings = DeploymentConfigurationSettings.Capture(existingConfigFile);
-        // A failed cleanup must stop before any installed files are replaced.
-        // File.Copy cannot overwrite read-only files left in an old snapshot.
-        if (Directory.Exists(rollbackRoot)) DeleteUpdateEntry(rollbackRoot);
-        Directory.CreateDirectory(rollbackRoot);
-        var replacementStarted = false;
-        try
-        {
-            CopyReplaceableEntries(installRoot, rollbackRoot);
-            replacementStarted = true;
-            DeleteReplaceableEntries(installRoot);
-            CopyReplaceableEntries(payloadRoot, installRoot);
-            DeploymentConfigurationSettings.Apply(Path.Combine(installRoot, "MCPanel.exe.config"), preservedAppSettings);
-            if (!File.Exists(Path.Combine(installRoot, plan.MainExecutableName)))
-                throw new InvalidDataException("更新后主程序文件不存在。");
-
-            // The rollback copy is needed only while the replacement is in
-            // progress. Keeping it after a successful update would leave a
-            // complete copy of the old MCPanel program under StoreData and
-            // make a clean installation look like it still contains the old
-            // version. A failed replacement still takes the catch path below
-            // and retains the restored state for diagnosis/retry.
-            TryDeleteDirectory(rollbackRoot);
-        }
-        catch
-        {
-            if (replacementStarted)
-            {
-                DeleteReplaceableEntries(installRoot);
-                CopyReplaceableEntries(rollbackRoot, installRoot);
-            }
-            else
-            {
-                // A backup failure happens before the installed program is
-                // touched. Never replace a complete installation with a
-                // partial rollback snapshot.
-                TryDeleteDirectory(rollbackRoot);
-            }
-            throw;
-        }
-    }
-
     internal static void ValidateTransactionPlan(ApplicationUpdatePlan plan)
     {
         if (plan is null)
@@ -1205,15 +1156,6 @@ internal void LaunchUpdater(
             var destination = Path.Combine(destinationRoot, name);
             if (Directory.Exists(entry)) CopyDirectory(entry, destination);
             else File.Copy(entry, destination, true);
-        }
-    }
-
-    private static void DeleteReplaceableEntries(string installRoot)
-    {
-        foreach (var entry in Directory.EnumerateFileSystemEntries(installRoot))
-        {
-            if (PreservedTopLevelNames.Contains(Path.GetFileName(entry))) continue;
-            DeleteUpdateEntry(entry);
         }
     }
 
