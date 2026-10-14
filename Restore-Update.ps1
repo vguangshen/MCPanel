@@ -5,6 +5,15 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+function Get-RecoveryHash([string]$Path) {
+    # Windows PowerShell's Get-FileHash internally evaluates ProviderPath using
+    # a cmdlet affected by an inherited -WhatIf. Hash directly for safe previews.
+    $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    $algorithm = [Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($algorithm.ComputeHash($stream))).Replace('-', '') }
+    finally { $algorithm.Dispose(); $stream.Dispose() }
+}
+
 $installRoot = [IO.Path]::GetFullPath($InstallDirectory).TrimEnd('\', '/')
 if ($installRoot -eq [IO.Path]::GetPathRoot($installRoot).TrimEnd('\', '/') -or
     !(Test-Path -LiteralPath (Join-Path $installRoot 'StoreData') -PathType Container)) {
@@ -34,7 +43,7 @@ try {
     $sidecar = $PackageFile + '.sha256'
     if (!(Test-Path -LiteralPath $sidecar -PathType Leaf)) { throw 'The package needs its matching .zip.sha256 file.' }
     $expected = ((Get-Content -LiteralPath $sidecar -Raw).Trim() -split '\s+')[0]
-    if ($expected -notmatch '^[a-fA-F0-9]{64}$' -or (Get-FileHash -LiteralPath $PackageFile -Algorithm SHA256).Hash -ine $expected) {
+    if ($expected -notmatch '^[a-fA-F0-9]{64}$' -or (Get-RecoveryHash $PackageFile) -ine $expected) {
         throw 'Package SHA-256 verification failed. No installed files were changed.'
     }
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -102,7 +111,7 @@ try {
             $ancestor = [IO.Path]::GetDirectoryName($ancestor)
         }
         $exists = Test-Path -LiteralPath $destination -PathType Leaf
-        if ($exists -and (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash -eq (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash) { continue }
+        if ($exists -and (Get-RecoveryHash $destination) -eq (Get-RecoveryHash $file.FullName)) { continue }
         if ($exists) {
             try {
                 $probe = [IO.File]::Open($destination, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None)
@@ -170,5 +179,5 @@ try {
     Write-Output 'Recovery complete. Start MCPanel.exe directly; no old online updater is needed.'
 } finally {
     if ($null -ne $transactionLock) { $transactionLock.Dispose() }
-    if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Recurse -Force }
+    if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Recurse -Force -WhatIf:$false -Confirm:$false }
 }

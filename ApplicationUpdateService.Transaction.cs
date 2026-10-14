@@ -96,6 +96,7 @@ public sealed partial class ApplicationUpdateService
         File.Copy(executable, Path.Combine(rollbackRoot, "MCPanel.exe"), false);
         var retired = new List<string>();
         var installed = new List<string>();
+        var executableAttributesChanged = false;
         try
         {
             foreach (var entry in ReplaceableEntries(installRoot).ToArray())
@@ -116,7 +117,10 @@ public sealed partial class ApplicationUpdateService
             // Never unlink MCPanel.exe. The final program switch is one atomic
             // operation, after every dependency and configuration is ready.
             if ((executableAttributes & FileAttributes.ReadOnly) != 0)
+            {
                 File.SetAttributes(executable, executableAttributes & ~FileAttributes.ReadOnly);
+                executableAttributesChanged = true;
+            }
             File.Replace(Path.Combine(incomingRoot, "MCPanel.exe"), executable, null);
         }
         catch (Exception error)
@@ -134,8 +138,11 @@ public sealed partial class ApplicationUpdateService
                 try { MoveUpdateEntry(Path.Combine(rollbackRoot, name), Path.Combine(installRoot, name)); }
                 catch (Exception restoreError) { failures.Add(restoreError); }
             }
-            try { File.SetAttributes(executable, executableAttributes); }
-            catch (Exception restoreError) { failures.Add(restoreError); }
+            if (executableAttributesChanged)
+            {
+                try { File.SetAttributes(executable, executableAttributes); }
+                catch (Exception restoreError) { failures.Add(restoreError); }
+            }
             if (failures.Count > 1)
                 throw new AggregateException($"更新失败且部分文件未能恢复。主程序未删除；请保留回滚目录：{rollbackRoot}", failures);
             throw;
