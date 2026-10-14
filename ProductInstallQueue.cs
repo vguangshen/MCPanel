@@ -239,12 +239,6 @@ internal sealed class ProductInstallQueueService : IDisposable
         PersistIfNeeded();
     }
 
-    public ProductInstallQueueItemViewModel? CancelCurrent()
-    {
-        var item = CurrentItem;
-        return item is null ? null : Cancel(item.QueueId) ? item : null;
-    }
-
     public bool Cancel(string queueId)
     {
         ThrowIfDisposed();

@@ -41,9 +41,6 @@ internal static class DeploymentLayoutManifest
         return fallback;
     }
 
-    internal static bool IsPreservedTopLevelName(string name) =>
-        PreservedNames.Value.Contains(name);
-
     private static IReadOnlyCollection<string> LoadPreservedTopLevelNames()
     {
         try

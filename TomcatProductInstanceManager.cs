@@ -24,21 +24,18 @@ public sealed class TomcatProductRuntimeInfo
         TomcatProductRuntimeMode mode,
         int port,
         bool portListening,
-        int? processId = null,
-        DateTime? startedAt = null)
+        int? processId = null)
     {
         Mode = mode;
         Port = port;
         PortListening = portListening;
         ProcessId = processId;
-        StartedAt = startedAt;
     }
 
     public TomcatProductRuntimeMode Mode { get; }
     public int Port { get; }
     public bool PortListening { get; }
     public int? ProcessId { get; }
-    public DateTime? StartedAt { get; }
     public bool IsRunning => Mode is TomcatProductRuntimeMode.Shared or TomcatProductRuntimeMode.Independent or TomcatProductRuntimeMode.Catalina;
 }
 
@@ -121,8 +118,7 @@ public sealed class TomcatProductInstanceManager
                 mode,
                 port,
                 portListening,
-                processId,
-                TryGetProcessStartTime(processId));
+                processId);
         }
 
         if (portListening)
@@ -133,43 +129,6 @@ public sealed class TomcatProductInstanceManager
         return new TomcatProductRuntimeInfo(TomcatProductRuntimeMode.Stopped, port, false);
     }
 
-    // One process/port snapshot for the entire website page, not one WMI/netstat per card.
-    internal static IReadOnlyDictionary<string, TomcatProductRuntimeInfo> CaptureWebsiteRuntime(
-        IReadOnlyList<(string Id, int Port)> products, CancellationToken token)
-    {
-        var result = new Dictionary<string, TomcatProductRuntimeInfo>(StringComparer.OrdinalIgnoreCase);
-        if (products.Count == 0) return result;
-        token.ThrowIfCancellationRequested();
-        var ports = GetActiveTcpPorts();
-        var java = EnumerateJavaProcesses().ToArray();
-        var home = FindTomcatRoot();
-        var shared = home is not null &&
-            java.Any(process => ContainsJavaOptionPath(process.CommandLine, "-Dcatalina.base", home));
-        string netstat = string.Empty;
-        if (products.Any(product => ports.Contains(product.Port)))
-        {
-            try { netstat = ProcessRunner.RunSynchronously(Path.Combine(Environment.SystemDirectory, "netstat.exe"),
-                "-ano -p tcp", captureOutput: true, timeout: TimeSpan.FromSeconds(4)).StandardOutput; }
-            catch { }
-        }
-        foreach (var product in products)
-        {
-            token.ThrowIfCancellationRequested();
-            var listening = ports.Contains(product.Port);
-            var root = GetInstanceRoot(product.Id);
-            var process = java.FirstOrDefault(item => ContainsJavaOptionPath(item.CommandLine, "-Dcatalina.base", root));
-            var owners = ParseNetstatListeningProcessIds(netstat, new[] { product.Port });
-            var recorded = ReadInstanceProcessId(root);
-            var pid = process?.ProcessId ?? (recorded.HasValue && owners.Contains(recorded.Value) &&
-                java.Any(item => item.ProcessId == recorded.Value) ? recorded : null);
-            var mode = pid.HasValue ? (ReadInstanceRunMode(root) == "Catalina" ? TomcatProductRuntimeMode.Catalina : TomcatProductRuntimeMode.Independent)
-                : shared && listening ? TomcatProductRuntimeMode.Shared
-                : listening ? TomcatProductRuntimeMode.PortConflict : TomcatProductRuntimeMode.Stopped;
-            result[product.Id] = new TomcatProductRuntimeInfo(mode, product.Port, listening, pid);
-        }
-        return result;
-    }
-
     public static IReadOnlyList<string> GetRunningProductIds() =>
         ProductDeploymentService.LoadTomcatDeploymentInfos()
             .Select(info => info.ProductId)
@@ -177,46 +136,6 @@ public sealed class TomcatProductInstanceManager
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(productId => productId, StringComparer.OrdinalIgnoreCase)
             .ToArray();
-
-    internal static string FormatRuntimeStatus(TomcatProductRuntimeInfo runtime)
-    {
-        var processText = runtime.ProcessId.HasValue ? $" · PID {runtime.ProcessId.Value}" : string.Empty;
-        var uptimeText = string.Empty;
-        if (runtime.StartedAt.HasValue)
-        {
-            var elapsed = DateTime.Now - runtime.StartedAt.Value;
-            if (elapsed < TimeSpan.Zero)
-            {
-                elapsed = TimeSpan.Zero;
-            }
-            uptimeText = elapsed.TotalMinutes < 1
-                ? " · 刚刚启动"
-                : elapsed.TotalHours < 1
-                    ? $" · 运行 {(int)elapsed.TotalMinutes} 分钟"
-                    : $" · 运行 {(int)elapsed.TotalHours} 小时 {elapsed.Minutes} 分钟";
-        }
-
-        return runtime.Mode switch
-        {
-            TomcatProductRuntimeMode.Shared => "总 Tomcat 运行",
-            TomcatProductRuntimeMode.Independent => $"独立运行{processText}{uptimeText}",
-            TomcatProductRuntimeMode.Catalina => $"Catalina 运行{processText}{uptimeText}",
-            TomcatProductRuntimeMode.PortConflict => $"端口 {runtime.Port} 被其他进程占用",
-            _ => "已部署，未运行"
-        };
-    }
-
-    private async Task<string> PrepareProductInstanceAsync(string productId, CancellationToken cancellationToken = default)
-    {
-        var info = ProductDeploymentService.LoadTomcatDeploymentInfo(productId)
-            ?? throw new InvalidOperationException($"未找到 {productId} 的 Tomcat 部署信息，请先修复绑定。");
-        var tomcatHome = FindTomcatRoot()
-            ?? throw new DirectoryNotFoundException("未找到 Tomcat 安装目录。");
-
-        await ProductDeploymentService.EnsureTomcatProductServiceAsync(info, cancellationToken);
-        info = ProductDeploymentService.LoadTomcatDeploymentInfo(productId) ?? info;
-        return await PrepareInstanceAsync(tomcatHome, info, cancellationToken);
-    }
 
     public async Task<string> StartAsync(string productId, bool catalinaMode, CancellationToken cancellationToken = default)
     {
@@ -533,15 +452,6 @@ public sealed class TomcatProductInstanceManager
 
         var sharedPorts = TomcatRuntimeProbe.ReadHttpPorts(tomcatHome).ToArray();
         return sharedPorts.Length > 0 && sharedPorts.All(IsJavaPortListening);
-    }
-
-    public static bool IsAnyManagedTomcatRunning()
-    {
-        var tomcatHome = FindTomcatRoot();
-        return tomcatHome is not null &&
-               (EnumerateJavaCommandLines().Any(commandLine =>
-                    ContainsJavaOptionPath(commandLine, "-Dcatalina.home", tomcatHome)) ||
-                GetTomcatHttpPorts(tomcatHome).Any(IsJavaPortListening));
     }
 
     public static bool IsAnyManagedTomcatHealthy()
@@ -1315,19 +1225,6 @@ public sealed class TomcatProductInstanceManager
         }
         catch
         {
-        }
-    }
-
-    private static DateTime? TryGetProcessStartTime(int processId)
-    {
-        try
-        {
-            using var process = Process.GetProcessById(processId);
-            return process.StartTime;
-        }
-        catch
-        {
-            return null;
         }
     }
 

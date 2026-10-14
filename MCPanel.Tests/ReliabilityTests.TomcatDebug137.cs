@@ -8,24 +8,25 @@ namespace MCPanel.Tests;
 public partial class ReliabilityTests
 {
     [TestMethod]
-    public void TomcatDebug_RuntimeStatus_UsesDistinctProfessionalModes()
+    public void TomcatProductStartControlsFollowTheCurrentRuntimeMode()
     {
-        Assert.AreEqual(
-            "总 Tomcat 运行",
-            TomcatProductInstanceManager.FormatRuntimeStatus(
-                new TomcatProductRuntimeInfo(TomcatProductRuntimeMode.Shared, 10081, true)));
-        StringAssert.StartsWith(
-            TomcatProductInstanceManager.FormatRuntimeStatus(
-                new TomcatProductRuntimeInfo(TomcatProductRuntimeMode.Independent, 10081, true, 1234)),
-            "独立运行 · PID 1234");
-        StringAssert.StartsWith(
-            TomcatProductInstanceManager.FormatRuntimeStatus(
-                new TomcatProductRuntimeInfo(TomcatProductRuntimeMode.Catalina, 10081, true, 5678)),
-            "Catalina 运行 · PID 5678");
-        Assert.AreEqual(
-            "端口 10081 被其他进程占用",
-            TomcatProductInstanceManager.FormatRuntimeStatus(
-                new TomcatProductRuntimeInfo(TomcatProductRuntimeMode.PortConflict, 10081, true)));
+        var root = CreateTemporaryDirectory();
+        try
+        {
+            var product = new ProductItem("TEST-MODES", "测试", "测试", string.Empty, ProductSource.Local)
+            {
+                ExternalInstallPath = root,
+                RunEnvironment = "Tomcat"
+            };
+            var item = new InstalledProductItem(product, root);
+            Assert.IsTrue(item.IsTomcatDeployment);
+            foreach (TomcatProductRuntimeMode mode in Enum.GetValues(typeof(TomcatProductRuntimeMode)))
+            {
+                item.ApplyTomcatRuntime(new TomcatProductRuntimeInfo(mode, 10081, mode != TomcatProductRuntimeMode.Stopped));
+                Assert.AreEqual(mode is TomcatProductRuntimeMode.Stopped or TomcatProductRuntimeMode.Shared, item.CanStartTomcatProduct);
+            }
+        }
+        finally { DeleteTemporaryTree(root); }
     }
 
     [TestMethod]

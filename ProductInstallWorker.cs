@@ -11,12 +11,10 @@ namespace MCPanel;
 
 /// <summary>
 /// Runs product installations in an elevated process. The queue mode keeps one
-/// UAC-approved worker alive for the ordered download/deployment chain, while
-/// the legacy single-request mode remains available for existing callers.
+/// UAC-approved worker alive for the ordered download/deployment chain.
 /// </summary>
 internal static class ProductInstallWorker
 {
-    private const string WorkerArgument = "--product-install-worker";
     private const string QueueWorkerArgument = "--product-install-queue-worker";
     private const string QueueRequestSuffix = ".request.json";
     private const string QueueActiveSuffix = ".active.json";
@@ -26,49 +24,12 @@ internal static class ProductInstallWorker
 
     public static bool IsWorkerRequest(string[] args) =>
         Array.Exists(args, argument =>
-            string.Equals(argument, WorkerArgument, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(argument, QueueWorkerArgument, StringComparison.OrdinalIgnoreCase));
 
-    public static async Task<int> RunAsync(string[] args)
-    {
-        if (TryGetQueueWorkerPaths(args, out var queueRoot, out var stopPath, out var heartbeatPath))
-        {
-            return await RunQueueAsync(queueRoot, stopPath, heartbeatPath);
-        }
-
-        if (!TryGetRequest(args, out var requestPath, out var progressPath, out var cancelPath, out var pausePath))
-        {
-            return 2;
-        }
-
-        var reporter = new ProgressReporter(progressPath);
-        ProductInstallWorkerRequest? request = null;
-        try
-        {
-            if (!IsAdministrator())
-            {
-                throw new InvalidOperationException("管理员产品安装进程未获得管理员权限。请重新点击安装并允许 UAC 授权。");
-            }
-
-            request = JsonSerializer.Deserialize<ProductInstallWorkerRequest>(
-                File.ReadAllText(requestPath, Encoding.UTF8),
-                JsonOptions);
-            if (request is null || string.IsNullOrWhiteSpace(request.ProductId))
-            {
-                throw new InvalidDataException("产品安装请求无效，无法开始安装。");
-            }
-
-            return await RunOneAsync(request, progressPath, cancelPath, pausePath);
-        }
-        catch (Exception ex)
-        {
-            WriteFailure(
-                reporter,
-                request?.ProductId ?? "product",
-                ex);
-            return 1;
-        }
-    }
+    public static Task<int> RunAsync(string[] args) =>
+        TryGetQueueWorkerPaths(args, out var queueRoot, out var stopPath, out var heartbeatPath)
+            ? RunQueueAsync(queueRoot, stopPath, heartbeatPath)
+            : Task.FromResult(2);
 
     internal static async Task<int> RunOneAsync(
         ProductInstallWorkerRequest request,
@@ -743,47 +704,6 @@ internal static class ProductInstallWorker
             queueRoot = string.Empty;
             stopPath = string.Empty;
             heartbeatPath = string.Empty;
-            return false;
-        }
-    }
-
-    private static bool TryGetRequest(
-        string[] args,
-        out string requestPath,
-        out string progressPath,
-        out string cancelPath,
-        out string pausePath)
-    {
-        requestPath = string.Empty;
-        progressPath = string.Empty;
-        cancelPath = string.Empty;
-        pausePath = string.Empty;
-        var index = Array.FindIndex(args, argument =>
-            string.Equals(argument, WorkerArgument, StringComparison.OrdinalIgnoreCase));
-        if (index < 0 || index + 4 >= args.Length)
-        {
-            return false;
-        }
-
-        try
-        {
-            var workRoot = GetWorkRoot();
-            requestPath = Path.GetFullPath(args[index + 1]);
-            progressPath = Path.GetFullPath(args[index + 2]);
-            cancelPath = Path.GetFullPath(args[index + 3]);
-            pausePath = Path.GetFullPath(args[index + 4]);
-            return IsPathInside(workRoot, requestPath) &&
-                   IsPathInside(workRoot, progressPath) &&
-                   IsPathInside(workRoot, cancelPath) &&
-                   IsPathInside(workRoot, pausePath) &&
-                   File.Exists(requestPath);
-        }
-        catch
-        {
-            requestPath = string.Empty;
-            progressPath = string.Empty;
-            cancelPath = string.Empty;
-            pausePath = string.Empty;
             return false;
         }
     }

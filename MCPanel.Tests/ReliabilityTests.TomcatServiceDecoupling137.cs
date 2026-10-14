@@ -21,7 +21,11 @@ public sealed partial class ReliabilityTests
         var instances = ReadRepositoryFile("TomcatProductInstanceManager.cs");
         Assert.IsFalse(instances.Contains("TomcatWindowsServiceManager.IsRunningForRoot", StringComparison.Ordinal));
         StringAssert.Contains(instances, "IsSharedTomcatRunning()");
-        StringAssert.Contains(instances, "ContainsJavaOptionPath(process.CommandLine, \"-Dcatalina.base\", home)");
+        var shared = ReadRepositoryMethod("TomcatProductInstanceManager.cs", "public static bool IsSharedTomcatRunning()");
+        StringAssert.Contains(shared, "IsJavaProcessForBase(tomcatHome)");
+        StringAssert.Contains(shared, "sharedPorts.Length > 0 && sharedPorts.All(IsJavaPortListening)");
+        var processProbe = ReadRepositoryMethod("TomcatProductInstanceManager.cs", "private static bool IsJavaProcessForBase(string catalinaBase)");
+        StringAssert.Contains(processProbe, "ContainsJavaOptionPath(commandLine, \"-Dcatalina.base\", catalinaBase)");
 
         var runtime = ReadRepositoryFile("EnvironmentRuntimeService.cs");
         Assert.IsFalse(runtime.Contains("TomcatWindowsServiceManager.IsRunningForRoot", StringComparison.Ordinal));

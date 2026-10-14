@@ -11,58 +11,55 @@ namespace MCPanel.Tests;
 public partial class ReliabilityTests
 {
     [TestMethod]
-    public async Task TomcatProgressProbeReportsReadinessAndWaitsForStablePorts()
+    public async Task IndependentTomcatRequiresPortsToRemainStable()
     {
         var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         try
         {
             var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-            var reports = new List<int>();
-            var wait = TomcatRuntimeProbe.WaitForStartupAsync("unused", new[] { port }, CancellationToken.None,
-                progress: (ready, total) => { Assert.AreEqual(1, total); reports.Add(ready); });
-            Assert.IsFalse(wait.IsCompleted, "检测到监听后仍须等待稳定性验证。");
+            var wait = TomcatRuntimeProbe.EnsureStableAsync(new[] { port }, TimeSpan.FromMilliseconds(100), CancellationToken.None);
+            Assert.IsFalse(wait.IsCompleted);
             await wait;
-            CollectionAssert.Contains(reports, 1);
         }
         finally { listener.Stop(); }
     }
 
     [TestMethod]
-    public async Task TomcatProgressProbeRejectsPortThatClosesDuringValidation()
+    public async Task IndependentTomcatRejectsPortThatClosesDuringValidation()
     {
         var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         try
         {
             var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-            var wait = TomcatRuntimeProbe.WaitForStartupAsync("unused", new[] { port }, CancellationToken.None,
-                progress: (ready, _) => { if (ready == 1) listener.Stop(); });
+            var wait = TomcatRuntimeProbe.EnsureStableAsync(new[] { port }, TimeSpan.FromMilliseconds(100), CancellationToken.None);
+            listener.Stop();
             await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => wait);
         }
         finally { listener.Stop(); }
     }
 
     [TestMethod]
-    public async Task TomcatProgressProbeTimesOutAndSupportsCancellation()
+    public async Task IndependentTomcatStabilityCheckRejectsClosedPortsAndSupportsCancellation()
     {
         var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
         listener.Stop();
-        var reports = new List<int>();
-        await Assert.ThrowsExceptionAsync<TimeoutException>(() => TomcatRuntimeProbe.WaitForStartupAsync(
-            "unused", new[] { port }, CancellationToken.None, TimeSpan.FromMilliseconds(50),
-            (ready, _) => reports.Add(ready)));
-        CollectionAssert.Contains(reports, 0);
-        using var cancellation = new CancellationTokenSource();
-        cancellation.Cancel();
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => TomcatRuntimeProbe.EnsureStableAsync(
+            new[] { port }, TimeSpan.FromMilliseconds(100), CancellationToken.None));
+        listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
         try
         {
-            await TomcatRuntimeProbe.WaitForStartupAsync("unused", new[] { port }, cancellation.Token);
-            Assert.Fail("取消后不能报告启动成功。");
+            port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            using var cancellation = new CancellationTokenSource();
+            cancellation.Cancel();
+            await Assert.ThrowsExceptionAsync<TaskCanceledException>(() => TomcatRuntimeProbe.EnsureStableAsync(
+                new[] { port }, TimeSpan.FromSeconds(1), cancellation.Token));
         }
-        catch (OperationCanceledException) { }
+        finally { listener.Stop(); }
     }
 
     [TestMethod]

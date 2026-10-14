@@ -37,12 +37,6 @@ public sealed record EnvironmentRuntimeSnapshot(
     IReadOnlyDictionary<EnvironmentKind, string?> InstallDirectories,
     IReadOnlyDictionary<EnvironmentKind, string>? ProbeErrors = null);
 
-public sealed record TomcatStartupProgress(
-    double Percent,
-    string Message,
-    int ReadyApplications,
-    int TotalApplications);
-
 public sealed partial class EnvironmentRuntimeService
 {
     private static readonly SemaphoreSlim ElevatedActionLock = new(1, 1);
@@ -70,18 +64,6 @@ public sealed partial class EnvironmentRuntimeService
             EnvironmentKind.Iis => GetIisState(locator),
             _ => NotInstalled()
         };
-    }
-
-    public IReadOnlyDictionary<EnvironmentKind, EnvironmentRuntimeState> GetStates()
-    {
-        var locator = new ComponentLocator();
-        var result = new Dictionary<EnvironmentKind, EnvironmentRuntimeState>();
-        foreach (var kind in new[] { EnvironmentKind.Iis, EnvironmentKind.Nginx, EnvironmentKind.MySql, EnvironmentKind.SqlServer, EnvironmentKind.Tomcat })
-        {
-            result[kind] = GetState(kind, locator);
-        }
-
-        return result;
     }
 
     public string? GetInstallDirectory(EnvironmentKind kind)
@@ -112,18 +94,6 @@ public sealed partial class EnvironmentRuntimeService
         {
             return null;
         }
-    }
-
-    public IReadOnlyDictionary<EnvironmentKind, string?> GetInstallDirectories()
-    {
-        var locator = new ComponentLocator();
-        var result = new Dictionary<EnvironmentKind, string?>();
-        foreach (EnvironmentKind kind in Enum.GetValues(typeof(EnvironmentKind)))
-        {
-            result[kind] = GetInstallDirectory(kind, locator);
-        }
-
-        return result;
     }
 
     public EnvironmentRuntimeSnapshot GetSnapshot()
@@ -174,7 +144,7 @@ public sealed partial class EnvironmentRuntimeService
         };
     }
 
-    public async Task<string> StartAsync(EnvironmentKind kind, CancellationToken cancellationToken = default, Action<TomcatStartupProgress>? tomcatProgress = null)
+    public async Task<string> StartAsync(EnvironmentKind kind, CancellationToken cancellationToken = default)
     {
         switch (kind)
         {
@@ -200,7 +170,9 @@ public sealed partial class EnvironmentRuntimeService
                 RetireLegacyTomcatWindowsService(tomcatRoot);
                 LaunchTomcatStartConsole(tomcatRoot);
 
-                return $"Tomcat Server 已按标准 start 模式启动，普通 Tomcat CMD 窗口已打开。需要持续查看 Catalina 前台输出时请使用“以 Catalina 方式启动”。日志目录：{Path.Combine(tomcatRoot, "logs")}";            case EnvironmentKind.Nginx:
+                return $"Tomcat Server 已按标准 start 模式启动，普通 Tomcat CMD 窗口已打开。需要持续查看 Catalina 前台输出时请使用“以 Catalina 方式启动”。日志目录：{Path.Combine(tomcatRoot, "logs")}";
+
+            case EnvironmentKind.Nginx:
                 return await StartNginxAsync(cancellationToken);
             case EnvironmentKind.MySql:
                 return await RunMySqlServiceActionAsync("start", cancellationToken);
@@ -269,8 +241,7 @@ public sealed partial class EnvironmentRuntimeService
         }
     }
 
-    public async Task<string> RestartAsync(EnvironmentKind kind, CancellationToken cancellationToken = default,
-        Action<TomcatStartupProgress>? tomcatProgress = null)
+    public async Task<string> RestartAsync(EnvironmentKind kind, CancellationToken cancellationToken = default)
     {
         if (kind == EnvironmentKind.Iis)
         {
@@ -804,7 +775,6 @@ public sealed partial class EnvironmentRuntimeService
     };
 
     private static string EscapePowerShellPath(string path) => path.Replace("'", "''");
-    private static string AppCmdPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "inetsrv", "appcmd.exe");
     private static string StoreDataRoot => ComponentPaths.StoreDataRoot;
     private static string IisPendingUninstallMarker => Path.Combine(ComponentPaths.RuntimeStateRoot, "iis-pending-uninstall-restart.flag");
     private static string IisUninstalledMarker => Path.Combine(ComponentPaths.RuntimeStateRoot, "iis-uninstalled.flag");

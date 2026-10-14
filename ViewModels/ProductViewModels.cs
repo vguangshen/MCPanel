@@ -17,44 +17,19 @@ public enum ProductSource
     Online
 }
 
-public sealed class CustomWebsiteItem : INotifyPropertyChanged
+public sealed class CustomWebsiteItem
 {
     public CustomWebsiteItem(CustomWebsiteDefinition definition)
     {
         Definition = definition;
         Url = CustomWebsiteService.BuildUrl(definition);
-        if (!Directory.Exists(definition.PhysicalPath))
-        {
-            StatusText = "网站目录缺失";
-            StatusBrush = Brushes.IndianRed;
-        }
-        else
-        {
-            StatusText = "正在查询 IIS 状态";
-            StatusBrush = Brushes.Goldenrod;
-        }
     }
 
     public CustomWebsiteDefinition Definition { get; }
     public string Name => Definition.Name;
     public string PhysicalPath => Definition.PhysicalPath;
     public string Url { get; }
-    public string StatusText { get; private set; }
-    public Brush StatusBrush { get; private set; }
-    public bool IsRunning { get; private set; }
-    public event PropertyChangedEventHandler? PropertyChanged;
 
-    internal void RefreshStatus(IisWebsiteStatusProbe probe, bool? directoryExists = null)
-    {
-        var status = (directoryExists ?? Directory.Exists(PhysicalPath)) ? probe.Get(Definition) : new IisWebsiteStatus("网站目录缺失", false);
-        if (StatusText == status.Text && IsRunning == status.Running) return;
-        StatusText = status.Text;
-        IsRunning = status.Running;
-        StatusBrush = status.Running ? Brushes.MediumSeaGreen : Brushes.Goldenrod;
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusText)));
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusBrush)));
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsRunning)));
-    }
     public string DomainSummary => Definition.Domains.Count == 0
         ? $"所有主机 · HTTP :{Definition.HttpPort}"
         : $"{string.Join("、", Definition.Domains)} · HTTP :{Definition.HttpPort}";
@@ -66,20 +41,14 @@ public sealed class CustomWebsiteItem : INotifyPropertyChanged
 
 public sealed class InstalledProductItem : ObservableObject
 {
-    private string _runtimeStatusText = "待检测";
-    private Brush _runtimeStatusBrush = Brushes.Gray;
     private string _siteDisplayText = "尚未绑定 IIS";
     private string _poolDisplayText = "应用程序池：未创建";
     private string _url = string.Empty;
     private string _domainDisplayText = "独立域名：未配置";
-    private bool _canBrowse;
     private bool _isTomcatDeployment;
     private bool _isManagementExpanded;
     private TomcatProductRuntimeMode _tomcatRuntimeMode = TomcatProductRuntimeMode.Stopped;
     private int _tomcatPort;
-    private IisProductDeploymentInfo? _iisInfo;
-    internal int RuntimePort => _tomcatPort;
-    internal IisProductDeploymentInfo? IisInfo => _iisInfo;
 
     public InstalledProductItem(ProductItem product, string installPath)
     {
@@ -95,23 +64,10 @@ public sealed class InstalledProductItem : ObservableObject
     public string EnvironmentSummary => Product.EnvironmentSummary;
     public string InstallPath { get; }
     public string RemoveActionText => Product.IsExternalPlatform ? "解除绑定" : "卸载";
-    public string RuntimeStatusText { get => _runtimeStatusText; private set => SetProperty(ref _runtimeStatusText, value); }
-    public Brush RuntimeStatusBrush { get => _runtimeStatusBrush; private set => SetProperty(ref _runtimeStatusBrush, value); }
     public string SiteDisplayText { get => _siteDisplayText; private set => SetProperty(ref _siteDisplayText, value); }
     public string PoolDisplayText { get => _poolDisplayText; private set => SetProperty(ref _poolDisplayText, value); }
     public string Url { get => _url; private set => SetProperty(ref _url, value); }
     public string DomainDisplayText { get => _domainDisplayText; private set => SetProperty(ref _domainDisplayText, value); }
-    public bool CanBrowse
-    {
-        get => _canBrowse;
-        private set
-        {
-            if (SetProperty(ref _canBrowse, value))
-            {
-                OnPropertyChanged(nameof(CanStartTomcatProduct));
-            }
-        }
-    }
     public bool IsManagementExpanded
     {
         get => _isManagementExpanded;
@@ -158,26 +114,7 @@ public sealed class InstalledProductItem : ObservableObject
                 : "Tomcat 端口待自动修复";
         }
     }
-    public void SetOperationState(string text)
-    {
-        RuntimeStatusText = text;
-        RuntimeStatusBrush = Brushes.Goldenrod;
-    }
-
-    internal void ApplyTomcatRuntime(TomcatProductRuntimeInfo runtime)
-    {
-        TomcatRuntimeMode = runtime.Mode;
-        RuntimeStatusText = TomcatProductInstanceManager.FormatRuntimeStatus(runtime);
-        RuntimeStatusBrush = runtime.Mode switch
-        {
-            TomcatProductRuntimeMode.Shared => Brushes.MediumSeaGreen,
-            TomcatProductRuntimeMode.Independent => Brushes.MediumSeaGreen,
-            TomcatProductRuntimeMode.Catalina => Brushes.DeepSkyBlue,
-            TomcatProductRuntimeMode.PortConflict => Brushes.IndianRed,
-            _ => Brushes.Goldenrod
-        };
-        CanBrowse = runtime.IsRunning && runtime.PortListening;
-    }
+    internal void ApplyTomcatRuntime(TomcatProductRuntimeInfo runtime) => TomcatRuntimeMode = runtime.Mode;
 
     public void RefreshRuntime()
     {
@@ -193,8 +130,8 @@ public sealed class InstalledProductItem : ObservableObject
             DomainDisplayText = "独立域名：配置状态不可读";
         }
 
-        _iisInfo = ProductDeploymentService.LoadIisDeploymentInfo(ProductId);
-        var tomcatDeployment = _iisInfo is null || Product.RunEnvironment?.IndexOf("Tomcat", StringComparison.OrdinalIgnoreCase) >= 0
+        var iisInfo = ProductDeploymentService.LoadIisDeploymentInfo(ProductId);
+        var tomcatDeployment = iisInfo is null || Product.RunEnvironment?.IndexOf("Tomcat", StringComparison.OrdinalIgnoreCase) >= 0
             ? FindTomcatDeployment() : null;
         if (tomcatDeployment is not null)
         {
@@ -205,43 +142,32 @@ public sealed class InstalledProductItem : ObservableObject
                 SiteDisplayText = $"Tomcat / {ProductId}";
                 PoolDisplayText = $"应用上下文：/{ProductId}";
                 Url = string.Empty;
-                RuntimeStatusText = "端口配置异常，点击启动可自动修复";
-                RuntimeStatusBrush = Brushes.IndianRed;
-                CanBrowse = false;
                 return;
             }
 
-            var runtime = WebsiteRuntimeSnapshot.Latest.Tomcat.TryGetValue(ProductId, out var cachedRuntime) ? cachedRuntime
-                : new TomcatProductRuntimeInfo(TomcatProductRuntimeMode.Stopped, _tomcatPort, false);
             SiteDisplayText = $"Tomcat / {ProductId}";
             PoolDisplayText = $"应用上下文：/{ProductId}";
             Url = $"http://localhost:{tomcatDeployment.Value.Port}/{ProductId}/";
 
-            ApplyTomcatRuntime(runtime);
+            TomcatRuntimeMode = TomcatProductRuntimeMode.Stopped;
             return;
         }
 
         IsTomcatDeployment = Product.IsExternalPlatform && Product.RunEnvironment == "Tomcat";
         if (IsTomcatDeployment)
         {
-            RuntimeStatusText = Directory.Exists(InstallPath) ? "尚未完成绑定" : "软件目录缺失";
-            RuntimeStatusBrush = Brushes.IndianRed;
             SiteDisplayText = $"Tomcat / {ProductId}";
             PoolDisplayText = "可通过管理菜单修复绑定";
             Url = string.Empty;
-            CanBrowse = false;
             return;
         }
         TomcatRuntimeMode = TomcatProductRuntimeMode.Stopped;
-        var info = _iisInfo;
+        var info = iisInfo;
         if (info is null)
         {
-            RuntimeStatusText = "未绑定";
-            RuntimeStatusBrush = Brushes.IndianRed;
             SiteDisplayText = $"MCPanel / {ProductId}";
             PoolDisplayText = $"应用程序池：{ProductId}（未创建）";
             Url = $"http://localhost:8088/{ProductId}/";
-            CanBrowse = false;
             return;
         }
 
@@ -249,32 +175,9 @@ public sealed class InstalledProductItem : ObservableObject
         PoolDisplayText = $"应用程序池：{info.ApplicationPool}";
         Url = info.Url;
 
-        ApplyRuntimeSnapshot(WebsiteRuntimeSnapshot.Latest);
-    }
-
-    internal void ApplyRuntimeSnapshot(WebsiteRuntimeSnapshot snapshot)
-    {
-        if (Product.IsBusy) return;
-        if (snapshot.Directories.TryGetValue(InstallPath, out var exists) && !exists)
-        {
-            RuntimeStatusText = "软件目录缺失"; RuntimeStatusBrush = Brushes.IndianRed; CanBrowse = false; return;
-        }
-        if (IsTomcatDeployment && snapshot.Tomcat.TryGetValue(ProductId, out var runtime))
-        {
-            ApplyTomcatRuntime(runtime);
-        }
-        else if (_iisInfo is not null)
-        {
-            var state = snapshot.Iis.Get(_iisInfo.SiteName, _iisInfo.ApplicationPool, _iisInfo.ApplicationPath);
-            RuntimeStatusText = state.Running ? "服务运行中" : state.Text;
-            CanBrowse = state.Running;
-            RuntimeStatusBrush = state.Running ? Brushes.MediumSeaGreen : Brushes.Goldenrod;
-        }
     }
 
     public string? GetTomcatDeploymentPath() => FindTomcatDeployment()?.Path;
-
-    private int GetTomcatDeploymentPort() => FindTomcatDeployment()?.Port ?? 0;
 
     private (string Path, int Port)? FindTomcatDeployment()
     {
@@ -386,9 +289,6 @@ public sealed class InstalledProductItem : ObservableObject
 public sealed class InstallationProgressViewModel : ObservableObject
 {
     private bool _isVisible;
-    private bool _canCancel;
-    private bool _canPause;
-    private bool _isPaused;
     private string _operationTitle = "正在安装产品";
     private string _productName = string.Empty;
     private string _productId = string.Empty;
@@ -398,12 +298,6 @@ public sealed class InstallationProgressViewModel : ObservableObject
     private string _elapsedText = "已用时 00:00";
     private double _progress;
     private DateTime _startedAt;
-    private string _lastDownloadDetail = "正在连接产品下载服务...";
-    private string _downloadSpeedText = string.Empty;
-    private string _transferText = string.Empty;
-    private double _downloadProgress;
-    private bool _downloadTotalKnown;
-    private bool _isUninstall;
     private bool _showCompletedQueue;
     private readonly HashSet<ProductInstallQueueItemViewModel> _subscribedQueueItems = new();
     private IReadOnlyList<ProductInstallQueueItemViewModel> _activeQueueItems = Array.Empty<ProductInstallQueueItemViewModel>();
@@ -490,35 +384,6 @@ public sealed class InstallationProgressViewModel : ObservableObject
             : $"最近保留 {CompletedQueueCount} 条任务记录"
         : QueueSummaryText;
 
-    public bool CanCancel { get => _canCancel; private set => SetProperty(ref _canCancel, value); }
-    public bool CanPause
-    {
-        get => _canPause;
-        private set
-        {
-            if (SetProperty(ref _canPause, value))
-            {
-                OnPropertyChanged(nameof(PauseButtonVisibility));
-                OnPropertyChanged(nameof(IsDownloading));
-            }
-        }
-    }
-    public bool IsDownloading => CanPause || QueueItems.Any(item => item.IsDownloading);
-    public bool IsPaused
-    {
-        get => _isPaused;
-        private set
-        {
-            if (SetProperty(ref _isPaused, value))
-            {
-                OnPropertyChanged(nameof(PauseActionText));
-                OnPropertyChanged(nameof(ProgressText));
-                OnPropertyChanged(nameof(IsProgressIndeterminate));
-            }
-        }
-    }
-    public string PauseActionText => IsPaused ? "继续下载" : "暂停下载";
-    public Visibility PauseButtonVisibility => CanPause ? Visibility.Visible : Visibility.Collapsed;
     public string OperationTitle { get => _operationTitle; private set => SetProperty(ref _operationTitle, value); }
     public string ProductName { get => _productName; private set => SetProperty(ref _productName, value); }
     public string ProductId { get => _productId; private set => SetProperty(ref _productId, value); }
@@ -538,8 +403,6 @@ public sealed class InstallationProgressViewModel : ObservableObject
     }
     public string DetailText { get => _detailText; private set => SetProperty(ref _detailText, value); }
     public string ElapsedText { get => _elapsedText; private set => SetProperty(ref _elapsedText, value); }
-    public string DownloadSpeedText { get => _downloadSpeedText; private set => SetProperty(ref _downloadSpeedText, value); }
-    public string TransferText { get => _transferText; private set => SetProperty(ref _transferText, value); }
     public double Progress
     {
         get => _progress;
@@ -554,20 +417,6 @@ public sealed class InstallationProgressViewModel : ObservableObject
         }
     }
 
-    public double DownloadProgress
-    {
-        get => _downloadProgress;
-        private set
-        {
-            if (SetProperty(ref _downloadProgress, Compat.Clamp(value, 0, 100)))
-            {
-                OnPropertyChanged(nameof(OverallDownloadProgress));
-                OnPropertyChanged(nameof(DisplayDownloadProgress));
-                OnPropertyChanged(nameof(ProgressText));
-            }
-        }
-    }
-
     public double OverallDownloadProgress
     {
         get
@@ -578,7 +427,7 @@ public sealed class InstallationProgressViewModel : ObservableObject
                 .FirstOrDefault();
             if (firstActive is null)
             {
-                return DownloadProgress;
+                return 0d;
             }
 
             // Queue history is retained for the progress panel. Only include
@@ -593,7 +442,7 @@ public sealed class InstallationProgressViewModel : ObservableObject
                 .ToArray();
             if (currentBatch.Length == 0)
             {
-                return DownloadProgress;
+                return 0d;
             }
 
             var completed = currentBatch
@@ -606,21 +455,9 @@ public sealed class InstallationProgressViewModel : ObservableObject
         }
     }
 
-    public double DisplayDownloadProgress => StageText == "处理完成" ? 100d
-        : _isUninstall ? Progress : _downloadTotalKnown ? DownloadProgress : 0d;
-    public string ProgressText => StageText == "处理完成"
-        ? "完成"
-        : IsPaused
-            ? "已暂停"
-            : _isUninstall ? $"{Progress:0}%"
-            : StageText == "下载产品文件" && _downloadTotalKnown
-                ? $"{DownloadProgress:0}%"
-                : "处理中";
-    public bool IsProgressIndeterminate => IsVisible &&
-        !_isUninstall &&
-        !IsPaused &&
-        StageText != "处理完成" &&
-        (StageText != "下载产品文件" || !_downloadTotalKnown);
+    public double DisplayDownloadProgress => StageText == "处理完成" ? 100d : Progress;
+    public string ProgressText => StageText == "处理完成" ? "完成" : $"{Progress:0}%";
+    public bool IsProgressIndeterminate => false;
     public bool IsQueueActivityAnimating
     {
         get
@@ -633,58 +470,8 @@ public sealed class InstallationProgressViewModel : ObservableObject
         }
     }
 
-    public void Begin(ProductItem product, bool isUpdate, bool show = true)
-    {
-        SetUninstallMode(false);
-        _startedAt = DateTime.Now;
-        OperationTitle = isUpdate ? "正在更新产品" : "正在安装产品";
-        ProductName = product.DisplayName;
-        ProductId = product.ProductId;
-        IconPath = product.IconPath;
-        StageText = "准备安装";
-        DetailText = "正在准备产品安装...";
-        Progress = 0;
-        DownloadProgress = 0;
-        DownloadSpeedText = string.Empty;
-        TransferText = string.Empty;
-        _downloadTotalKnown = false;
-        RecentEvents.Clear();
-        AddEvent(DetailText);
-        CanPause = false;
-        IsPaused = false;
-        CanCancel = true;
-        IsVisible = show;
-        Tick();
-    }
-
-    public void BeginQueued(ProductItem product, bool isUpdate, int queuePosition, bool show = true)
-    {
-        SetUninstallMode(false);
-        _startedAt = DateTime.Now;
-        OperationTitle = isUpdate ? "等待更新产品" : "等待安装产品";
-        ProductName = product.DisplayName;
-        ProductId = product.ProductId;
-        IconPath = product.IconPath;
-        StageText = "等待队列";
-        DetailText = $"已加入安装队列，当前排在第 {Math.Max(1, queuePosition)} 项。";
-        Progress = 0;
-        DownloadProgress = 0;
-        DownloadSpeedText = string.Empty;
-        TransferText = string.Empty;
-        _downloadTotalKnown = false;
-        RecentEvents.Clear();
-        AddEvent(DetailText);
-        CanPause = false;
-        IsPaused = false;
-        CanCancel = true;
-        IsVisible = show;
-        OnPropertyChanged(nameof(IsProgressIndeterminate));
-        Tick();
-    }
-
     public void BeginUninstall(ProductItem product)
     {
-        SetUninstallMode(true);
         _startedAt = DateTime.Now;
         OperationTitle = "正在卸载产品";
         ProductName = product.DisplayName;
@@ -693,53 +480,12 @@ public sealed class InstallationProgressViewModel : ObservableObject
         StageText = "准备卸载";
         DetailText = "正在读取产品绑定和运行状态...";
         Progress = 0;
-        DownloadProgress = 0;
-        DownloadSpeedText = string.Empty;
-        TransferText = string.Empty;
-        _downloadTotalKnown = false;
         RecentEvents.Clear();
         AddEvent(DetailText);
         // Uninstall changes IIS/Tomcat/Nginx state and is intentionally not
         // interruptible from this panel.  The button remains hidden instead of
         // exposing a cancellation path that could leave a half-removed binding.
-        CanPause = false;
-        IsPaused = false;
-        CanCancel = false;
         IsVisible = true;
-        Tick();
-    }
-
-    private void SetUninstallMode(bool uninstall)
-    {
-        _isUninstall = uninstall;
-        OnPropertyChanged(nameof(DisplayDownloadProgress));
-        OnPropertyChanged(nameof(ProgressText));
-        OnPropertyChanged(nameof(IsProgressIndeterminate));
-    }
-
-    public void SetDownloadStage()
-    {
-        _lastDownloadDetail = "正在连接产品下载服务并准备接收文件...";
-        StageText = "下载产品文件";
-        DetailText = _lastDownloadDetail;
-        DownloadSpeedText = string.Empty;
-        TransferText = string.Empty;
-        _downloadTotalKnown = false;
-        DownloadProgress = 0;
-        IsPaused = false;
-        CanPause = true;
-        AddEvent(DetailText);
-        Tick();
-    }
-
-    public void ReportProgress(double value)
-    {
-        var normalized = Compat.Clamp(value, 0, 100);
-        if (normalized > Progress)
-        {
-            Progress = normalized;
-        }
-
         Tick();
     }
 
@@ -751,79 +497,9 @@ public sealed class InstallationProgressViewModel : ObservableObject
         }
 
         var normalized = status.Trim();
-        if (CanPause)
-        {
-            _lastDownloadDetail = normalized;
-        }
-
-        if (IsPaused)
-        {
-            Tick();
-            return;
-        }
-
         DetailText = normalized;
-        StageText = ResolveStage(DetailText);
+        StageText = ResolveUninstallStage(DetailText);
         AddEvent(DetailText);
-        Tick();
-    }
-
-    internal void ApplyWorkerProgress(ProductInstallWorkerProgress update)
-    {
-        if (update is null)
-        {
-            return;
-        }
-
-        var normalizedProgress = Compat.Clamp(update.Percent, 0, 100);
-        if (normalizedProgress >= Progress || string.Equals(update.State, "completed", StringComparison.OrdinalIgnoreCase))
-        {
-            Progress = normalizedProgress;
-        }
-
-        DetailText = update.Message;
-        StageText = update.Stage switch
-        {
-            InstallProgressStage.Preparing => "准备下载",
-            InstallProgressStage.Downloading => "下载产品文件",
-            InstallProgressStage.Installing => "配置运行服务",
-            InstallProgressStage.Completed => "处理完成",
-            _ => ResolveStage(update.Message)
-        };
-        var isDownloading = update.Stage == InstallProgressStage.Downloading &&
-                            !string.Equals(update.State, "completed", StringComparison.OrdinalIgnoreCase);
-        DownloadProgress = isDownloading
-            ? update.StagePercent ?? update.Percent
-            : update.Stage == InstallProgressStage.Downloading ? 100 : DownloadProgress;
-        CanPause = isDownloading;
-        CanCancel = !string.Equals(update.State, "completed", StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(update.State, "failed", StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(update.State, "cancelled", StringComparison.OrdinalIgnoreCase);
-        DownloadSpeedText = isDownloading
-            ? $"速度 {(!string.IsNullOrWhiteSpace(update.SpeedText) ? update.SpeedText : "—")}"
-            : string.Empty;
-        _downloadTotalKnown = update.HasReliableTotal && update.TotalBytes is > 0;
-        OnPropertyChanged(nameof(DisplayDownloadProgress));
-        TransferText = isDownloading &&
-                       (update.BytesReceived > 0 || update.TotalBytes is not null ||
-                        update.ScannedFiles > 0 || update.ScannedBytes > 0)
-            ? new ProductDownloadProgress(
-                update.StagePercent ?? update.Percent,
-                update.Message,
-                update.BytesReceived,
-                update.TotalBytes,
-                update.SpeedText,
-                update.ScannedFiles,
-                update.ScannedBytes,
-                update.HasReliableTotal).TransferText
-            : string.Empty;
-        if (isDownloading)
-        {
-            _lastDownloadDetail = update.Message;
-        }
-
-        AddEvent(update.Message);
-        OnPropertyChanged(nameof(IsProgressIndeterminate));
         Tick();
     }
 
@@ -842,73 +518,11 @@ public sealed class InstallationProgressViewModel : ObservableObject
         Tick();
     }
 
-    public void SetDeploymentStage(bool isUpdate)
-    {
-        CanPause = false;
-        IsPaused = false;
-        DownloadSpeedText = string.Empty;
-        TransferText = string.Empty;
-        _downloadTotalKnown = false;
-        DownloadProgress = 100;
-        StageText = "配置运行服务";
-        DetailText = isUpdate ? "产品文件已更新，正在检查并恢复运行服务..." : "产品文件已下载，正在配置运行服务...";
-        ReportProgress(92);
-        AddEvent(DetailText);
-    }
-
-    public void MarkDownloadPaused()
-    {
-        if (!CanPause || IsPaused)
-        {
-            return;
-        }
-
-        _lastDownloadDetail = DetailText;
-        IsPaused = true;
-        StageText = "下载已暂停";
-        DetailText = "下载连接已暂停，临时文件会保留；点击“继续下载”即可恢复。";
-        AddEvent("用户已暂停产品下载。");
-        Tick();
-    }
-
-    public void MarkDownloadResumed()
-    {
-        if (!CanPause || !IsPaused)
-        {
-            return;
-        }
-
-        IsPaused = false;
-        DetailText = string.IsNullOrWhiteSpace(_lastDownloadDetail)
-            ? "正在继续下载产品文件..."
-            : _lastDownloadDetail;
-        StageText = ResolveStage(DetailText);
-        AddEvent("产品下载已继续。");
-        Tick();
-    }
-
-    public void MarkCancelling()
-    {
-        CanPause = false;
-        IsPaused = false;
-        CanCancel = false;
-        StageText = "正在取消";
-        DetailText = "正在安全停止当前操作，请稍候...";
-        AddEvent(DetailText);
-    }
-
     public void Complete()
     {
         StageText = "处理完成";
-        DetailText = "产品文件与运行服务已处理完成。";
+        DetailText = "产品卸载已完成。";
         Progress = 100;
-        CanPause = false;
-        IsPaused = false;
-        CanCancel = false;
-        DownloadSpeedText = string.Empty;
-        TransferText = string.Empty;
-        _downloadTotalKnown = false;
-        DownloadProgress = 0;
         AddEvent(DetailText);
         Tick();
     }
@@ -917,13 +531,6 @@ public sealed class InstallationProgressViewModel : ObservableObject
     {
         IsVisible = false;
         OnPropertyChanged(nameof(IsProgressIndeterminate));
-    }
-
-    public void Show()
-    {
-        IsVisible = true;
-        OnPropertyChanged(nameof(IsProgressIndeterminate));
-        Tick();
     }
 
     public void Tick()
@@ -967,7 +574,6 @@ public sealed class InstallationProgressViewModel : ObservableObject
         }
         else if (e.PropertyName == nameof(ProductInstallQueueItemViewModel.IsDownloading))
         {
-            OnPropertyChanged(nameof(IsDownloading));
             OnPropertyChanged(nameof(IsQueueActivityAnimating));
             OnPropertyChanged(nameof(OverallDownloadProgress));
         }
@@ -1012,19 +618,8 @@ public sealed class InstallationProgressViewModel : ObservableObject
         OnPropertyChanged(nameof(QueueItemsVisibility));
         OnPropertyChanged(nameof(QueueSummaryText));
         OnPropertyChanged(nameof(QueuePanelSummaryText));
-        OnPropertyChanged(nameof(IsDownloading));
         OnPropertyChanged(nameof(OverallDownloadProgress));
         OnPropertyChanged(nameof(IsQueueActivityAnimating));
-    }
-
-    private static string ResolveStage(string status)
-    {
-        if (status.Contains("停止", StringComparison.OrdinalIgnoreCase)) return "停止运行服务";
-        if (status.Contains("准备", StringComparison.OrdinalIgnoreCase)) return "准备下载";
-        if (status.Contains("更新", StringComparison.OrdinalIgnoreCase) || status.Contains("Revert", StringComparison.OrdinalIgnoreCase)) return "同步产品更新";
-        if (status.Contains("下载", StringComparison.OrdinalIgnoreCase) || status.Contains("Checkout", StringComparison.OrdinalIgnoreCase)) return "下载产品文件";
-        if (status.Contains("部署", StringComparison.OrdinalIgnoreCase) || status.Contains("配置", StringComparison.OrdinalIgnoreCase)) return "配置运行服务";
-        return "处理产品文件";
     }
 
     private static string ResolveUninstallStage(string status)
@@ -1384,12 +979,6 @@ public sealed class DriveItem : ObservableObject
     {
         _targetPercentUsed = CalculatePercent(usedBytes, totalBytes);
         SizeText = FormatSize(usedBytes, totalBytes);
-    }
-
-    public void TickAnimation()
-    {
-        var next = PercentUsed + (_targetPercentUsed - PercentUsed) * 0.16;
-        PercentUsed = Math.Abs(next - _targetPercentUsed) < 0.05 ? _targetPercentUsed : next;
     }
 
     public void SnapToTarget()

@@ -117,14 +117,6 @@ public sealed partial class PanelMessageDialog : PanelModalWindow
         e.Handled = true;
     }
 
-    private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ChangedButton == MouseButton.Left)
-        {
-            DragMove();
-        }
-    }
-
     private void Complete(MessageBoxResult result)
     {
         Result = result;

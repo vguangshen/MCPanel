@@ -27,11 +27,19 @@ routing. Its settings, product, and environment handlers live in
 same split under `MCPanel.Tests`, so adding a new feature does not require
 extending one monolithic source file. Environment installers and runtime probes
 are split into component partials (`EnvironmentInstaller.*.cs` and
-`EnvironmentRuntimeService.*.cs`), while their public entry points remain stable.
+`EnvironmentRuntimeService.*.cs`), with shared entry points for the current component controls.
 Home and Environment controls share the same operation coordinator and Tomcat
 mode-switch confirmation. Runtime samples run in the background; a component
 operation invalidates older samples, and a failed probe retains the last known
 state of that component while other cards continue updating.
+
+Product installs use the durable queue worker; the previous single-request worker,
+shared Tomcat HTTP-readiness loop, website status monitor, and single-task download
+progress model have been removed. The progress overlay is used for uninstall work;
+download state and controls belong to each queue item. `LegacyRuntimeCompatibility.cs`
+provides APIs missing from the supported .NET Framework 4.6.2 runtime. Old storage,
+credential, service-registration and update-channel migrations remain active upgrade
+paths and are retained.
 
 Disk snapshots and inactive queue-session maintenance live in dedicated services
 under `Services`. Disk sampling runs off the UI thread at ten-second intervals;

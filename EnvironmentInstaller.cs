@@ -438,16 +438,6 @@ public sealed partial class EnvironmentInstaller : IDisposable
         return markers.Count(marker => text.Contains(marker, StringComparison.Ordinal)) >= 2;
     }
 
-    private static async Task RunProcessAsync(string fileName, string arguments, string workingDirectory, bool elevated, CancellationToken cancellationToken)
-    {
-        using var process = ProcessRunner.Start(fileName, arguments, workingDirectory, elevated);
-        await ProcessLifecycle.WaitForExitAsync(process, cancellationToken);
-        if (process.ExitCode != 0)
-        {
-            throw new InvalidOperationException($"{Path.GetFileName(fileName)} 退出码：{process.ExitCode}");
-        }
-    }
-
     private static async Task RunProcessWithOutputAsync(string fileName, string arguments, string workingDirectory, CancellationToken cancellationToken)
     {
         var result = await ProcessRunner.RunAsync(

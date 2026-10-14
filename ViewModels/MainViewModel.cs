@@ -91,13 +91,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         InitializeWebsiteFeatures(initializeData);
         InstalledProducts.CollectionChanged += (_, _) => SyncWebsiteRows();
         CustomWebsites.CollectionChanged += (_, _) => SyncWebsiteRows();
-        SummaryCounters =
-        [
-            new SummaryCounter("网站", 0),
-            new SummaryCounter("产品", 0),
-            new SummaryCounter("数据库", 0)
-        ];
-
         Services = new ObservableCollection<ServiceItem>(EnvironmentComponentCatalog.HomeOrder.Select(kind =>
         {
             var definition = EnvironmentComponentCatalog.Get(kind);
@@ -134,9 +127,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    public string WelcomeText => "欢迎：admin";
     public string VersionText => ApplicationUpdateService.CurrentVersionText;
-    public ObservableCollection<SummaryCounter> SummaryCounters { get; }
     public ObservableCollection<ServiceItem> Services { get; }
     public ObservableCollection<EnvironmentItem> EnvironmentItems { get; }
     public ObservableCollection<ProductItem> Products { get; }
@@ -363,57 +354,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _productCacheStore.Save(snapshot);
         await RefreshInstalledProductsAsync();
         StartProductIconCaching(snapshot, $"已获取 {snapshot.Length} 个产品");
-    }
-
-    public void UpdateFrpState(EnvironmentRuntimeState state)
-    {
-        var frp = EnvironmentItems.FirstOrDefault(item => item.Kind == EnvironmentKind.FrpTunnel);
-        if (frp is null)
-        {
-            return;
-        }
-
-        frp.ApplyRuntimeState(state);
-    }
-
-    public void RefreshEnvironmentStates(EnvironmentRuntimeService runtimeService, bool preserveBusy = false)
-    {
-        foreach (var item in EnvironmentItems.Where(item => item.Kind != EnvironmentKind.FrpTunnel))
-        {
-            if (preserveBusy && item.IsBusy)
-            {
-                continue;
-            }
-
-            item.ApplyRuntimeState(runtimeService.GetState(item.Kind));
-        }
-
-        foreach (var item in EnvironmentItems)
-        {
-            item.InstallDirectory = runtimeService.GetInstallDirectory(item.Kind);
-        }
-    }
-
-    public void RefreshSuiteServices(
-        EnvironmentRuntimeService runtimeService,
-        EnvironmentRuntimeState frpState,
-        bool preserveBusy = false)
-    {
-        foreach (var service in Services)
-        {
-            if (preserveBusy && service.IsBusy)
-            {
-                continue;
-            }
-
-            if (service.Kind == EnvironmentKind.FrpTunnel)
-            {
-                service.ApplyRuntimeState(frpState);
-                continue;
-            }
-
-            service.ApplyRuntimeState(runtimeService.GetState(service.Kind));
-        }
     }
 
     public void ApplyRuntimeStates(

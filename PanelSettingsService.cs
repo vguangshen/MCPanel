@@ -91,19 +91,6 @@ public sealed class PanelSettingsService
         SaveSettings(settings);
     }
 
-    public string GetNavicatPath()
-    {
-        return LoadSettings().NavicatPath;
-    }
-
-    public string GetNavicatPathDisplay()
-    {
-        var installation = GetNavicatInstallation();
-        return installation is null
-            ? $"未安装；面板安装目录：{ComponentPaths.NavicatLiteRoot}"
-            : $"{installation.SourceText}：{installation.ExecutablePath}";
-    }
-
     public void SetNavicatPath(string path)
     {
         if (string.IsNullOrWhiteSpace(path) ||
@@ -118,18 +105,6 @@ public sealed class PanelSettingsService
         SaveSettings(settings);
     }
 
-    public void ClearNavicatPath()
-    {
-        var settings = LoadSettings();
-        settings.NavicatPath = string.Empty;
-        SaveSettings(settings);
-    }
-
-    public string GetSqlManagementStudioPath()
-    {
-        return LoadSettings().SqlManagementStudioPath;
-    }
-
     public void SetSqlManagementStudioPath(string path)
     {
         if (string.IsNullOrWhiteSpace(path) ||
@@ -141,13 +116,6 @@ public sealed class PanelSettingsService
 
         var settings = LoadSettings();
         settings.SqlManagementStudioPath = Path.GetFullPath(path);
-        SaveSettings(settings);
-    }
-
-    public void ClearSqlManagementStudioPath()
-    {
-        var settings = LoadSettings();
-        settings.SqlManagementStudioPath = string.Empty;
         SaveSettings(settings);
     }
 
@@ -197,18 +165,11 @@ public sealed class PanelSettingsService
     public SsmsReleaseRecommendation GetSqlManagementStudioRecommendation() =>
         SsmsReleaseCatalog.ResolveForInstalledSqlServer();
 
-    public string GetSqlManagementStudioRecommendationText() =>
-        GetSqlManagementStudioRecommendation().Summary;
-
     internal DatabaseToolInstallation? GetNavicatInstallation() =>
         DatabaseToolLocator.FindNavicat(LoadSettings().NavicatPath);
 
     internal DatabaseToolInstallation? GetSqlManagementStudioInstallation() =>
         DatabaseToolLocator.FindSqlServerManagementStudio(LoadSettings().SqlManagementStudioPath);
-
-    public bool IsNavicatAvailable() => GetNavicatInstallation() is not null;
-
-    public bool IsSqlManagementStudioAvailable() => GetSqlManagementStudioInstallation() is not null;
 
     public bool TryOpenNavicatForMySql()
     {
@@ -240,8 +201,6 @@ public sealed class PanelSettingsService
             ComponentPaths.WorkRoot,
             cancellationToken);
     }
-
-    public void OpenSqlManagementStudio() => StartTool(RequireSqlManagementStudioPath());
 
     public async Task EnsureSqlServerLocalCertificateAsync(CancellationToken cancellationToken = default)
     {
@@ -493,12 +452,6 @@ public sealed class PanelSettingsService
             FileName = path,
             UseShellExecute = true
         });
-    }
-
-    private string RequireSqlManagementStudioPath()
-    {
-        return FindSqlManagementStudioPath() ??
-               throw new FileNotFoundException("未找到 SQL Server Management Studio。");
     }
 
     private string? FindNavicatPath()

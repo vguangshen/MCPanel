@@ -126,7 +126,7 @@ public sealed partial class EnvironmentRuntimeService
     }
 
     public Task<string> StartTomcatInCatalinaConsoleAsync(
-        CancellationToken cancellationToken = default, Action<TomcatStartupProgress>? tomcatProgress = null)
+        CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var tomcatRoot = RequireTomcatRoot();

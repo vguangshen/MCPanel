@@ -29,19 +29,6 @@ public sealed partial class ReliabilityTests
     }
 
     [TestMethod]
-    public void WebReliabilitySiteStatusUsesSiteAndPoolNotSharedPort()
-    {
-        var probe = IisWebsiteStatusProbe.Parse(
-            "<appcmd><SITE SITE.NAME='stopped' state='Stopped'/><SITE SITE.NAME='running' state='Started'/></appcmd>",
-            "<appcmd><APPPOOL APPPOOL.NAME='MCPanel.Site.pool' state='Started'/><APPPOOL APPPOOL.NAME='MCPanel.Site.off' state='Stopped'/></appcmd>");
-        Assert.IsFalse(probe.Get(new() { Name = "stopped", Id = "pool", HttpPort = 80 }).Running);
-        Assert.IsTrue(probe.Get(new() { Name = "running", Id = "pool", HttpPort = 80 }).Running);
-        Assert.IsFalse(probe.Get(new() { Name = "running", Id = "off", HttpPort = 80 }).Running);
-        Assert.IsFalse(probe.Get(new() { Name = "missing", Id = "pool", HttpPort = 80 }).Running);
-        Assert.ThrowsException<InvalidDataException>(() => IisWebsiteStatusProbe.Parse("<appcmd><ERROR/></appcmd>", "<appcmd/>"));
-    }
-
-    [TestMethod]
     public void WebReliabilityRollbackRestoresBytesAndRemovesNewFiles()
     {
         var root = CreateTemporaryDirectory();

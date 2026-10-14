@@ -206,20 +206,6 @@ internal static class ManagedWindowsServiceController
     internal static string BuildFailureFlagArguments(string serviceName, bool enabled = true) =>
         BuildScArguments("failureflag", serviceName, enabled ? "1" : "0");
 
-    public static void StartWithoutStatusWait(string serviceName, string displayName)
-    {
-        if (!IsInstalled(serviceName))
-        {
-            throw new InvalidOperationException($"{displayName} Windows 服务尚未注册，请先重新安装该组件。");
-        }
-
-        var result = RunSc(BuildScArguments("start", serviceName), elevated: true);
-        if (result.ExitCode != 0 && result.ExitCode != 1056)
-        {
-            ThrowCommandFailure($"启动 {displayName} Windows 服务", result);
-        }
-    }
-
     public static void StopWithoutStatusWait(string serviceName, string displayName)
     {
         if (!IsInstalled(serviceName))

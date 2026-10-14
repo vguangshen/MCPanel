@@ -9,7 +9,7 @@ public sealed partial class ReliabilityTests
     public void InstalledWebsiteUrlOpeningDoesNotDependOnRuntimeStatus()
     {
         var source = ReadRepositoryFile("MainWindow.Products.cs");
-        var start = source.IndexOf("private void InstalledProductBrowse_Click", StringComparison.Ordinal);
+        var start = source.IndexOf("internal void InstalledProductUrl_Click", StringComparison.Ordinal);
         var end = source.IndexOf("internal void InstalledProductManageToggle_Click", start, StringComparison.Ordinal);
         Assert.IsTrue(start >= 0 && end > start);
         var block = source.Substring(start, end - start);

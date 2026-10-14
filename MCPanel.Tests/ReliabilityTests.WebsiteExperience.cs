@@ -143,32 +143,6 @@ public sealed partial class ReliabilityTests
     }
 
     [TestMethod]
-    public void WebsiteRefreshSuspendsWhenHiddenOrEmptyAndNeverOverlaps()
-    {
-        var schedule = new WebsiteRefreshSchedule(); var now = DateTime.UtcNow;
-        Assert.IsFalse(schedule.TryStart(now, false, false, true));
-        Assert.IsFalse(schedule.TryStart(now, true, true, true));
-        Assert.IsFalse(schedule.TryStart(now, true, false, false));
-        Assert.IsTrue(schedule.TryStart(now, true, false, true));
-        schedule.RequestRefresh();
-        Assert.IsFalse(schedule.TryStart(now.AddSeconds(90), true, false, true));
-        schedule.Complete(now);
-        for (var second = 0; second < 30; second++) Assert.IsFalse(schedule.TryStart(now.AddSeconds(second), true, false, true));
-        Assert.IsTrue(schedule.TryStart(now.AddSeconds(30), true, false, true));
-    }
-
-    [TestMethod]
-    public void RunningSharedIisSiteDoesNotHideStoppedApplicationPool()
-    {
-        var probe = IisWebsiteStatusProbe.Parse("<appcmd><SITE SITE.NAME='MCPanel' state='Started'/></appcmd>",
-            "<appcmd><APPPOOL APPPOOL.NAME='good' state='Started'/><APPPOOL APPPOOL.NAME='bad' state='Stopped'/></appcmd>");
-        Assert.IsTrue(probe.Get("MCPanel", "good", "/good").Running);
-        Assert.IsFalse(probe.Get("MCPanel", "bad", "/bad").Running);
-        Assert.AreEqual("应用程序池已停止", probe.Get("MCPanel", "bad", "/bad").Text);
-        Assert.IsFalse(probe.Get("MCPanel", "missing").Running);
-    }
-
-    [TestMethod]
     public void LargeWebsiteListVirtualizesAndSupportsFiltersAndScroll()
     {
         RunWebsiteUiTest(() =>
