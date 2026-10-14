@@ -31,24 +31,25 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
             return;
         }
 
-        if (item.Kind == EnvironmentKind.Iis && EnvironmentRuntimeService.HasIisUninstallContinuation)
-        {
-            await ContinueIisUninstallAsync(item);
-            return;
-        }
-
+        var operation = TryBeginComponentOperation(item.Kind);
+        if (operation is null) return;
         try
         {
+            if (item.Kind == EnvironmentKind.Iis && EnvironmentRuntimeService.HasIisUninstallContinuation)
+            {
+                await ContinueIisUninstallAsync(item);
+                return;
+            }
             item.SetBusyState("安装中", "正在准备安装...", 5);
             if (item.Kind == EnvironmentKind.FrpTunnel)
             {
-                    await _frpManager.InstallAsync(progress =>
+                    await Task.Run(() => _frpManager.InstallAsync(progress =>
                     {
                         Dispatcher.Invoke(() =>
                         {
                             item.ApplyInstallProgress(progress);
                         });
-                    });
+                    }));
             }
             else if (EnvironmentInstallWorker.RequiresImmediateElevation(item.Kind))
             {
@@ -56,19 +57,19 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
             }
             else
             {
-                await _environmentInstaller.InstallAsync(item, progress =>
+                await Task.Run(() => _environmentInstaller.InstallAsync(item, progress =>
                 {
                     Dispatcher.Invoke(() =>
                     {
                         item.ApplyInstallProgress(progress);
                     });
-                });
+                }));
             }
 
             if (item.Kind == EnvironmentKind.FrpTunnel)
             {
-                item.ApplyRuntimeState(_frpManager.GetState());
-                MessageBox.Show("FRP 客户端已安装，但不会自动启动。现在可以点击“管理”配置，或点击“启动”运行。", "环境", MessageBoxButton.OK, MessageBoxImage.Information);
+                await RefreshComponentStateAsync(item);
+                MessageBox.Show("FRP 客户端已安装并启动，已注册为自动启动的 Windows 服务。可以点击“管理”修改连接和映射配置。", "环境", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             else
             {
@@ -78,7 +79,6 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
                 item.BadgeBrush = RuntimeStatusVisuals.Brush(RuntimeStatusKind.Running);
                 MessageBox.Show($"{item.Title} 安装流程已完成。", "环境", MessageBoxButton.OK, MessageBoxImage.Information);
             }
-            RefreshRuntimeStates(preserveBusy: false);
         }
         catch (InstallRestartRequiredException ex)
         {
@@ -95,7 +95,8 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
         }
         finally
         {
-            item.IsBusy = false;
+            operation.Dispose();
+            await RefreshRuntimeStatesAfterFailureAsync();
         }
     }
 
@@ -105,21 +106,16 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
         {
             item.SetBusyState("卸载中", "正在检查重启后的 IIS 组件状态...", 80);
             var message = await _runtimeService.UninstallAsync(EnvironmentKind.Iis);
-            item.ApplyRuntimeState(_runtimeService.GetState(EnvironmentKind.Iis));
+            await RefreshComponentStateAsync(item);
             item.StatusText = message;
             item.Progress = 0;
-            _model.RefreshEnvironmentStates(_runtimeService);
-            _model.RefreshSuiteServices(_runtimeService, _frpManager.GetState());
+            await RefreshEnvironmentStatesAsync(preserveBusy: true);
             MessageBox.Show(message, "环境", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
             ShowEnvironmentOperationFailure(item, "卸载", ex);
             await RefreshRuntimeStatesAfterFailureAsync();
-        }
-        finally
-        {
-            item.IsBusy = false;
         }
     }
 
@@ -216,81 +212,20 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
     internal async void EnvironmentRuntime_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is not EnvironmentItem item ||
-            sender is not Button button ||
-            button.Tag is not string action)
-        {
-            return;
-        }
-
-        if (action == "Uninstall")
-        {
-            var message = BuildEnvironmentUninstallConfirmation(item);
-            var confirm = MessageBox.Show(message, "环境", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-            if (confirm != MessageBoxResult.Yes)
-            {
-                return;
-            }
-        }
-
-        if (item.Kind == EnvironmentKind.Tomcat && action is "Start" or "Restart")
-        {
-            var runningProducts = TomcatProductInstanceManager.GetRunningProductIds();
-            if (runningProducts.Count > 0)
-            {
-                var preview = string.Join("、", runningProducts.Take(8));
-                if (runningProducts.Count > 8)
-                {
-                    preview += $" 等 {runningProducts.Count} 个应用";
-                }
-                var confirm = MessageBox.Show(
-                    $"当前有独立 Tomcat 调试实例正在运行：{preview}。{Environment.NewLine}{Environment.NewLine}" +
-                    "启动总 Tomcat Server 会先停止这些独立实例，以避免端口冲突。是否继续？",
-                    "切换到总 Tomcat Server",
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Warning);
-                if (confirm != MessageBoxResult.Yes)
-                {
-                    return;
-                }
-            }
-        }
-
+            sender is not Button { Tag: string action }) return;
         try
         {
-            item.SetBusyState(
-                RuntimeBusyBadgeText(action),
-                $"{item.Title} 正在{RuntimeActionText(action)}...");
-            var message = item.Kind == EnvironmentKind.FrpTunnel
-                ? await ExecuteFrpRuntimeActionAsync(action)
-                : action switch
-                {
-                    "Start" => await _runtimeService.StartAsync(item.Kind),
-                    "Stop" => await _runtimeService.StopAsync(item.Kind),
-                    "Restart" => await _runtimeService.RestartAsync(item.Kind),
-                    "Uninstall" => await _runtimeService.UninstallAsync(item.Kind),
-                    "OpenIis" => OpenIisManager(),
-                    "CatalinaRun" => await _runtimeService.StartTomcatInCatalinaConsoleAsync(),
-                    _ => throw new NotSupportedException("未知环境操作。")
-                };
-
-            _model.RefreshEnvironmentStates(_runtimeService);
-            var frpState = _frpManager.GetState();
-            _model.UpdateFrpState(frpState);
-            _model.RefreshSuiteServices(_runtimeService, frpState);
+            var message = await RunComponentRuntimeActionAsync(item.Kind, action);
+            if (message is null) return;
+            await RefreshEnvironmentStatesAsync(preserveBusy: true);
             item.StatusText = message;
             if (action == "Uninstall")
-            {
                 MessageBox.Show(message, "环境", MessageBoxButton.OK, MessageBoxImage.Information);
-            }
         }
         catch (Exception ex)
         {
             ShowEnvironmentOperationFailure(item, RuntimeActionText(action), ex);
             await RefreshRuntimeStatesAfterFailureAsync();
-        }
-        finally
-        {
-            item.IsBusy = false;
         }
     }
 
@@ -334,6 +269,8 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
             return;
         }
 
+        var operation = TryBeginComponentOperation(item.Kind);
+        if (operation is null) return;
         try
         {
             item.SetBusyState("连接中", "正在检查 MySQL 连接工具...");
@@ -342,7 +279,7 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
                 item.StatusText = "未找到 Navicat Premium Lite。";
                 if (!ConfirmNavicatPremiumLiteInstall("连接 MySQL"))
                 {
-                    item.ApplyRuntimeState(_runtimeService.GetState(item.Kind));
+                    await RefreshComponentStateAsync(item);
                     item.StatusText = "已取消安装 Navicat Premium Lite。";
                     return;
                 }
@@ -363,7 +300,7 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
             var mysqlClipboard = MySqlCredentialStore.FormatForClipboard();
             Clipboard.SetText(mysqlClipboard);
             ClipboardSafety.ScheduleClear(mysqlClipboard);
-            item.ApplyRuntimeState(_runtimeService.GetState(item.Kind));
+            await RefreshComponentStateAsync(item);
             item.StatusText = "已打开 Navicat Premium Lite，MySQL 默认连接信息已复制到剪贴板。";
             RefreshDatabaseToolState();
         }
@@ -377,7 +314,8 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
         }
         finally
         {
-            item.IsBusy = false;
+            operation.Dispose();
+            await RefreshRuntimeStatesAfterFailureAsync();
         }
     }
 
@@ -388,6 +326,8 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
             return;
         }
 
+        var operation = TryBeginComponentOperation(item.Kind);
+        if (operation is null) return;
         try
         {
             item.SetBusyState("连接中", "正在检查 SQL Server 加密连接...");
@@ -407,7 +347,7 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
                     MessageBoxImage.Information);
                 if (confirm != MessageBoxResult.Yes)
                 {
-                    item.ApplyRuntimeState(_runtimeService.GetState(item.Kind));
+                    await RefreshComponentStateAsync(item);
                     item.StatusText = "已取消打开 SQL Server Management Studio。";
                     return;
                 }
@@ -425,7 +365,7 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
                 }
             }
 
-            item.ApplyRuntimeState(_runtimeService.GetState(item.Kind));
+            await RefreshComponentStateAsync(item);
             item.StatusText = "已打开 SQL Server Management Studio，SQL Server 默认连接信息已复制到剪贴板。";
             RefreshDatabaseToolState();
         }
@@ -439,7 +379,8 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
         }
         finally
         {
-            item.IsBusy = false;
+            operation.Dispose();
+            await RefreshRuntimeStatesAfterFailureAsync();
         }
     }
 
@@ -518,6 +459,8 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
             return;
         }
 
+        using var operation = TryBeginComponentOperation(environmentItem.Kind);
+        if (operation is null) return;
         portItem.IsBusy = true;
         environmentItem.TomcatPortNotice = $"正在更新 {portItem.ProductId} 的端口...";
         try
@@ -574,6 +517,8 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
             return;
         }
 
+        using var operation = TryBeginComponentOperation(item.Kind);
+        if (operation is null) return;
         var credentials = MySqlCredentialStore.Load();
         if (field.EditKind == CredentialEditKind.Password)
         {
@@ -586,22 +531,18 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
             try
             {
                 item.SetBusyState("配置中", "正在修改并验证 MySQL root 密码...");
-                var message = await _runtimeService.ChangeMySqlPasswordAsync(newPassword);
-                item.ApplyRuntimeState(_runtimeService.GetState(item.Kind));
+                var message = await Task.Run(() => _runtimeService.ChangeMySqlPasswordAsync(newPassword));
+                await RefreshComponentStateAsync(item);
                 item.RefreshCredentialFields();
                 item.CredentialNotice = message;
             }
             catch (Exception ex)
             {
-                item.ApplyRuntimeState(_runtimeService.GetState(item.Kind));
+                await RefreshComponentStateAsync(item);
                 item.RefreshCredentialFields();
                 item.CredentialNotice = "密码修改失败";
                 MessageBox.Show($"修改 MySQL 密码失败：{ex.Message}", "修改 MySQL 密码",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
-            finally
-            {
-                item.IsBusy = false;
             }
 
             return;
@@ -624,22 +565,18 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
         try
         {
             item.SetBusyState("配置中", $"正在把 MySQL 服务端口修改为 {port}...");
-            var message = await _runtimeService.ChangeMySqlPortAsync(port);
-            item.ApplyRuntimeState(_runtimeService.GetState(item.Kind));
+            var message = await Task.Run(() => _runtimeService.ChangeMySqlPortAsync(port));
+            await RefreshComponentStateAsync(item);
             item.RefreshCredentialFields();
             item.CredentialNotice = message;
         }
         catch (Exception ex)
         {
-            item.ApplyRuntimeState(_runtimeService.GetState(item.Kind));
+            await RefreshComponentStateAsync(item);
             item.RefreshCredentialFields();
             item.CredentialNotice = "端口修改失败";
             MessageBox.Show($"修改 MySQL 端口失败：{ex.Message}", "修改 MySQL 端口",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
-        finally
-        {
-            item.IsBusy = false;
         }
     }
 
@@ -736,8 +673,7 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
             if (dialog.ShowDialog() == true)
             {
                 item.StatusText = dialog.ResultMessage;
-                _model.RefreshEnvironmentStates(_runtimeService);
-                _model.RefreshSuiteServices(_runtimeService, _frpManager.GetState());
+                await RefreshEnvironmentStatesAsync(preserveBusy: true);
                 MessageBox.Show(dialog.ResultMessage, "Nginx 反向代理管理", MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
@@ -849,7 +785,9 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
     {
         try
         {
-            await _frpManager.EnsureManagementServerAsync();
+            using var operation = TryBeginComponentOperation(EnvironmentKind.FrpTunnel);
+            if (operation is null) return;
+            await Task.Run(_frpManager.EnsureManagementServerAsync);
             Process.Start(new ProcessStartInfo
             {
                 FileName = _frpManager.ManagementUrl,
@@ -865,55 +803,18 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
 
     internal async void ServiceAction_Click(object sender, RoutedEventArgs e)
     {
-        if (((FrameworkElement)sender).DataContext is not ServiceItem service || sender is not Button button)
-        {
-            return;
-        }
-
-        var action = (string?)button.Tag;
+        if (((FrameworkElement)sender).DataContext is not ServiceItem service ||
+            sender is not Button { Tag: string action }) return;
         try
         {
-            service.SetBusyState(RuntimeBusyBadgeText(action ?? string.Empty), $"{service.Name} 正在{RuntimeActionText(action ?? string.Empty)}...");
-            if (service.Kind == EnvironmentKind.FrpTunnel)
-            {
-                if (action == "Start")
-                {
-                    await _frpManager.StartAsync();
-                }
-                else if (action == "Stop")
-                {
-                    await _frpManager.StopAsync();
-                }
-                else if (action == "Restart")
-                {
-                    await _frpManager.StopAsync();
-                    await Task.Delay(800);
-                    await _frpManager.StartAsync();
-                }
-            }
-            else
-            {
-                _ = action switch
-                {
-                    "Start" => await _runtimeService.StartAsync(service.Kind),
-                    "Stop" => await _runtimeService.StopAsync(service.Kind),
-                    "Restart" => await _runtimeService.RestartAsync(service.Kind),
-                    _ => string.Empty
-                };
-            }
-
-            var frpState = _frpManager.GetState();
-            _model.RefreshSuiteServices(_runtimeService, frpState);
-            _model.UpdateFrpState(frpState);
+            var message = await RunComponentRuntimeActionAsync(service.Kind, action);
+            if (message is null) return;
+            await RefreshEnvironmentStatesAsync(preserveBusy: true);
         }
         catch (Exception ex)
         {
-            ShowServiceOperationFailure(service, RuntimeActionText(action ?? string.Empty), ex);
+            ShowServiceOperationFailure(service, RuntimeActionText(action), ex);
             await RefreshRuntimeStatesAfterFailureAsync();
-        }
-        finally
-        {
-            service.IsBusy = false;
         }
     }
 }

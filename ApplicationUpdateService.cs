@@ -947,19 +947,7 @@ internal void LaunchUpdater(
         var payloadRoot = plan.PayloadDirectory;
         var rollbackRoot = Path.Combine(ComponentPaths.GetUpdatesRoot(installRoot), "Rollback", "Current");
         var existingConfigFile = Path.Combine(installRoot, "MCPanel.exe.config");
-        var preservedAppSettings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["UpdateManifestUrl"] = ReadAppSetting(existingConfigFile, "UpdateManifestUrl"),
-            [GitHubUpdateRepositoryConfigKey] = ReadAppSetting(existingConfigFile, GitHubUpdateRepositoryConfigKey)
-        };
-        foreach (var key in EnvironmentDownloadSettings.ConfigKeys)
-        {
-            preservedAppSettings[key] = ReadAppSetting(existingConfigFile, key);
-        }
-        foreach (var key in AiProviderSettings.ConfigKeys)
-        {
-            preservedAppSettings[key] = ReadAppSetting(existingConfigFile, key);
-        }
+        var preservedAppSettings = DeploymentConfigurationSettings.Capture(existingConfigFile);
         TryDeleteDirectory(rollbackRoot);
         Directory.CreateDirectory(rollbackRoot);
         var replacementStarted = false;
@@ -969,13 +957,7 @@ internal void LaunchUpdater(
             replacementStarted = true;
             DeleteReplaceableEntries(installRoot);
             CopyReplaceableEntries(payloadRoot, installRoot);
-            foreach (var setting in preservedAppSettings)
-            {
-                if (!string.IsNullOrWhiteSpace(setting.Value))
-                {
-                    WriteAppSetting(Path.Combine(installRoot, "MCPanel.exe.config"), setting.Key, setting.Value);
-                }
-            }
+            DeploymentConfigurationSettings.Apply(Path.Combine(installRoot, "MCPanel.exe.config"), preservedAppSettings);
             if (!File.Exists(Path.Combine(installRoot, plan.MainExecutableName)))
                 throw new InvalidDataException("更新后主程序文件不存在。");
 
@@ -1351,61 +1333,6 @@ internal void LaunchUpdater(
         return files.Length == 0 && directories.Length == 1 && File.Exists(Path.Combine(directories[0], "MCPanel.exe"))
             ? directories[0]
             : extractRoot;
-    }
-
-    private static string ReadAppSetting(string configFile, string key)
-    {
-        try
-        {
-            if (!File.Exists(configFile)) return string.Empty;
-            var document = XDocument.Load(configFile, LoadOptions.PreserveWhitespace);
-            return document.Root?.Element("appSettings")?.Elements("add")
-                .FirstOrDefault(element => string.Equals((string?)element.Attribute("key"), key, StringComparison.OrdinalIgnoreCase))
-                ?.Attribute("value")?.Value ?? string.Empty;
-        }
-        catch
-        {
-            return string.Empty;
-        }
-    }
-
-    private static void WriteAppSetting(string configFile, string key, string value)
-    {
-        if (!File.Exists(configFile)) return;
-        var document = XDocument.Load(configFile, LoadOptions.PreserveWhitespace);
-        var root = document.Root ?? throw new InvalidDataException("更新后的应用配置文件无效。");
-        var settings = root.Element("appSettings");
-        if (settings is null)
-        {
-            settings = new XElement("appSettings");
-            root.AddFirst(settings);
-        }
-        var item = settings.Elements("add")
-            .FirstOrDefault(element => string.Equals((string?)element.Attribute("key"), key, StringComparison.OrdinalIgnoreCase));
-        if (item is null)
-        {
-            item = new XElement("add", new XAttribute("key", key));
-            settings.Add(item);
-        }
-        item.SetAttributeValue("value", value);
-        document.Save(configFile, SaveOptions.DisableFormatting);
-    }
-
-    internal static string NormalizeGitHubRepository(string? value)
-    {
-        var repository = (value ?? string.Empty).Trim();
-        if (repository.Length == 0)
-        {
-            return string.Empty;
-        }
-
-        var parts = repository.Split('/');
-        if (parts.Length != 2 || parts.Any(part => !IsValidGitHubRepositoryPart(part)))
-        {
-            throw new InvalidDataException("GitHub 更新仓库必须使用 owner/repository 格式。");
-        }
-
-        return $"{parts[0]}/{parts[1]}";
     }
 
     private static bool IsValidGitHubRepositoryPart(string value)

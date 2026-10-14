@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MCPanel.Tests;
@@ -55,8 +55,8 @@ public sealed partial class ReliabilityTests
         Assert.IsTrue(restartStop >= 0 && restartStart > restartStop);
         Assert.IsFalse(restartSection.Contains("StartTomcatInCatalinaConsoleAsync", StringComparison.Ordinal));
 
-        StringAssert.Contains(mainWindow, "\"Start\" => await _runtimeService.StartAsync(item.Kind)");
-        StringAssert.Contains(mainWindow, "\"Restart\" => await _runtimeService.RestartAsync(item.Kind)");
-        StringAssert.Contains(mainWindow, "\"CatalinaRun\" => await _runtimeService.StartTomcatInCatalinaConsoleAsync()");
+        StringAssert.Contains(mainWindow, "\"Start\" => _runtimeService.StartAsync(kind)");
+        StringAssert.Contains(mainWindow, "\"Restart\" => _runtimeService.RestartAsync(kind)");
+        StringAssert.Contains(mainWindow, "\"CatalinaRun\" => _runtimeService.StartTomcatInCatalinaConsoleAsync()");
     }
 }

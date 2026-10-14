@@ -28,7 +28,7 @@ public static class EnvironmentDownloadCatalog
     public const string FrpPackageKey = "Environment.Frp.PackageUrl";
 
     public const string DefaultIisUrlRewriteUrl = "http://regservice.itmc.cn/down/tomcat/URLRewrite.msi";
-    public const string DefaultNginxPackageUrl = "http://regservice.itmc.cn/down/tomcat/nginx-1.14.2.zip";
+    public const string DefaultNginxPackageUrl = "http://regservice.itmc.cn/down/tomcat/" + EnvironmentComponentCatalog.NginxPackageFileName;
     public const string DefaultMySqlPackageUrl = "http://regservice.itmc.cn/down/mysql/mysql.zip";
     public const string DefaultSqlServer2025ExpressUrl = "https://download.microsoft.com/download/7ab8f535-7eb8-4b16-82eb-eca0fa2d38f3/SQL2025-SSEI-Expr.exe";
     public const string DefaultSqlServer2025EnterpriseDeveloperUrl = "https://aka.ms/sql2025EnterpriseDev";
@@ -38,8 +38,8 @@ public static class EnvironmentDownloadCatalog
     public const string DefaultSqlServer2012ExpressX86Url = "https://download.microsoft.com/download/b/d/e/bde8fad6-33e5-44f6-b714-348f73e602b6/SQLEXPR_x86_ENU.exe";
     public const string DefaultSqlServer2008ExpressX64Url = "http://regservice.itmc.cn/down/SQLServer/SQLEXPR_2008_x64.exe";
     public const string DefaultSqlServer2008ExpressX86Url = "http://regservice.itmc.cn/down/SQLServer/SQLEXPR_2008_x86.exe";
-    public const string DefaultTomcatPackageUrl = "http://regservice.itmc.cn/down/tomcat/apache-tomcat-8.5.57.zip";
-    public const string DefaultFrpPackageUrl = "https://mirrors.nju.edu.cn/github-release/fatedier/frp/LatestRelease/frp_0.71.0_windows_amd64.zip";
+    public const string DefaultTomcatPackageUrl = "http://regservice.itmc.cn/down/tomcat/" + EnvironmentComponentCatalog.TomcatPackageFileName;
+    public const string DefaultFrpPackageUrl = "https://mirrors.nju.edu.cn/github-release/fatedier/frp/LatestRelease/" + EnvironmentComponentCatalog.FrpPackageFileName;
 
     public static IReadOnlyList<EnvironmentDownloadDefinition> All { get; } =
     [

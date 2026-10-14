@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MCPanel.Tests;
@@ -77,7 +78,17 @@ public partial class ReliabilityTests
             var candidate = Path.Combine(directory.FullName, relativePath);
             if (File.Exists(candidate))
             {
-                return File.ReadAllText(candidate);
+                var text = File.ReadAllText(candidate);
+                var name = Path.GetFileName(candidate);
+                if (name is "EnvironmentRuntimeService.cs" or "EnvironmentInstaller.cs")
+                {
+                    var prefix = Path.GetFileNameWithoutExtension(candidate) + ".";
+                    foreach (var partial in Directory.EnumerateFiles(directory.FullName, prefix + "*.cs").OrderBy(path => path, StringComparer.Ordinal))
+                        text += Environment.NewLine + File.ReadAllText(partial);
+                }
+                if (name == "MainWindow.Environment.cs")
+                    text += Environment.NewLine + File.ReadAllText(Path.Combine(directory.FullName, "MainWindow.ComponentActions.cs"));
+                return text;
             }
             directory = directory.Parent;
         }

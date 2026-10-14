@@ -8,6 +8,8 @@ internal static class DeploymentLayoutManifest
     private const string ManifestFileName = "deployment-layout.json";
     private static readonly Lazy<IReadOnlyCollection<string>> PreservedNames =
         new(LoadPreservedTopLevelNames, LazyThreadSafetyMode.ExecutionAndPublication);
+    private static readonly Lazy<IReadOnlyCollection<string>> PreservedSettings =
+        new(LoadPreservedAppSettingKeys, LazyThreadSafetyMode.ExecutionAndPublication);
 
     // This fallback keeps older installations safe when the manifest was not
     // shipped by a previous release. New packages always carry the JSON file.
@@ -20,6 +22,24 @@ internal static class DeploymentLayoutManifest
     ];
 
     internal static IReadOnlyCollection<string> PreservedTopLevelNames => PreservedNames.Value;
+    internal static IReadOnlyCollection<string> PreservedAppSettingKeys => PreservedSettings.Value;
+
+    private static IReadOnlyCollection<string> LoadPreservedAppSettingKeys()
+    {
+        var fallback = new HashSet<string>(EnvironmentDownloadSettings.ConfigKeys.Concat(AiProviderSettings.ConfigKeys), StringComparer.OrdinalIgnoreCase)
+        { "UpdateManifestUrl", ApplicationUpdateService.GitHubUpdateRepositoryConfigKey };
+        try
+        {
+            var path = Path.Combine(ComponentPaths.ApplicationRoot, ManifestFileName);
+            if (!File.Exists(path)) return fallback;
+            var document = JsonSerializer.Deserialize<DeploymentLayoutDocument>(File.ReadAllText(path),
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            foreach (var key in document?.PreservedAppSettingKeys ?? [])
+                if (!string.IsNullOrWhiteSpace(key)) fallback.Add(key.Trim());
+        }
+        catch { /* Older manifests still retain the built-in deployment settings. */ }
+        return fallback;
+    }
 
     internal static bool IsPreservedTopLevelName(string name) =>
         PreservedNames.Value.Contains(name);
@@ -74,5 +94,6 @@ internal static class DeploymentLayoutManifest
     private sealed class DeploymentLayoutDocument
     {
         public List<string> PreservedTopLevelNames { get; set; } = [];
+        public List<string> PreservedAppSettingKeys { get; set; } = [];
     }
 }

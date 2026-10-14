@@ -58,7 +58,7 @@ public partial class MainWindow : Window
     private DateTime _nextRuntimeRefreshUtc = DateTime.MinValue;
     private bool _productRouteSyncInFlight;
     private DateTime _nextProductRouteSyncUtc = DateTime.MinValue;
-    private int _runtimeRefreshGeneration;
+    private readonly RuntimeRefreshCoordinator _runtimeRefresh = new();
     private bool _isClosed;
     private bool _closeAfterActivationFailure;
     private int _panelMemoryCleanupInProgress;
@@ -75,6 +75,11 @@ public partial class MainWindow : Window
     internal MainWindow(bool initializeRuntime, string? queueDataRoot)
     {
         _model = new MainViewModel(initializeRuntime);
+        _model.ComponentOperations.BusyChanged += (_, _) =>
+        {
+            _runtimeRefresh.Invalidate();
+            _nextRuntimeRefreshUtc = DateTime.MinValue;
+        };
         InitializeComponent();
         _productWebsiteService = new ProductWebsiteService(_runtimeService);
         _productInstallQueue = new ProductInstallQueueService(_model.InstallationProgress, queueDataRoot, initializeRuntime);
@@ -332,58 +337,47 @@ public partial class MainWindow : Window
         }
     }
 
-    private void RefreshRuntimeStates(bool preserveBusy)
-    {
-        Interlocked.Increment(ref _runtimeRefreshGeneration);
-        var frpState = _frpManager.GetState();
-        var runtimeSnapshot = _runtimeService.GetSnapshot();
-        _model.ApplyRuntimeStates(
-            runtimeSnapshot.States,
-            frpState,
-            runtimeSnapshot.InstallDirectories,
-            preserveBusy);
-    }
+    private sealed record RuntimeSample(EnvironmentRuntimeSnapshot Snapshot, EnvironmentRuntimeState? FrpState,
+        IReadOnlyDictionary<EnvironmentKind, string> Errors);
 
-    private async Task RefreshEnvironmentStatesAsync(bool preserveBusy = false)
-    {
-        var generation = Volatile.Read(ref _runtimeRefreshGeneration);
-        var runtimeSnapshotTask = Task.Run(_runtimeService.GetSnapshot);
-        var frpTask = Task.Run(_frpManager.GetState);
-        await Task.WhenAll(runtimeSnapshotTask, frpTask);
-
-        if (_isClosed || generation != Volatile.Read(ref _runtimeRefreshGeneration))
+    private Task RefreshEnvironmentStatesAsync(bool preserveBusy = false) =>
+        _runtimeRefresh.RefreshAsync(CaptureRuntimeSampleAsync, sample =>
         {
-            return;
-        }
+            if (_isClosed) return;
+            _model.ApplyRuntimeStates(sample.Snapshot.States, sample.FrpState,
+                sample.Snapshot.InstallDirectories, preserveBusy, sample.Errors);
+        });
 
-        var runtimeSnapshot = runtimeSnapshotTask.Result;
-        _model.ApplyRuntimeStates(
-            runtimeSnapshot.States,
-            frpTask.Result,
-            runtimeSnapshot.InstallDirectories,
-            preserveBusy);
+    private async Task<RuntimeSample> CaptureRuntimeSampleAsync()
+    {
+        var snapshotTask = Task.Run(_runtimeService.GetSnapshot);
+        var frpTask = Task.Run(() =>
+        {
+            try { return new KeyValuePair<EnvironmentRuntimeState?, string?>(_frpManager.GetState(), null); }
+            catch (Exception error) { return new KeyValuePair<EnvironmentRuntimeState?, string?>(null, error.Message); }
+        });
+        await Task.WhenAll(snapshotTask, frpTask);
+        var snapshot = await snapshotTask;
+        var frp = await frpTask;
+        var errors = snapshot.ProbeErrors is null
+            ? new Dictionary<EnvironmentKind, string>()
+            : snapshot.ProbeErrors.ToDictionary(pair => pair.Key, pair => pair.Value);
+        if (frp.Value is not null) errors[EnvironmentKind.FrpTunnel] = frp.Value;
+        return new RuntimeSample(snapshot, frp.Key, errors);
     }
 
     private async Task RefreshRuntimeStatesAfterFailureAsync()
     {
         // Invalidate a refresh that may have started before the failed operation
         // finished. Otherwise an older snapshot can overwrite the real state.
-        Interlocked.Increment(ref _runtimeRefreshGeneration);
+        _runtimeRefresh.Invalidate();
         try
         {
-            await RefreshEnvironmentStatesAsync();
+            await RefreshEnvironmentStatesAsync(preserveBusy: true);
         }
         catch (Exception refreshError)
         {
             WriteRuntimeRefreshError(refreshError);
-            try
-            {
-                RefreshRuntimeStates(preserveBusy: false);
-            }
-            catch (Exception fallbackError)
-            {
-                WriteRuntimeRefreshError(fallbackError);
-            }
         }
     }
 

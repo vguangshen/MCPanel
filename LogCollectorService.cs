@@ -22,6 +22,10 @@ public sealed record LogCollectionResult(
 
 public sealed class LogCollectorService
 {
+    private readonly string _applicationRoot;
+
+    public LogCollectorService() : this(ComponentPaths.ApplicationRoot) { }
+    internal LogCollectorService(string applicationRoot) => _applicationRoot = Path.GetFullPath(applicationRoot);
     private const int MaxFileBytes = 48 * 1024;
     private const int MaxTotalCharacters = 160_000;
     private static readonly Regex PasswordRegex = new(@"(?i)(password|pwd|passwd|token|secret)\s*[:=]\s*[^\s,;]+", RegexOptions.Compiled);
@@ -32,12 +36,12 @@ public sealed class LogCollectorService
         AiLogTarget target,
         CancellationToken cancellationToken = default)
     {
-        return Task.Run(() => Collect(target, cancellationToken), cancellationToken);
+        return Task.Run(() => Collect(target, _applicationRoot, cancellationToken), cancellationToken);
     }
 
-    private static LogCollectionResult Collect(AiLogTarget target, CancellationToken cancellationToken)
+    private static LogCollectionResult Collect(AiLogTarget target, string applicationRoot, CancellationToken cancellationToken)
     {
-        var candidates = FindCandidates(target)
+        var candidates = FindCandidates(target, applicationRoot)
             .Where(File.Exists)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Select(path => new FileInfo(path))
@@ -81,15 +85,14 @@ public sealed class LogCollectorService
         return new LogCollectionResult(name, summary, builder.ToString(), files);
     }
 
-    private static IEnumerable<string> FindCandidates(AiLogTarget target)
+    private static IEnumerable<string> FindCandidates(AiLogTarget target, string applicationRoot)
     {
-        var storeData = ComponentPaths.StoreDataRoot;
         var work = ComponentPaths.WorkRoot;
-        var runtimeTomcat = Path.Combine(ComponentPaths.RuntimeRoot, "apache-tomcat-8.5.57");
+        var runtimeTomcat = Path.Combine(ComponentPaths.RuntimeRoot, EnvironmentComponentCatalog.TomcatDirectoryName);
         var runtimeNginx = Path.Combine(ComponentPaths.RuntimeRoot, NginxRuntimeManager.VersionDirectoryName);
         var runtimeMySql = ComponentPaths.RuntimeMySqlRoot;
         var runtimeSqlServer = Path.Combine(ComponentPaths.RuntimeRoot, "MSSQL");
-        var legacyTomcat = Path.Combine(ComponentPaths.LegacyRuntimeRoot, "apache-tomcat-8.5.57");
+        var legacyTomcat = Path.Combine(ComponentPaths.LegacyRuntimeRoot, EnvironmentComponentCatalog.TomcatDirectoryName);
         var legacyNginx = Path.Combine(ComponentPaths.LegacyRuntimeRoot, NginxRuntimeManager.VersionDirectoryName);
         var legacyMySql = ComponentPaths.LegacyMySqlRoot;
         var legacySqlServer = Path.Combine(ComponentPaths.LegacyRuntimeRoot, "MSSQL");
@@ -116,7 +119,8 @@ public sealed class LogCollectorService
                 .Concat(SafeFind(runtimeSqlServer, ["ERRORLOG", "ERRORLOG.*", "Summary.txt", "*.log"]))
                 .Concat(SafeFind(legacySqlServer, ["ERRORLOG", "ERRORLOG.*", "Summary.txt", "*.log"]))
                 .Concat(SafeFind(work, ["*sqlserver*.log", "*sqlserver*.txt", "*sql*.log"])),
-            AiLogTarget.Frp => SafeFind(storeData, ["*frp*.log", "*frpc*.log", "*frp*.txt"]),
+            AiLogTarget.Frp => EnvironmentComponentCatalog.FrpLogRoots(applicationRoot)
+                .SelectMany(root => SafeFind(root, ["*frp*.log", "*frpc*.log", "*frp*.txt"])),
             _ => []
         };
     }

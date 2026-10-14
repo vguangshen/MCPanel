@@ -12,8 +12,9 @@ using System.Xml.Linq;
 
 namespace MCPanel;
 
-public sealed partial class MainViewModel : ObservableObject
+public sealed partial class MainViewModel : ObservableObject, IDisposable
 {
+    internal ComponentOperationCoordinator ComponentOperations { get; } = new();
     private readonly DateTime _startedAt = DateTime.Now;
     private readonly CpuSampler _cpuSampler = new();
     private readonly ProductCacheStore _productCacheStore = new();
@@ -97,36 +98,21 @@ public sealed partial class MainViewModel : ObservableObject
             new SummaryCounter("数据库", 0)
         ];
 
-        Services =
-        [
-            new ServiceItem("IIS Web 服务", EnvironmentKind.Iis, "Default Web Site / IIS 应用服务"),
-            new ServiceItem("Nginx 反向代理", EnvironmentKind.Nginx, "本地反向代理与端口转发服务"),
-            new ServiceItem("Tomcat Server", EnvironmentKind.Tomcat, "Java Web 应用运行服务"),
-            new ServiceItem("MySQL 数据库", EnvironmentKind.MySql, $"127.0.0.1:{MySqlCredentialStore.DefaultPort} / root"),
-            new ServiceItem("SQL Server", EnvironmentKind.SqlServer, "127.0.0.1,1433 / sa"),
-            new ServiceItem("FRP 内网穿透", EnvironmentKind.FrpTunnel, "客户端映射与网页配置管理")
-        ];
+        Services = new ObservableCollection<ServiceItem>(EnvironmentComponentCatalog.HomeOrder.Select(kind =>
+        {
+            var definition = EnvironmentComponentCatalog.Get(kind);
+            return new ServiceItem(definition.ServiceTitle, kind, definition.ServiceDescription);
+        }));
+        EnvironmentItems = new ObservableCollection<EnvironmentItem>(EnvironmentComponentCatalog.All.Select(definition =>
+            new EnvironmentItem(definition.Kind, definition.Title, definition.VersionLabel, definition.InstallDescription)));
+        EnvironmentItems.First(item => item.Kind == EnvironmentKind.FrpTunnel).StatusText =
+            "FRP 尚未安装。点击“安装”后才会联网下载客户端。";
 
-        EnvironmentItems =
-        [
-            new EnvironmentItem(EnvironmentKind.Iis, "Web Server", "服务器  IIS", "根据当前 Windows 版本启用对应 IIS 组件，并安装 URL Rewrite。"),
-            new EnvironmentItem(EnvironmentKind.Nginx, "Nginx", "版本  Nginx 1.14.2", "从原版服务器下载 Nginx 定制包，解压并启动反向代理服务。"),
-            new EnvironmentItem(
-                EnvironmentKind.MySql,
-                "MySql",
-                $"版本  {MySqlReleaseCatalog.Default.DisplayName}",
-                "选择版本后从 MySQL 官网下载 Windows x64 ZIP，初始化 root 密码并注册服务。"),
-            new EnvironmentItem(
-                EnvironmentKind.SqlServer,
-                "SQLServer",
-                $"版本  {SqlServerReleaseCatalog.Recommended.DisplayName}",
-                "选择 Express 或 Enterprise Developer 版本后下载对应官方 SQL Server 安装包；默认按当前 Windows 版本推荐。"),
-            new EnvironmentItem(EnvironmentKind.Tomcat, "Tomcat Server", "Tomcat 8.5.57", "从原版服务器下载定制 Tomcat，自动解压并配置启动脚本。"),
-            new EnvironmentItem(EnvironmentKind.FrpTunnel, "FRP 内网穿透", "frp 0.71.0 windows amd64", "点击安装后才会联网下载 FRP 客户端；安装完成后可配置服务器连接、代理映射并单独启动或停止 frpc。")
-            {
-                StatusText = "FRP 尚未安装。点击“安装”后才会联网下载客户端。"
-            }
-        ];
+        ComponentOperations.BusyChanged += (kind, busy) =>
+        {
+            foreach (var item in EnvironmentItems.Where(item => item.Kind == kind)) item.IsBusy = busy;
+            foreach (var service in Services.Where(service => service.Kind == kind)) service.IsBusy = busy;
+        };
 
         Products =
         [
@@ -432,9 +418,10 @@ public sealed partial class MainViewModel : ObservableObject
 
     public void ApplyRuntimeStates(
         IReadOnlyDictionary<EnvironmentKind, EnvironmentRuntimeState> states,
-        EnvironmentRuntimeState frpState,
+        EnvironmentRuntimeState? frpState,
         IReadOnlyDictionary<EnvironmentKind, string?> installDirectories,
-        bool preserveBusy = false)
+        bool preserveBusy = false,
+        IReadOnlyDictionary<EnvironmentKind, string>? probeErrors = null)
     {
         foreach (var item in EnvironmentItems)
         {
@@ -443,7 +430,12 @@ public sealed partial class MainViewModel : ObservableObject
                 continue;
             }
 
-            if (item.Kind == EnvironmentKind.FrpTunnel)
+            if (probeErrors is not null && probeErrors.TryGetValue(item.Kind, out var error))
+            {
+                item.ApplyProbeFailure(error);
+                continue;
+            }
+            if (item.Kind == EnvironmentKind.FrpTunnel && frpState is not null)
             {
                 item.ApplyRuntimeState(frpState);
             }
@@ -462,7 +454,12 @@ public sealed partial class MainViewModel : ObservableObject
                 continue;
             }
 
-            if (service.Kind == EnvironmentKind.FrpTunnel)
+            if (probeErrors is not null && probeErrors.TryGetValue(service.Kind, out var error))
+            {
+                service.ApplyProbeFailure(error);
+                continue;
+            }
+            if (service.Kind == EnvironmentKind.FrpTunnel && frpState is not null)
             {
                 service.ApplyRuntimeState(frpState);
             }

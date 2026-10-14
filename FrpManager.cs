@@ -13,8 +13,8 @@ public sealed class FrpManager : IDisposable
 {
     private const int PreferredPort = 57400;
     private const int MaxManagementBodyBytes = 4 * 1024 * 1024;
-    private const string FrpVersion = "0.71.0";
-    private const string FrpPackageFileName = "frp_0.71.0_windows_amd64.zip";
+    private const string FrpVersion = EnvironmentComponentCatalog.FrpVersion;
+    private const string FrpPackageFileName = EnvironmentComponentCatalog.FrpPackageFileName;
     private const string FrpVersionMarkerFileName = "frp-version.txt";
     private static readonly Encoding Utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
     private static readonly HttpClient FrpDownloadClient = CreateFrpDownloadClient();
@@ -833,7 +833,7 @@ public sealed class FrpManager : IDisposable
         {
             Timeout = TimeSpan.FromMinutes(10)
         };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("MCPanel/1.0");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd($"MCPanel/{ApplicationUpdateService.CurrentVersionText}");
         return client;
     }
 
@@ -966,7 +966,7 @@ public sealed class FrpManager : IDisposable
         }
     }
 
-    private string FrpWorkDirectory => Path.Combine(_applicationRoot, "Frp");
+    private string FrpWorkDirectory => Path.Combine(_applicationRoot, EnvironmentComponentCatalog.FrpDirectoryName);
     private string FrpcPath => Path.Combine(FrpWorkDirectory, "frpc.exe");
     private string ConfigPath => Path.Combine(FrpWorkDirectory, "frpc.toml");
     private string FrpVersionMarkerPath => Path.Combine(FrpWorkDirectory, FrpVersionMarkerFileName);

@@ -20,5 +20,26 @@
     "database.config",
     "database.config.previous",
     "logs"
+  ],
+  "preservedAppSettingKeys": [
+    "UpdateManifestUrl",
+    "GitHubUpdateRepository",
+    "Environment.Iis.UrlRewriteUrl",
+    "Environment.Nginx.PackageUrl",
+    "Environment.MySql.PackageUrl",
+    "Environment.SqlServer.Sql2025ExpressUrl",
+    "Environment.SqlServer.Sql2025EnterpriseDeveloperUrl",
+    "Environment.SqlServer.Sql2022ExpressUrl",
+    "Environment.SqlServer.Sql2017ExpressUrl",
+    "Environment.SqlServer.Sql2012ExpressX64Url",
+    "Environment.SqlServer.Sql2012ExpressX86Url",
+    "Environment.SqlServer.Sql2008ExpressX64Url",
+    "Environment.SqlServer.Sql2008ExpressX86Url",
+    "Environment.Tomcat.PackageUrl",
+    "Environment.Frp.PackageUrl",
+    "Ai.Provider",
+    "Ai.Endpoint",
+    "Ai.Model",
+    "Ai.ApiKey"
   ]
 }
