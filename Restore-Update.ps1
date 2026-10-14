@@ -148,7 +148,9 @@ try {
             $ready = Join-Path $incoming $change.Relative
             if ($change.Existed) {
                 [IO.File]::SetAttributes($change.Destination, ([IO.File]::GetAttributes($change.Destination) -band (-bnot [IO.FileAttributes]::ReadOnly)))
-                [IO.File]::Replace($ready, $change.Destination, $null)
+                # PowerShell 5.1 converts $null to an empty string for this
+                # overload; NullString passes the required null backup path.
+                [IO.File]::Replace($ready, $change.Destination, [NullString]::Value)
             } else { [IO.File]::Move($ready, $change.Destination) }
             $completed += $change
             $active = $null
@@ -167,7 +169,7 @@ try {
                     [IO.File]::Copy($saved, $restore, $true)
                     [IO.File]::SetAttributes($restore, [IO.FileAttributes]::Normal)
                     [IO.File]::SetAttributes($change.Destination, [IO.FileAttributes]::Normal)
-                    [IO.File]::Replace($restore, $change.Destination, $null)
+                    [IO.File]::Replace($restore, $change.Destination, [NullString]::Value)
                     [IO.File]::SetAttributes($change.Destination, [IO.File]::GetAttributes($saved))
                 } else { [IO.File]::Delete($change.Destination) }
             } catch { Write-Warning $_ }
