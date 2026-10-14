@@ -151,7 +151,7 @@ public sealed partial class ReliabilityTests
             var oldConfig = Path.Combine(root, "old.config");
             var appConfig = Path.Combine(root, "app.config");
             var publishConfig = Path.Combine(root, "publish.config");
-            const string oldXml = "<configuration><appSettings><add key='Ai.Model' value='custom-model'/><add key='Ai.ApiKey' value=''/><add key='Environment.Frp.PackageUrl' value='https://example.test/frp.zip'/><add key='Internal.Build' value='old'/></appSettings></configuration>";
+            const string oldXml = "<configuration><appSettings><add key='Ai.Model' value='custom-model-中文'/><add key='Ai.ApiKey' value=''/><add key='Environment.Frp.PackageUrl' value='https://example.test/frp.zip'/><add key='Internal.Build' value='old'/></appSettings></configuration>";
             const string newXml = "<configuration><appSettings><add key='Ai.Model' value='new-default'/><add key='Ai.ApiKey' value='new-default-key'/><add key='Environment.Frp.PackageUrl' value='https://example.test/default.zip'/><add key='Internal.Build' value='new'/><add key='New.Feature' value='enabled'/></appSettings></configuration>";
             File.WriteAllText(oldConfig, oldXml);
             File.WriteAllText(appConfig, newXml);
@@ -176,7 +176,7 @@ public sealed partial class ReliabilityTests
             var inApp = Settings(appConfig);
             var published = Settings(publishConfig);
             CollectionAssert.AreEquivalent(inApp.ToArray(), published.ToArray());
-            Assert.AreEqual("custom-model", inApp["Ai.Model"]);
+            Assert.AreEqual("custom-model-中文", inApp["Ai.Model"]);
             Assert.AreEqual("", inApp["Ai.ApiKey"], "An explicitly empty setting must remain empty.");
             Assert.AreEqual("https://example.test/frp.zip", inApp["Environment.Frp.PackageUrl"]);
             Assert.AreEqual("new", inApp["Internal.Build"]);

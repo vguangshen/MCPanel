@@ -70,6 +70,18 @@ public partial class ReliabilityTests
         // global Tomcat management; it is no longer exposed as a product button.
         StringAssert.Contains(manager, "public async Task<string> StopAsync(");
     }
+    private static string ReadRepositoryMethod(string relativePath, string signature)
+    {
+        var source = ReadRepositoryFile(relativePath);
+        var start = source.IndexOf(signature, StringComparison.Ordinal);
+        Assert.IsTrue(start >= 0, $"Unable to find method {signature} in {relativePath}.");
+        var tail = source.Substring(start + signature.Length);
+        var next = System.Text.RegularExpressions.Regex.Match(tail,
+            @"(?m)^    (?:public|private|internal|protected)\s");
+        var end = next.Success ? start + signature.Length + next.Index : source.Length;
+        return source.Substring(start, end - start);
+    }
+
     private static string ReadRepositoryFile(string relativePath)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

@@ -27,6 +27,7 @@ public sealed class ServiceItem(string name, EnvironmentKind kind, string descri
     private string _statusText = "检测中";
     private string _badgeText = "检测中";
     private Brush _badgeBrush = Brushes.Gray;
+    private readonly string _defaultDescription = description;
     private string _description = description;
 
     public string Name { get; } = name;
@@ -96,7 +97,7 @@ public sealed class ServiceItem(string name, EnvironmentKind kind, string descri
         _statusKind = state.StatusKind;
         IsInstalled = state.IsInstalled;
         IsRunning = state.IsRunning;
-        Description = state.ConnectionDescription ?? description;
+        Description = state.ConnectionDescription ?? _defaultDescription;
         StatusText = state.IsInstalled
             ? state.IsRunning ? "运行中" : state.StatusKind is RuntimeStatusKind.Starting or RuntimeStatusKind.Stopping ? RuntimeStatusVisuals.Text(state.StatusKind) : "已安装，未运行"
             : "未安装";

@@ -9,10 +9,8 @@ public sealed partial class ReliabilityTests
     public void CatalinaConsoleLaunchDoesNotRunAutomaticReadinessDiagnostics()
     {
         var runtime = ReadRepositoryFile("EnvironmentRuntimeService.cs");
-        var start = runtime.IndexOf("public Task<string> StartTomcatInCatalinaConsoleAsync", StringComparison.Ordinal);
-        var end = runtime.IndexOf("public NginxRuntimeOptions GetNginxOptions()", start, StringComparison.Ordinal);
-        Assert.IsTrue(start >= 0 && end > start);
-        var method = runtime.Substring(start, end - start);
+        var method = ReadRepositoryMethod("EnvironmentRuntimeService.Tomcat.cs",
+            "public Task<string> StartTomcatInCatalinaConsoleAsync");
 
         StringAssert.Contains(method, "LaunchTomcatConsole(tomcatRoot)");
         StringAssert.Contains(method, "不隐藏启动，也不等待端口或执行 HTTP 就绪诊断");

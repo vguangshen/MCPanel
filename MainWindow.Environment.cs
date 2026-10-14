@@ -91,12 +91,12 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
         catch (Exception ex)
         {
             ShowEnvironmentOperationFailure(item, "安装", ex);
-            await RefreshRuntimeStatesAfterFailureAsync();
+            await RefreshRuntimeStatesAfterOperationAsync();
         }
         finally
         {
             operation.Dispose();
-            await RefreshRuntimeStatesAfterFailureAsync();
+            await RefreshRuntimeStatesAfterOperationAsync();
         }
     }
 
@@ -115,7 +115,7 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
         catch (Exception ex)
         {
             ShowEnvironmentOperationFailure(item, "卸载", ex);
-            await RefreshRuntimeStatesAfterFailureAsync();
+            await RefreshRuntimeStatesAfterOperationAsync();
         }
     }
 
@@ -225,7 +225,7 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
         catch (Exception ex)
         {
             ShowEnvironmentOperationFailure(item, RuntimeActionText(action), ex);
-            await RefreshRuntimeStatesAfterFailureAsync();
+            await RefreshRuntimeStatesAfterOperationAsync();
         }
     }
 
@@ -310,12 +310,12 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
             item.BadgeText = "失败";
             item.BadgeBrush = Brushes.IndianRed;
             MessageBox.Show(item.StatusText, "环境", MessageBoxButton.OK, MessageBoxImage.Information);
-            await RefreshRuntimeStatesAfterFailureAsync();
+            await RefreshRuntimeStatesAfterOperationAsync();
         }
         finally
         {
             operation.Dispose();
-            await RefreshRuntimeStatesAfterFailureAsync();
+            await RefreshRuntimeStatesAfterOperationAsync();
         }
     }
 
@@ -375,12 +375,12 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
             item.BadgeText = "失败";
             item.BadgeBrush = Brushes.IndianRed;
             MessageBox.Show(item.StatusText, "环境", MessageBoxButton.OK, MessageBoxImage.Information);
-            await RefreshRuntimeStatesAfterFailureAsync();
+            await RefreshRuntimeStatesAfterOperationAsync();
         }
         finally
         {
             operation.Dispose();
-            await RefreshRuntimeStatesAfterFailureAsync();
+            await RefreshRuntimeStatesAfterOperationAsync();
         }
     }
 
@@ -814,7 +814,7 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
         catch (Exception ex)
         {
             ShowServiceOperationFailure(service, RuntimeActionText(action), ex);
-            await RefreshRuntimeStatesAfterFailureAsync();
+            await RefreshRuntimeStatesAfterOperationAsync();
         }
     }
 }

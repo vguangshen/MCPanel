@@ -362,7 +362,7 @@ public partial class MainWindow : Window
         return new RuntimeSample(snapshot, frp.Key, errors);
     }
 
-    private async Task RefreshRuntimeStatesAfterFailureAsync()
+    private async Task RefreshRuntimeStatesAfterOperationAsync()
     {
         // Invalidate a refresh that may have started before the failed operation
         // finished. Otherwise an older snapshot can overwrite the real state.

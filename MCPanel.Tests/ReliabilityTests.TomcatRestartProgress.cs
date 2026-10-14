@@ -71,8 +71,8 @@ public partial class ReliabilityTests
         var window = ReadRepositoryFile("MainWindow.Environment.cs");
         var runtime = ReadRepositoryFile("EnvironmentRuntimeService.cs");
         Assert.IsFalse(window.Contains("\"Restart\" when item.Kind == EnvironmentKind.Tomcat", StringComparison.Ordinal));
-        StringAssert.Contains(window, "\"Restart\" => await _runtimeService.RestartAsync(item.Kind)");
-        StringAssert.Contains(window, "\"CatalinaRun\" => await _runtimeService.StartTomcatInCatalinaConsoleAsync()");
+        StringAssert.Contains(window, "\"Restart\" => _runtimeService.RestartAsync(kind)");
+        StringAssert.Contains(window, "\"CatalinaRun\" => _runtimeService.StartTomcatInCatalinaConsoleAsync()");
         Assert.IsFalse(window.Contains("ApplyTomcatStartupProgress", StringComparison.Ordinal));
         Assert.IsFalse(runtime.Contains("tomcatProgress: kind == EnvironmentKind.Tomcat", StringComparison.Ordinal));
         Assert.IsFalse(runtime.Contains("正在验证 Tomcat 端口稳定监听", StringComparison.Ordinal));

@@ -31,10 +31,12 @@ public sealed partial class ReliabilityTests
         Assert.IsTrue(start >= 0 && end > start);
         var handler = source.Substring(start, end - start);
 
-        StringAssert.Contains(handler, "\"Start\" => await _runtimeService.StartAsync(item.Kind)");
-        StringAssert.Contains(handler, "\"Stop\" => await _runtimeService.StopAsync(item.Kind)");
-        StringAssert.Contains(handler, "\"Restart\" => await _runtimeService.RestartAsync(item.Kind)");
-        StringAssert.Contains(handler, "\"CatalinaRun\" => await _runtimeService.StartTomcatInCatalinaConsoleAsync()");
+        StringAssert.Contains(handler, "RunComponentRuntimeActionAsync(item.Kind, action)");
+        var actions = ReadRepositoryFile("MainWindow.ComponentActions.cs");
+        StringAssert.Contains(actions, "\"Start\" => _runtimeService.StartAsync(kind)");
+        StringAssert.Contains(actions, "\"Stop\" => _runtimeService.StopAsync(kind)");
+        StringAssert.Contains(actions, "\"Restart\" => _runtimeService.RestartAsync(kind)");
+        StringAssert.Contains(actions, "\"CatalinaRun\" => _runtimeService.StartTomcatInCatalinaConsoleAsync()");
 
         const string successPopup = "MessageBox.Show(message, \"环境\", MessageBoxButton.OK, MessageBoxImage.Information);";
         Assert.AreEqual(1, CountOccurrences(handler, successPopup));
