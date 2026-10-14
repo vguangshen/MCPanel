@@ -67,6 +67,14 @@ try {
     if (($document.configuration.appSettings.add | Where-Object key -eq 'Ai.Model').value -ne '保留原配置') { throw 'Missing-EXE recovery did not prefer the original rollback configuration.' }
     Write-Host 'Passed: installer restores a missing executable and recovers original settings from the rollback snapshot.'
 
+    $beforeConcurrent = (Get-FileHash -LiteralPath $executable -Algorithm SHA256).Hash
+    $lockFile = Join-Path $install 'StoreData\Updates\apply-update.lock'
+    $handle = [IO.File]::Open($lockFile, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+    try { $null = Invoke-Setup $install -ExpectedExitCode 1 } finally { $handle.Dispose() }
+    if ((Get-FileHash -LiteralPath $executable -Algorithm SHA256).Hash -ne $beforeConcurrent) { throw 'A concurrent updater lock did not protect the installation.' }
+    [IO.File]::Delete($lockFile)
+    Write-Host 'Passed: native setup honors the existing in-app update transaction lock.'
+
     $executableHash = (Get-FileHash -LiteralPath $executable -Algorithm SHA256).Hash
     $configBytes = [IO.File]::ReadAllBytes($config)
     [IO.File]::WriteAllText($library, 'different locked library')

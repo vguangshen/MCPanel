@@ -12,7 +12,9 @@ function SafeProgramName(const Name: String): Boolean;
 var TopLevel: String; Separator: Integer;
 begin
   Result := False;
-  if (Name = '') or (Name[1] = '\') or (Pos(':', Name) > 0) or (Pos('/', Name) > 0) or
+  if Name = '' then exit;
+  if (Name[1] = '\') or (Pos(':', Name) > 0) or (Pos('/', Name) > 0) or
+    (Pos('*', Name) > 0) or (Pos('?', Name) > 0) or
     (Pos('\..\', '\' + Name + '\') > 0) or (Pos('\.\', '\' + Name + '\') > 0) then exit;
   Separator := Pos('\', Name + '\');
   TopLevel := Copy(Name, 1, Separator - 1);
@@ -58,15 +60,18 @@ begin
       RaiseException('该文件夹包含其他文件。请选择空文件夹，或已有的 MCPanel 安装目录。');
 end;
 
-function LoadXml(const FileName: String): Variant;
+procedure LoadXml(const FileName: String; var Document: Variant);
 begin
-  Result := CreateOleObject('Msxml2.DOMDocument.6.0');
-  Result.async := False;
-  Result.resolveExternals := False;
-  Result.validateOnParse := False;
-  Result.setProperty('ProhibitDTD', True);
-  if not Result.load(FileName) then RaiseException('配置文件无法读取，原程序未修改：' + FileName);
-  if VarIsNull(Result.selectSingleNode('/configuration')) then RaiseException('应用配置缺少 configuration 根节点。');
+  Document := CreateOleObject('Msxml2.DOMDocument.6.0');
+  Log('MSXML 6 document created.');
+  Document.async := False;
+  Document.resolveExternals := False;
+  Document.validateOnParse := False;
+  Document.setProperty('ProhibitDTD', True);
+  Log('MSXML 6 configured.');
+  if not Document.load(FileName) then RaiseException('配置文件无法读取，原程序未修改：' + FileName);
+  Log('Application configuration XML loaded.');
+  if Document.documentElement.nodeName <> 'configuration' then RaiseException('应用配置缺少 configuration 根节点。');
 end;
 
 procedure MergeOriginalConfiguration(const InstallRoot, NewConfig: String);
@@ -93,14 +98,14 @@ begin
       end;
     end;
   end;
-  NewDoc := LoadXml(NewConfig);
+  LoadXml(NewConfig, NewDoc);
   if not FileExists(Original) then begin
     if DirExists(InstallRoot + '\StoreData') then
       RaiseException('已有业务数据，但未找到原应用配置。请保留 StoreData 和回滚副本，恢复原配置后重试。');
     exit;
   end;
   AssertNoLinks(Original);
-  OldDoc := LoadXml(Original);
+  LoadXml(Original, OldDoc);
   Nodes := OldDoc.selectNodes('/configuration/appSettings/add');
   Settings := NewDoc.selectSingleNode('/configuration/appSettings');
   if VarIsNull(Settings) then begin
@@ -109,6 +114,7 @@ begin
   end;
   for I := 0 to Nodes.length - 1 do begin
     Node := Nodes.item(I);
+    if VarIsNull(Node.getAttribute('key')) then continue;
     Key := Node.getAttribute('key');
     if (PreservedKeys.IndexOf(Key) < 0) or VarIsNull(Node.getAttribute('value')) then continue;
     Target := Null;
@@ -124,6 +130,29 @@ begin
   end;
   NewDoc.save(NewConfig);
   Log('Preserved original settings from ' + Original);
+end;
+
+procedure AcquireUpdateLock(const InstallRoot: String);
+var Updates: String;
+begin
+  Updates := InstallRoot + '\StoreData\Updates';
+  // Every prepared in-app update already has this directory. Fresh installs
+  // do not create business-data folders merely to acquire an unnecessary lock.
+  if not DirExists(Updates) then exit;
+  AssertNoLinks(Updates);
+  UpdateLockHandle := CreateFileW(Updates + '\apply-update.lock', $C0010000, 0, 0, 4, $04000080, 0);
+  if UpdateLockHandle = $FFFFFFFF then begin
+    UpdateLockHandle := 0;
+    RaiseException('该目录正在被其他更新任务使用。请等待更新完成后重试安装。');
+  end;
+end;
+
+procedure ReleaseUpdateLock;
+begin
+  if UpdateLockHandle <> 0 then begin
+    CloseHandle(UpdateLockHandle);
+    UpdateLockHandle := 0;
+  end;
 end;
 
 procedure AssertFileAvailable(const FileName: String);

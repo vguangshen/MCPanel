@@ -80,6 +80,7 @@ var
   DesktopShortcut: TNewCheckBox;
   RuntimeRestartRequired, ProgramDeployed: Boolean;
   PayloadRoot, TransactionRoot: String;
+  UpdateLockHandle: LongWord;
 #ifdef InstallerTestBuild
   TestFailureInjected: Boolean;
 #endif
@@ -173,14 +174,16 @@ begin
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
-var PackagePath, ActualVersion: String;
+var PackagePath, ActualVersion, Phase: String;
 begin
   Result := '';
   if ProgramDeployed then exit;
+  Phase := '检查安装目录';
   try
     ValidateInstallDirectory(ExpandConstant('{app}'));
     if CheckForMutexes('Local\MCPanel.MainWindow.v1') then
       RaiseException('请从托盘菜单完全退出 MCPanel，再重新点击安装。');
+    Phase := '下载安装文件';
     DownloadPage.Clear;
     PackagePath := ExpandConstant('{param:PACKAGEFILE|}');
     if PackagePath = '' then begin
@@ -193,19 +196,32 @@ begin
     DownloadPage.Show;
     try DownloadPage.Download;
     finally DownloadPage.Hide; end;
+    Phase := '解压并校验主程序';
     PayloadRoot := ExpandConstant('{tmp}\Payload');
     ExtractArchive(PackagePath, PayloadRoot, '', True, nil);
     if not GetVersionNumbersString(PayloadRoot + '\MCPanel.exe', ActualVersion) or
       (ActualVersion <> '{#AppVersion}.0') then RaiseException('安装包版本不匹配，原程序未修改。');
+    Log('Package executable version validated: ' + ActualVersion);
+    Phase := '读取并合并原配置';
+    AcquireUpdateLock(ExpandConstant('{app}'));
     MergeOriginalConfiguration(ExpandConstant('{app}'), PayloadRoot + '\MCPanel.exe.config');
+    Phase := '检查程序文件占用';
     CheckChangedProgramFiles(ExpandConstant('{app}'), PayloadRoot);
+    Phase := '安装必备运行库';
     InstallPrerequisites;
+    Phase := '安装主程序';
     DeployProgram(ExpandConstant('{app}'), PayloadRoot);
     ProgramDeployed := True;
   except
-    Result := GetExceptionMessage;
+    Result := Phase + '：' + GetExceptionMessage;
     Log('MCPanel installation stopped: ' + Result);
   end;
+  ReleaseUpdateLock;
+end;
+
+procedure DeinitializeSetup;
+begin
+  ReleaseUpdateLock;
 end;
 
 function InitializeUninstall: Boolean;
