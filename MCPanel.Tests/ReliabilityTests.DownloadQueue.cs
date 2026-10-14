@@ -44,43 +44,52 @@ public sealed partial class ReliabilityTests
     }
 
     [TestMethod]
-    public void InstallationPanelShowsPauseOnlyDuringDownload()
+    public void QueueShowsPauseOnlyDuringDownload()
     {
-        var product = new ProductItem("TEST1", "测试产品", "测试", string.Empty, ProductSource.Online);
-        var progress = new InstallationProgressViewModel();
+        var root = CreateTemporaryDirectory();
+        try
+        {
+            using var queue = new ProductInstallQueueService(new InstallationProgressViewModel(), root, autoStartWorker: false);
+            var item = queue.Enqueue(new ProductItem("TEST1", "测试产品", "测试", string.Empty, ProductSource.Online), false);
+            Assert.IsFalse(item.CanTogglePause);
+            item.SetState(ProductInstallQueueStatus.Running);
+            item.ApplyProgress(new ProductInstallWorkerProgress("running", 0, "准备下载", InstallProgressStage.Preparing));
+            Assert.IsFalse(item.CanTogglePause);
+            item.ApplyProgress(new ProductInstallWorkerProgress("running", 45, "正在下载 product.zip", InstallProgressStage.Downloading, 50));
+            Assert.IsTrue(item.CanTogglePause);
+            Assert.AreEqual(50, item.DownloadProgress, 0.001);
+            item.ApplyProgress(new ProductInstallWorkerProgress("running", 90, "配置运行服务", InstallProgressStage.Installing));
+            Assert.IsFalse(item.CanTogglePause);
+            Assert.IsFalse(item.IsDownloading);
+        }
+        finally { DeleteTemporaryTree(root); }
+    }
 
-        progress.Begin(product, isUpdate: false);
-        Assert.AreEqual(System.Windows.Visibility.Collapsed, progress.PauseButtonVisibility);
-
-        progress.SetDownloadStage();
-        Assert.IsTrue(progress.CanPause);
-        Assert.IsTrue(progress.IsDownloading);
-        Assert.AreEqual(0, progress.DownloadProgress, 0.001);
-        Assert.AreEqual(System.Windows.Visibility.Visible, progress.PauseButtonVisibility);
-        Assert.AreEqual("暂停下载", progress.PauseActionText);
-
-        progress.ApplyWorkerProgress(new ProductInstallWorkerProgress(
-            "running",
-            45,
-            "正在下载 product.zip",
-            InstallProgressStage.Downloading,
-            50));
-        Assert.AreEqual(50, progress.DownloadProgress, 0.001, "顶部环形进度应使用下载阶段进度，而不是安装总进度。");
-
-        progress.MarkDownloadPaused();
-        Assert.IsTrue(progress.IsPaused);
-        Assert.AreEqual("继续下载", progress.PauseActionText);
-        progress.ReportStatus("正在下载：payload.zip");
-        StringAssert.Contains(progress.DetailText, "已暂停");
-
-        progress.MarkDownloadResumed();
-        Assert.IsFalse(progress.IsPaused);
-        Assert.AreEqual("正在下载：payload.zip", progress.DetailText);
-
-        progress.SetDeploymentStage(isUpdate: false);
-        Assert.IsFalse(progress.CanPause);
-        Assert.IsFalse(progress.IsDownloading);
-        Assert.AreEqual(System.Windows.Visibility.Collapsed, progress.PauseButtonVisibility);
+    [TestMethod]
+    public void HidingUninstallPanelKeepsQueueDownloadAndPauseStateAlive()
+    {
+        var root = CreateTemporaryDirectory();
+        try
+        {
+            var progress = new InstallationProgressViewModel();
+            using var queue = new ProductInstallQueueService(progress, root, autoStartWorker: false);
+            var product = new ProductItem("TEST-HIDE", "后台下载产品", "测试", string.Empty, ProductSource.Online);
+            var item = queue.Enqueue(product, false);
+            item.SetState(ProductInstallQueueStatus.Running);
+            item.ApplyProgress(new ProductInstallWorkerProgress("running", 20, "正在下载", InstallProgressStage.Downloading, 25));
+            Assert.AreEqual(true, queue.TogglePause(item.QueueId));
+            progress.BeginUninstall(new ProductItem("OTHER", "另一产品", "测试", string.Empty, ProductSource.Online));
+            progress.Hide();
+            Assert.IsFalse(progress.IsVisible);
+            Assert.IsTrue(item.IsPaused);
+            Assert.IsTrue(item.CanTogglePause);
+            Assert.IsTrue(item.CanCancel);
+            Assert.IsTrue(File.Exists(item.PausePath));
+            Assert.AreEqual(25, item.DownloadProgress, 0.001);
+            Assert.AreEqual(false, queue.TogglePause(item.QueueId));
+            Assert.IsFalse(File.Exists(item.PausePath));
+        }
+        finally { DeleteTemporaryTree(root); }
     }
 
     [TestMethod]
@@ -118,25 +127,6 @@ public sealed partial class ReliabilityTests
         Assert.IsTrue(product.IsInstallationComplete);
         Assert.AreEqual(System.Windows.Visibility.Collapsed, product.ProgressIndicatorVisibility);
         Assert.AreEqual(System.Windows.Visibility.Visible, product.CompletedIndicatorVisibility);
-    }
-
-    [TestMethod]
-    public void HidingInstallationPanelKeepsDownloadControlsAndStateAlive()
-    {
-        var product = new ProductItem("TEST-HIDE", "后台下载产品", "测试", string.Empty, ProductSource.Online);
-        var progress = new InstallationProgressViewModel();
-
-        progress.Begin(product, isUpdate: false);
-        progress.SetDownloadStage();
-        progress.Hide();
-
-        Assert.IsFalse(progress.IsVisible);
-        Assert.IsTrue(progress.CanPause, "隐藏进度层不能关闭后台下载的暂停控制。");
-        Assert.IsTrue(progress.CanCancel, "隐藏进度层不能关闭后台安装的取消控制。");
-
-        progress.Show();
-        Assert.IsTrue(progress.IsVisible);
-        Assert.AreEqual("下载产品文件", progress.StageText);
     }
 
     [TestMethod]
@@ -514,8 +504,6 @@ public sealed partial class ReliabilityTests
         Assert.IsTrue(progress.IsVisible);
         Assert.AreEqual("正在卸载产品", progress.OperationTitle);
         Assert.AreEqual("准备卸载", progress.StageText);
-        Assert.IsFalse(progress.CanPause);
-        Assert.IsFalse(progress.CanCancel);
 
         progress.ReportUninstallProgress(new ProductUninstallProgress(42, "正在移除 IIS 应用、应用池和共享站点端口..."));
         Assert.AreEqual(42, progress.Progress, 0.001);
@@ -527,9 +515,9 @@ public sealed partial class ReliabilityTests
         Assert.AreEqual(42, progress.Progress, 0.001);
         progress.Complete();
         Assert.AreEqual(100d, progress.DisplayDownloadProgress);
-        progress.Begin(product, false);
+        progress.BeginUninstall(product);
         Assert.AreEqual(0d, progress.DisplayDownloadProgress);
-        Assert.IsTrue(progress.IsProgressIndeterminate);
+        Assert.IsFalse(progress.IsProgressIndeterminate);
     }
 
     [TestMethod]

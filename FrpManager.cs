@@ -20,7 +20,6 @@ public sealed class FrpManager : IDisposable
     private static readonly HttpClient FrpDownloadClient = CreateFrpDownloadClient();
     private HttpListener? _listener;
     private CancellationTokenSource? _serverCts;
-    private Process? _frpcProcess;
     private int _managementPort = PreferredPort;
     private readonly string _applicationRoot;
     private readonly SemaphoreSlim _operationLock = new(1, 1);
@@ -51,10 +50,6 @@ public sealed class FrpManager : IDisposable
         get
         {
             if (FrpWindowsServiceManager.IsRunningForRoot(_applicationRoot))
-            {
-                return true;
-            }
-            if (_frpcProcess is { HasExited: false })
             {
                 return true;
             }
@@ -203,62 +198,6 @@ public sealed class FrpManager : IDisposable
         }
     }
 
-    private async Task StartCoreAsync()
-    {
-        RequireInstalled();
-
-        if (IsRunning)
-        {
-            return;
-        }
-
-        var config = ConfigPath;
-        NormalizeConfigFileEncoding(config);
-        await VerifyConfigAsync(config);
-
-        _frpcProcess = Process.Start(new ProcessStartInfo
-        {
-            FileName = FrpcPath,
-            Arguments = $"-c \"{config}\"",
-            WorkingDirectory = FrpWorkDirectory,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true
-        });
-
-        if (_frpcProcess is null)
-        {
-            throw new InvalidOperationException("无法启动 frpc.exe。");
-        }
-
-        var outputTask = _frpcProcess.StandardOutput.ReadToEndAsync();
-        var errorTask = _frpcProcess.StandardError.ReadToEndAsync();
-        await Task.Delay(800);
-        if (_frpcProcess.HasExited)
-        {
-            var output = NormalizeFrpcLog($"{await outputTask}\n{await errorTask}");
-            var message = string.IsNullOrWhiteSpace(output)
-                ? $"frpc 启动失败，退出码：{_frpcProcess.ExitCode}"
-                : $"frpc 启动失败，退出码：{_frpcProcess.ExitCode}\n\n{output}";
-            _frpcProcess.Dispose();
-            _frpcProcess = null;
-            throw new InvalidOperationException(message);
-        }
-
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await Task.WhenAll(outputTask, errorTask);
-            }
-            catch
-            {
-                // Process may be killed while streams are being drained.
-            }
-        });
-    }
-
     public async Task StopAsync()
     {
         ThrowIfDisposed();
@@ -279,26 +218,6 @@ public sealed class FrpManager : IDisposable
 
     private async Task StopCoreAsync()
     {
-        if (_frpcProcess is not null)
-        {
-            try
-            {
-                if (!_frpcProcess.HasExited)
-                {
-                    _frpcProcess.Kill(entireProcessTree: true);
-                    await ProcessLifecycle.WaitForExitAsync(
-                        _frpcProcess,
-                        CancellationToken.None,
-                        TimeSpan.FromSeconds(10));
-                }
-            }
-            finally
-            {
-                _frpcProcess.Dispose();
-                _frpcProcess = null;
-            }
-        }
-
         foreach (var process in Process.GetProcessesByName("frpc"))
         {
             try
@@ -932,37 +851,15 @@ public sealed class FrpManager : IDisposable
             return false;
         }
 
-        Process? process = null;
-        var isOwnedProcess = false;
         try
         {
-            if (_frpcProcess is { HasExited: false })
-            {
-                process = _frpcProcess;
-                isOwnedProcess = true;
-            }
-            else
-            {
-                process = FindManagedFrpcProcess();
-            }
-
-            if (process is null)
-            {
-                return false;
-            }
-
-            return File.GetLastWriteTimeUtc(ConfigPath) > process.StartTime.ToUniversalTime().AddSeconds(1);
+            using var process = FindManagedFrpcProcess();
+            return process is not null &&
+                   File.GetLastWriteTimeUtc(ConfigPath) > process.StartTime.ToUniversalTime().AddSeconds(1);
         }
         catch
         {
             return false;
-        }
-        finally
-        {
-            if (!isOwnedProcess)
-            {
-                process?.Dispose();
-            }
         }
     }
 
@@ -1043,12 +940,6 @@ public sealed class FrpManager : IDisposable
 
     private static string Html(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
 
-    private static string NormalizeFrpcLog(string value)
-    {
-        var withoutAnsi = Regex.Replace(value, @"\x1B\[[0-9;]*[A-Za-z]", string.Empty);
-        return withoutAnsi.Trim();
-    }
-
     private string BuildManagementPath(string status) =>
         $"/?token={Uri.EscapeDataString(_managementToken)}&{status}";
 
@@ -1096,41 +987,11 @@ public sealed class FrpManager : IDisposable
 
         _disposed = true;
         StopManagementServer();
-        StopManagedProcessesForDispose();
         // Do not dispose the gates here: a close can race an in-flight async
         // operation whose finally block still needs to release its semaphore.
         // The manager is permanently marked disposed, so these gates are no
         // longer reachable by new operations and can be reclaimed with the
         // manager itself.
-    }
-
-    private void StopManagedProcessesForDispose()
-    {
-        if (_frpcProcess is not null)
-        {
-            try
-            {
-                if (!_frpcProcess.HasExited)
-                {
-                    ProcessLifecycle.TryKill(_frpcProcess);
-                    _frpcProcess.WaitForExit(5000);
-                }
-            }
-            catch
-            {
-                // Disposal must remain best-effort; the normal Stop action still
-                // reports operational failures to the user.
-            }
-            finally
-            {
-                _frpcProcess.Dispose();
-                _frpcProcess = null;
-            }
-        }
-
-        // The Windows service owns frpc.exe after 1.3.6. Disposing a page or
-        // closing MCPanel must not stop the server-level FRP service. Only a
-        // legacy child process owned by this manager instance is cleaned above.
     }
 
     private static string DefaultClientConfig() =>

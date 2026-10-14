@@ -118,17 +118,6 @@ public partial class AiAnalysisPage : UserControl, INotifyPropertyChanged, IDisp
 
     public void Activate() => LoadProviderSettings();
 
-    private void TargetOption_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is not Button { Tag: string value } ||
-            !Enum.TryParse<AiLogTarget>(value, ignoreCase: true, out var target))
-        {
-            return;
-        }
-
-        SelectedTarget = Targets.First(option => option.Target == target);
-    }
-
     private void TargetComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (TargetComboBox.SelectedItem is not ComboBoxItem { Tag: string value } ||

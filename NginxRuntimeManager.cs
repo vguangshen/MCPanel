@@ -130,43 +130,6 @@ public static class NginxRuntimeManager
         return ports.Distinct().Where(port => port is > 0 and <= 65535).ToArray();
     }
 
-    public static int ConfigureWithAvailablePort(string nginxRoot, IEnumerable<int>? candidates = null)
-    {
-        Exception? lastError = null;
-        var options = LoadOptions() ?? new NginxRuntimeOptions();
-
-        foreach (var port in candidates ?? BuildPortCandidates())
-        {
-            if (!IsPortAvailable(port))
-            {
-                continue;
-            }
-
-            try
-            {
-                CleanConfigFiles(nginxRoot);
-                options.ListenPort = port;
-                options.Rules = [CreateDefaultRule(port, options.ProxyTarget, options.ProxyEnabled)];
-                ApplyConfig(nginxRoot, options);
-                return port;
-            }
-            catch (Exception ex)
-            {
-                lastError = ex;
-            }
-        }
-
-        throw new InvalidOperationException("Nginx 未找到可用监听端口，请检查 72、80、8088、8080、8090、8099、18080 是否被占用。", lastError);
-    }
-
-    public static void ApplyConfig(string nginxRoot, NginxRuntimeOptions options)
-    {
-        var normalized = NormalizeOptions(options);
-        ValidateOptions(normalized);
-        WriteManagedConfig(nginxRoot, normalized);
-        SaveOptions(normalized);
-    }
-
     public static bool IsPortAvailable(int port)
     {
         try
@@ -469,12 +432,9 @@ public static class NginxRuntimeManager
                 }
 
                 var text = File.ReadAllText(file, Encoding.UTF8);
-                foreach (var match in ListenDirectiveRegex.Matches(text).Cast<Match>())
+                foreach (var port in ParseConfiguredListenPorts(text))
                 {
-                    if (int.TryParse(match.Groups["port"].Value, out var port) && port is > 0 and <= 65535)
-                    {
-                        ports.Add(port);
-                    }
+                    ports.Add(port);
                 }
 
                 foreach (var include in IncludeDirectiveRegex.Matches(text).Cast<Match>())

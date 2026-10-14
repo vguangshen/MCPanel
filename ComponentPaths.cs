@@ -25,13 +25,9 @@ internal static class ComponentPaths
     public static string RuntimeRoot => Path.Combine(ApplicationRoot, "Runtime");
     public static string LegacyRuntimeRoot => Path.Combine(StoreDataRoot, "Runtime");
     public static string DownloadsRoot => Path.Combine(ApplicationRoot, "Downloads");
-    public static string LegacyDownloadsRoot => Path.Combine(StoreDataRoot, "Downloads");
     public static string ToolsRoot => Path.Combine(ApplicationRoot, "Tools");
-    public static string LegacyToolsRoot => Path.Combine(StoreDataRoot, "Tools");
     public static string ProductIconsRoot => Path.Combine(ApplicationRoot, "Cache", "ProductIcons");
-    public static string LegacyProductIconsRoot => Path.Combine(StoreDataRoot, "ProductIcons");
     public static string CacheRoot => Path.Combine(ApplicationRoot, "Cache");
-    public static string AccountApiRoot => Path.Combine(ApplicationRoot, "AccountApi");
     public static string WebRoot => Path.Combine(ApplicationRoot, "web");
     public static string ProductDownloadRoot => Path.Combine(WebRoot, ".downloads");
     public static string LegacyProductDownloadRoot => Path.Combine(StoreDataRoot, "Products");
@@ -58,9 +54,6 @@ internal static class ComponentPaths
 
     public static string GetUpdatesRoot(string applicationRoot) =>
         Path.Combine(GetStoreDataRoot(applicationRoot), "Updates");
-
-    public static string GetRuntimeStateRoot(string applicationRoot) =>
-        Path.Combine(GetStoreDataRoot(applicationRoot), "RuntimeState");
 
     public static IReadOnlyList<string> NginxSearchRoots =>
         new[] { NginxRoot, ApplicationNginxRoot, RuntimeRoot, LegacyRuntimeRoot }

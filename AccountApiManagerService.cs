@@ -77,9 +77,6 @@ public sealed class AccountApiManagerService : IDisposable
     public string ConfiguredRuntimeDirectory => _configuredRuntimeDirectory;
     public bool IsEnabled => _enabled;
 
-    public string? DiscoverRuntimeDirectory() =>
-        Directory.Exists(AccountApiStorage.RootPath) ? AccountApiStorage.RootPath : null;
-
     /// <summary>
     /// Imports a legacy directory or a standalone config.ini into the
     /// MCPanel-owned Account API data directory. The selected directory is
@@ -434,17 +431,6 @@ public sealed class AccountApiManagerService : IDisposable
         return EmbeddedAccountApiRuntime.IsRunning;
     }
 
-    public void OpenConfigurationFile()
-    {
-        var configuration = RequireConfiguration();
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = "notepad.exe",
-            Arguments = QuoteArgument(configuration.ConfigPath),
-            UseShellExecute = true
-        });
-    }
-
     public void OpenRuntimeDirectory()
     {
         Directory.CreateDirectory(AccountApiStorage.RootPath);
@@ -571,26 +557,6 @@ public sealed class AccountApiManagerService : IDisposable
         {
             return AccountApiHealthProbe.Unreachable(error.Message);
         }
-    }
-
-    private async Task<bool> WaitForReachableAsync(
-        AccountApiConfiguration configuration,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
-    {
-        var startedAt = DateTime.UtcNow;
-        while (DateTime.UtcNow - startedAt < timeout)
-        {
-            var probe = await ProbeAsync(configuration, cancellationToken, "/health/live");
-            if (probe.Reachable)
-            {
-                return true;
-            }
-
-            await Task.Delay(200, cancellationToken);
-        }
-
-        return false;
     }
 
     internal static HttpRequestMessage CreateSignedRequest(AccountApiConfiguration configuration, string rawPath)

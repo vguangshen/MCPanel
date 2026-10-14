@@ -11,13 +11,6 @@ using System.Xml.Linq;
 
 namespace MCPanel;
 
-public sealed class SummaryCounter(string name, int count)
-{
-    public string Name { get; } = name;
-    public int Count { get; } = count;
-    public string CountText => $"{Count}个";
-}
-
 public sealed class ServiceItem(string name, EnvironmentKind kind, string description) : ObservableObject
 {
     private bool _isInstalled;

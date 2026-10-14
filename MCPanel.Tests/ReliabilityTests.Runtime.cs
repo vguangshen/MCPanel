@@ -361,9 +361,6 @@ public sealed partial class ReliabilityTests
             Assert.IsTrue(
                 TomcatProductInstanceManager.ProductStartupTimeout > TimeSpan.FromSeconds(80),
                 "云电脑日志中的 Java 应用启动耗时约 77 秒，部署等待时间必须覆盖慢速首次建库。" );
-            Assert.IsTrue(
-                TomcatRuntimeProbe.DefaultStartupTimeout > TimeSpan.FromSeconds(80),
-                "环境页启动全部 Tomcat 应用时也必须使用适合云电脑的等待时间。" );
             Assert.AreEqual(
                 9000,
                 ProductDeploymentService.SelectCanonicalTomcatRuntimePort(9000, 9000, new[] { 9005 }),

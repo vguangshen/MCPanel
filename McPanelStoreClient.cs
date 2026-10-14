@@ -94,24 +94,6 @@ public sealed class McPanelStoreClient : IDisposable
         return [];
     }
 
-    public async Task<string?> DownloadProductAsync(
-        ProductItem product,
-        Action<double>? progress,
-        Action<string>? status = null,
-        DownloadPauseController? pauseController = null,
-        CancellationToken cancellationToken = default)
-    {
-        Action<ProductDownloadProgress>? detailedProgress = progress is null
-            ? null
-            : update => progress(update.Percent);
-        return await DownloadProductWithDetailsAsync(
-            product,
-            detailedProgress,
-            status,
-            pauseController,
-            cancellationToken);
-    }
-
     public async Task<string?> DownloadProductWithDetailsAsync(
         ProductItem product,
         Action<ProductDownloadProgress>? progress,

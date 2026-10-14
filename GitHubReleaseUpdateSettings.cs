@@ -13,7 +13,6 @@ internal sealed class GitHubReleaseUpdateSource
 
     public string Repository { get; }
     public string AccessToken { get; }
-    public bool HasAccessToken => !string.IsNullOrWhiteSpace(AccessToken);
 }
 
 internal sealed class GitHubUpdateCredentialRecord

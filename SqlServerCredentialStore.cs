@@ -101,8 +101,6 @@ public static class SqlServerCredentialStore
                $"{NormalizeLocalHost(credentials.Host)},{credentials.Port}";
     }
 
-    public static void SaveDefault() => Save(Defaults);
-
     public static SqlServerDefaultCredentials CreateNew() => CreateGeneratedDefaults();
 
     public static void Save(SqlServerDefaultCredentials credentials)

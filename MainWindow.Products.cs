@@ -528,15 +528,6 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
         }
     }
 
-    private void InstalledProductBrowse_Click(object sender, RoutedEventArgs e)
-    {
-        if (((FrameworkElement)sender).DataContext is InstalledProductItem item &&
-            !string.IsNullOrWhiteSpace(item.Url))
-        {
-            Process.Start(new ProcessStartInfo(item.Url) { UseShellExecute = true });
-        }
-    }
-
     internal void InstalledProductUrl_Click(object sender, MouseButtonEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is InstalledProductItem item &&
@@ -601,13 +592,6 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
                 return;
             }
 
-            item.SetOperationState(action switch
-            {
-                "Start" => "正在独立启动",
-                "Catalina" => "正在以 Catalina 方式启动",
-                _ => "正在处理"
-            });
-
             var message = action switch
             {
                 "Start" => await _tomcatInstanceManager.StartAsync(item.ProductId, catalinaMode: false),
@@ -624,7 +608,6 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
         catch (Exception ex)
         {
             TomcatProductInstanceManager.WriteOperationLog(item.ProductId, $"界面操作失败：{ex.GetType().Name}: {ex.Message}");
-            item.SetOperationState("操作失败");
             MessageBox.Show($"Tomcat 应用操作失败：{ex.Message}", "网站", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
@@ -665,7 +648,6 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
 
         try
         {
-            item.SetOperationState(item.IsTomcatDeployment ? "正在修复 Tomcat 独立端口绑定..." : "正在修复 IIS 绑定...");
             var result = item.IsTomcatDeployment
                 ? await _deploymentService.RepairTomcatBindingAsync(item.Product, item.InstallPath)
                 : await _deploymentService.RepairIisBindingAsync(item.Product, item.InstallPath);
@@ -674,7 +656,6 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
         }
         catch (Exception ex)
         {
-            item.SetOperationState("绑定失败");
             MessageBox.Show($"修复{(item.IsTomcatDeployment ? " Tomcat" : " IIS")}绑定失败：{ex.Message}", "网站", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
@@ -706,14 +687,12 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
                 return;
             }
 
-            item.SetOperationState("正在保存域名和 SSL 配置...");
             var message = await _productWebsiteService.SaveAsync(item.ProductId, dialog.ResultSettings);
             item.RefreshRuntime();
             MessageBox.Show(message, "网站", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
-            item.SetOperationState("域名配置失败");
             MessageBox.Show($"域名和 SSL 配置失败：{ex.Message}", "网站", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }

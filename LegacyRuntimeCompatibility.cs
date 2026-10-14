@@ -235,11 +235,6 @@ namespace System.Collections.Generic
 {
     internal static class LegacyDictionaryExtensions
     {
-        public static TValue? GetValueOrDefault<TKey, TValue>(this IDictionary<TKey, TValue> dictionary, TKey key)
-        {
-            return dictionary.TryGetValue(key, out var value) ? value : default;
-        }
-
         public static TValue GetValueOrDefault<TKey, TValue>(this IDictionary<TKey, TValue> dictionary, TKey key, TValue defaultValue)
         {
             return dictionary.TryGetValue(key, out var value) ? value : defaultValue;
@@ -320,12 +315,6 @@ namespace System.IO
         public static Task WriteAsync(this Stream stream, byte[] buffer) =>
             stream.WriteAsync(buffer, 0, buffer.Length);
 
-        public static Task<int> ReadAsync(this Stream stream, byte[] buffer, CancellationToken cancellationToken) =>
-            stream.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
-
-        public static Task CopyToAsync(this Stream source, Stream destination, CancellationToken cancellationToken) =>
-            source.CopyToAsync(destination, 81920, cancellationToken);
-
         private static async Task<T> WaitWithCancellation<T>(Task<T> task, CancellationToken cancellationToken)
         {
             var cancellation = new TaskCompletionSource<bool>();
@@ -342,27 +331,6 @@ namespace System.IO
     }
 }
 
-namespace System.Threading.Tasks
-{
-    internal static class LegacyTaskExtensions
-    {
-        public static async Task WaitAsync(this Task task, TimeSpan timeout, CancellationToken cancellationToken)
-        {
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            var delay = Task.Delay(timeout, timeoutCts.Token);
-            var completed = await Task.WhenAny(task, delay).ConfigureAwait(false);
-            if (completed != task)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                throw new TimeoutException();
-            }
-
-            timeoutCts.Cancel();
-            await task.ConfigureAwait(false);
-        }
-    }
-}
-
 namespace System.Net.Http
 {
     internal static class LegacyHttpExtensions
@@ -372,16 +340,6 @@ namespace System.Net.Http
 
         public static Task<string> ReadAsStringAsync(this HttpContent content, CancellationToken cancellationToken) =>
             WaitWithCancellation(content.ReadAsStringAsync(), cancellationToken);
-
-        public static Task<byte[]> ReadAsByteArrayAsync(this HttpContent content, CancellationToken cancellationToken) =>
-            WaitWithCancellation(content.ReadAsByteArrayAsync(), cancellationToken);
-
-        public static async Task<Stream> GetStreamAsync(this HttpClient client, string requestUri, CancellationToken cancellationToken)
-        {
-            var response = await client.GetAsync(requestUri, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
-            response.EnsureSuccessStatusCode();
-            return await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
-        }
 
         private static async Task<T> WaitWithCancellation<T>(Task<T> task, CancellationToken cancellationToken)
         {
