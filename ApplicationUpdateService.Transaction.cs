@@ -30,6 +30,7 @@ public sealed partial class ApplicationUpdateService
             if (Directory.Exists(rollbackRoot)) DeleteUpdateEntry(rollbackRoot);
             Directory.CreateDirectory(rollbackRoot);
             CommitPreparedEntries(plan.InstallDirectory, incomingRoot, rollbackRoot, unchanged);
+            ProgramOwnershipManifest.RefreshIfInstalled(plan.InstallDirectory, plan.PayloadDirectory);
             TryDeleteDirectory(rollbackRoot);
         }
         finally

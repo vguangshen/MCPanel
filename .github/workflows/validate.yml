@@ -60,6 +60,17 @@ jobs:
         shell: pwsh
         run: .\MCPanel.Tests\Verify-UpdateCompatibility.ps1
 
+      - name: Build and verify native online installer
+        shell: pwsh
+        run: |
+          $version = ([xml](Get-Content MCPanel.csproj -Raw)).Project.PropertyGroup.Version
+          $packages = Join-Path $env:RUNNER_TEMP 'MCPanelInstallerPackages'
+          & .\Build-UpdatePackage.ps1 -Version $version -PublishDirectory '.\bin\Release\net462' -OutputDirectory $packages -GitHubRelease
+          $package = Join-Path $packages "MCPanel-$version.zip"
+          $installer = Join-Path $env:RUNNER_TEMP 'MCPanelInstaller'
+          & .\Build-OnlineInstaller.ps1 -PackageFile $package -OutputDirectory $installer
+          & .\MCPanel.Tests\Verify-Installer.ps1 -InstallerFile (Join-Path $installer 'MCPanel-Setup.exe') -PackageFile $package
+
       - name: Run full reliability suite
         shell: pwsh
         run: |

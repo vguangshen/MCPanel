@@ -1,6 +1,7 @@
 {
   "preservedTopLevelNames": [
     "StoreData",
+    "Maintenance",
     "AccountApi",
     "Runtime",
     "Downloads",

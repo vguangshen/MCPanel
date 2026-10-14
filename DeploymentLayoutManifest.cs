@@ -15,7 +15,7 @@ internal static class DeploymentLayoutManifest
     // shipped by a previous release. New packages always carry the JSON file.
     private static readonly string[] FallbackNames =
     [
-        "StoreData", "AccountApi", "Runtime", "Downloads", "Diagnostics", "Tools", "web", "Cache", "Frp",
+        "StoreData", "Maintenance", "AccountApi", "Runtime", "Downloads", "Diagnostics", "Tools", "web", "Cache", "Frp",
         "Nginx", "MySQL", "MSSQL", "Tomcat", "SSMS", "Navicat Premium Lite",
         "config.ini", "config.ini.previous", "device.identity", "database.config",
         "database.config.previous", "logs"

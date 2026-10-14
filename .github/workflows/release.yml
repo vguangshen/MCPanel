@@ -168,6 +168,15 @@ jobs:
             -ReleaseNotes (Get-Content -LiteralPath 'RELEASE-NOTES.md' -Raw)
           "MCPANEL_UPDATES_DIR=$updatesDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
+      - name: Build and validate online bootstrapper
+        shell: pwsh
+        run: |
+          $installerDir = Join-Path $env:RUNNER_TEMP 'MCPanelInstaller'
+          $zip = Join-Path $env:MCPANEL_UPDATES_DIR 'MCPanel-${{ steps.version.outputs.version }}.zip'
+          & .\Build-OnlineInstaller.ps1 -PackageFile $zip -OutputDirectory $installerDir
+          & .\MCPanel.Tests\Verify-Installer.ps1 -InstallerFile (Join-Path $installerDir 'MCPanel-Setup.exe') -PackageFile $zip
+          "MCPANEL_INSTALLER_DIR=$installerDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: Create GitHub Release
         shell: pwsh
         env:
@@ -180,7 +189,9 @@ jobs:
           $manifest = Join-Path $env:MCPANEL_UPDATES_DIR 'update-manifest.json'
           $repair = Join-Path $env:MCPANEL_PUBLISH_DIR 'Repair-Update.ps1'
           $restore = Join-Path $env:MCPANEL_PUBLISH_DIR 'Restore-Update.ps1'
-          gh release create $tag $zip $hash $manifest $repair $restore `
+          $setup = Join-Path $env:MCPANEL_INSTALLER_DIR 'MCPanel-Setup.exe'
+          $setupHash = "$setup.sha256"
+          gh release create $tag $zip $hash $manifest $repair $restore $setup $setupHash `
             --target '${{ github.sha }}' `
             --title "MCPanel $version" `
             --notes-file RELEASE-NOTES.md
