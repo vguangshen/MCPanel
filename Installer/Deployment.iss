@@ -212,7 +212,7 @@ var Changed, Completed, Originals: TStringList; I: Integer; Name, ActiveName, De
   ManifestExisted, RollbackFailed: Boolean;
 begin
   CheckChangedProgramFiles(InstallRoot, Incoming);
-  TransactionRoot := InstallRoot + '\Maintenance\Transactions\' + GetDateTimeString('yyyymmddhhnnsszzz', '', '');
+  TransactionRoot := InstallRoot + '\Maintenance\Transactions\' + GetDateTimeString('yyyymmddhhnnsszzz', '-', ':');
   AssertNoLinks(TransactionRoot);
   Changed := TStringList.Create;
   Completed := TStringList.Create;
@@ -224,7 +224,7 @@ begin
     end;
     if not ForceDirectories(TransactionRoot + '\Original') then RaiseException('无法创建安装目录。请检查目录权限和剩余空间。');
     ManifestExisted := FileExists(OwnedManifest);
-    if ManifestExisted and not FileCopy(OwnedManifest, TransactionRoot + '\manifest.previous', True) then
+    if ManifestExisted and not CopyFile(OwnedManifest, TransactionRoot + '\manifest.previous', True) then
       RaiseException('无法备份原安装记录。原程序未修改。');
     for I := 0 to Changed.Count - 1 do begin
       Name := Changed[I];
@@ -232,11 +232,11 @@ begin
       Ready := TransactionRoot + '\Ready\' + Name;
       Backup := TransactionRoot + '\Original\' + Name;
       ForceDirectories(ExtractFileDir(Ready));
-      if not FileCopy(Incoming + '\' + Name, Ready, True) then RaiseException('无法准备新程序文件，原程序未修改：' + Name);
+      if not CopyFile(Incoming + '\' + Name, Ready, True) then RaiseException('无法准备新程序文件，原程序未修改：' + Name);
       SetFileAttributesW(Ready, $80);
       if FileExists(Destination) then begin
         ForceDirectories(ExtractFileDir(Backup));
-        if not FileCopy(Destination, Backup, True) then RaiseException('无法备份原程序，原程序未修改：' + Name);
+        if not CopyFile(Destination, Backup, True) then RaiseException('无法备份原程序，原程序未修改：' + Name);
         Originals.Add(Name);
       end;
     end;
@@ -265,7 +265,7 @@ begin
         try
           if Originals.IndexOf(Name) >= 0 then begin
             Restore := TransactionRoot + '\Ready\' + Name + '.restore';
-            if not FileCopy(Backup, Restore, True) then RaiseException('无法读取回滚文件：' + Name);
+            if not CopyFile(Backup, Restore, True) then RaiseException('无法读取回滚文件：' + Name);
             SetFileAttributesW(Restore, $80);
             ReplaceOwnedFile(Restore, Destination);
             SetFileAttributesW(Destination, GetFileAttributesW(Backup));
@@ -275,7 +275,7 @@ begin
           Log('Rollback: ' + GetExceptionMessage);
         end;
       end;
-      if ManifestExisted then FileCopy(TransactionRoot + '\manifest.previous', OwnedManifest, False)
+      if ManifestExisted then CopyFile(TransactionRoot + '\manifest.previous', OwnedManifest, False)
       else DeleteFile(OwnedManifest);
       if RollbackFailed then ErrorText := ErrorText + #13#10 + '部分文件未能自动恢复，请保留：' + TransactionRoot;
       RaiseException(ErrorText);

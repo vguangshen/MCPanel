@@ -114,10 +114,15 @@ jobs:
             exit 0
           }
 
-          $url = 'https://download.microsoft.com/download/1/6/5/165255E7-1014-4D0A-B094-B6A430A6BFFC/vcredist_x64.exe'
+          $dependency = (Get-Content -LiteralPath 'Installer/dependencies.json' -Raw | ConvertFrom-Json).visualCpp
+          $url = $dependency.url
           $installer = Join-Path $env:RUNNER_TEMP 'vcredist2010-sp1-x64.exe'
           Write-Host 'MSVCR100.dll is missing; downloading Microsoft VC++ 2010 SP1 x64 redistributable.'
           Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+
+          if ((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash -ine $dependency.sha256) {
+            throw 'VC++ 2010 prerequisite SHA-256 did not match the pinned dependency catalog.'
+          }
 
           $signature = Get-AuthenticodeSignature -FilePath $installer
           if ($signature.Status -ne 'Valid' -or

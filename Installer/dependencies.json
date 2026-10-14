@@ -7,7 +7,7 @@
   "dotnet": {
     "name": ".NET Framework 4.8",
     "minimumRelease": 394802,
-    "url": "https://go.microsoft.com/fwlink/?LinkId=2085155",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/2d6bb6b2-226a-4baa-bdec-798822606ff1/9b7b8746971ed51a1770ae4293618187/ndp48-web.exe",
     "sha256": "0bba3094588c4bfec301939985222a20b340bf03431563dec8b2b4478b06fffa",
     "arguments": "/q /norestart"
   },
