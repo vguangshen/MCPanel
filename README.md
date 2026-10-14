@@ -25,7 +25,13 @@ routing. Its settings, product, and environment handlers live in
 `MainWindow.*.cs` partials; reusable bindings are grouped under `ViewModels`,
 `Controls`, `Converters`, and `Services`. The reliability tests follow the
 same split under `MCPanel.Tests`, so adding a new feature does not require
-extending one monolithic source file.
+extending one monolithic source file. Environment installers and runtime probes
+are split into component partials (`EnvironmentInstaller.*.cs` and
+`EnvironmentRuntimeService.*.cs`), while their public entry points remain stable.
+Home and Environment controls share the same operation coordinator and Tomcat
+mode-switch confirmation. Runtime samples run in the background; a component
+operation invalidates older samples, and a failed probe retains the last known
+state of that component while other cards continue updating.
 
 Disk snapshots and inactive queue-session maintenance live in dedicated services
 under `Services`. Disk sampling runs off the UI thread at ten-second intervals;
@@ -73,7 +79,10 @@ dotnet run --project .\MCPanel.csproj
 The default release is written to `D:\MCPanel`; pass `-OutputDirectory` to
 choose another location. The canonical list of top-level entries preserved by
 publishing, packaging, and in-app replacement is maintained in
-`deployment-layout.json`. Older `StoreData\Runtime`,
+`deployment-layout.json`. Its `preservedAppSettingKeys` list also controls
+configuration merging for both in-app updates and publishing into an existing
+installation, including explicitly empty AI settings. Conflicting legacy download
+cache entries are retained for inspection rather than deleted. Older `StoreData\Runtime`,
 `StoreData\Downloads`, `StoreData\Tools`, and `StoreData\ProductIcons`
 directories are migrated on startup.
 

@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -670,10 +670,10 @@ internal sealed class FrpWindowsService : ServiceBase
         AutoLog = true;
     }
 
-    private string WorkRoot => Path.Combine(_applicationRoot, "Frp");
+    private string WorkRoot => Path.Combine(_applicationRoot, EnvironmentComponentCatalog.FrpDirectoryName);
     private string FrpcPath => Path.Combine(WorkRoot, "frpc.exe");
     private string ConfigPath => Path.Combine(WorkRoot, "frpc.toml");
-    internal static string GetServiceLogPath(string applicationRoot) => Path.Combine(applicationRoot, "Frp", "frp-service.log");
+    internal static string GetServiceLogPath(string applicationRoot) => Path.Combine(applicationRoot, EnvironmentComponentCatalog.FrpDirectoryName, "frp-service.log");
     internal static TimeSpan GetRecoveryDelay(int previousAttempts) =>
         RecoveryDelays[Math.Min(Math.Max(previousAttempts, 0), RecoveryDelays.Length - 1)];
     internal static bool ShouldEscalate(int attemptsInWindow) => attemptsInWindow >= MaxRecoveriesPerWindow;

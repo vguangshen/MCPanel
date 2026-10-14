@@ -56,7 +56,7 @@ public sealed class NginxProxyRule
 
 public static class NginxRuntimeManager
 {
-    public const string VersionDirectoryName = "nginx-1.14.2";
+    public const string VersionDirectoryName = EnvironmentComponentCatalog.NginxDirectoryName;
     public const int DefaultListenPort = 72;
 
     private static readonly int[] PreferredPorts = [DefaultListenPort, 80, 8088, 8080, 8090, 8099, 18080];

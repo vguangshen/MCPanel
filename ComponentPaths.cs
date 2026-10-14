@@ -43,7 +43,7 @@ internal static class ComponentPaths
     public static string MySqlRoot => PathCompatibility.GetNativeComponentRoot(ApplicationRoot, "MySQL");
     public static string SqlServerRoot => Path.Combine(ApplicationRoot, "MSSQL");
     public static string TomcatRoot => Path.Combine(ApplicationRoot, "Tomcat");
-    public static string FrpRoot => Path.Combine(ApplicationRoot, "Frp");
+    public static string FrpRoot => Path.Combine(ApplicationRoot, EnvironmentComponentCatalog.FrpDirectoryName);
     public static string SsmsRoot => Path.Combine(ApplicationRoot, "SSMS");
     public static string NavicatLiteRoot => Path.Combine(ApplicationRoot, "Navicat Premium Lite");
 

@@ -18,6 +18,10 @@ if (!(Test-Path -LiteralPath $testProject)) {
     throw "Reliability test project was not found: $testProject"
 }
 $layoutManifest = Get-Content -LiteralPath $layoutManifestPath -Raw | ConvertFrom-Json
+. (Join-Path $projectRoot 'Deployment-Configuration.ps1')
+$preservedAppSettingKeys = @($layoutManifest.preservedAppSettingKeys | ForEach-Object { [string]$_ })
+if ($preservedAppSettingKeys.Count -eq 0) { throw 'Deployment layout manifest does not define preserved application settings.' }
+$preservedAppSettings = Get-PreservedAppSettings (Join-Path $outputDir 'MCPanel.exe.config') $preservedAppSettingKeys
 $preservedNames = @($layoutManifest.preservedTopLevelNames | ForEach-Object { [string]$_ })
 if ($preservedNames.Count -eq 0) {
     throw "Deployment layout manifest does not define preserved top-level names: $layoutManifestPath"
@@ -77,6 +81,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "dotnet publish failed with exit code $LASTEXITCODE"
 }
 
+Set-PreservedAppSettings (Join-Path $stagingDir 'MCPanel.exe.config') $preservedAppSettings
 New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
 Assert-PublishTarget $outputDir
 
@@ -108,7 +113,10 @@ if (Test-Path -LiteralPath $legacyDownloads) {
             Move-Item -LiteralPath $_.FullName -Destination $target
         }
     }
-    Remove-Item -LiteralPath $legacyDownloads -Recurse -Force
+    # Keep conflicting legacy cache entries instead of deleting skipped downloads.
+    if (@(Get-ChildItem -LiteralPath $legacyDownloads -Force).Count -eq 0) {
+        Remove-Item -LiteralPath $legacyDownloads -Force
+    }
 }
 
 if (Test-Path -LiteralPath $frameworkBuildDir) {

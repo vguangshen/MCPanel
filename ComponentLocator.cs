@@ -150,7 +150,7 @@ internal sealed class ComponentLocator
 
         try
         {
-            var known = Path.Combine(root, "apache-tomcat-8.5.57");
+            var known = Path.Combine(root, EnvironmentComponentCatalog.TomcatDirectoryName);
             if (MatchesTomcatRequirements(known, requirements))
             {
                 return known;

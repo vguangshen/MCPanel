@@ -545,7 +545,7 @@ public sealed class McPanelStoreClient : IDisposable
     private static async Task<HttpResponseMessage> SendWebDavRequestAsync(Uri uri, HttpClient client, CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(new HttpMethod("PROPFIND"), uri);
-        request.Headers.UserAgent.ParseAdd("MCPanel/1.0");
+        request.Headers.UserAgent.ParseAdd($"MCPanel/{ApplicationUpdateService.CurrentVersionText}");
         request.Headers.TryAddWithoutValidation("Depth", "1");
         if (IsTrustedDownloadHost(uri.Host))
         {
@@ -586,7 +586,7 @@ public sealed class McPanelStoreClient : IDisposable
         for (var redirect = 0; redirect <= MaxDownloadRedirects; redirect++)
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, currentUri);
-            request.Headers.UserAgent.ParseAdd("MCPanel/1.0");
+            request.Headers.UserAgent.ParseAdd($"MCPanel/{ApplicationUpdateService.CurrentVersionText}");
             request.Headers.Accept.ParseAdd("*/*");
             if (IsTrustedDownloadHost(currentUri.Host))
             {

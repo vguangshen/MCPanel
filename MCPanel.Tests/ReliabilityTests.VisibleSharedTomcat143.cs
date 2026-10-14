@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MCPanel.Tests;
@@ -41,11 +41,8 @@ public sealed partial class ReliabilityTests
     [TestMethod]
     public void TomcatInstallerDoesNotRegisterOrStartHiddenWindowsService()
     {
-        var installer = ReadRepositoryFile("EnvironmentInstaller.cs");
-        var start = installer.IndexOf("private async Task InstallTomcatAsync", StringComparison.Ordinal);
-        var end = installer.IndexOf("private async Task InstallNginxAsync", start, StringComparison.Ordinal);
-        Assert.IsTrue(start >= 0 && end > start);
-        var block = installer.Substring(start, end - start);
+        var block = ReadRepositoryMethod("EnvironmentInstaller.Tomcat.cs",
+            "private async Task InstallTomcatAsync");
 
         StringAssert.Contains(block, "EnvironmentRuntimeService.LaunchTomcatStartConsole(tomcatRoot)");
         StringAssert.Contains(block, "TomcatWindowsServiceManager.Delete()");

@@ -24,17 +24,14 @@ public partial class ReliabilityTests
         Assert.IsFalse(runtime.Contains("TomcatWindowsServiceManager.Start();", StringComparison.Ordinal));
 
         // The dedicated environment-card Catalina entry point remains supported.
-        StringAssert.Contains(window, "\"CatalinaRun\" => await _runtimeService.StartTomcatInCatalinaConsoleAsync()");
+        StringAssert.Contains(window, "\"CatalinaRun\" => _runtimeService.StartTomcatInCatalinaConsoleAsync()");
     }
 
     [TestMethod]
     public void TomcatRuntimeState_UsesProcessAndPortsInsteadOfScmStatus()
     {
-        var runtime = ReadRepositoryFile("EnvironmentRuntimeService.cs");
-        var methodStart = runtime.IndexOf("private static EnvironmentRuntimeState GetTomcatState", StringComparison.Ordinal);
-        var methodEnd = runtime.IndexOf("private static EnvironmentRuntimeState GetSqlServerState", methodStart, StringComparison.Ordinal);
-        Assert.IsTrue(methodStart >= 0 && methodEnd > methodStart);
-        var method = runtime.Substring(methodStart, methodEnd - methodStart);
+        var method = ReadRepositoryMethod("EnvironmentRuntimeService.Tomcat.cs",
+            "private static EnvironmentRuntimeState GetTomcatState");
 
         StringAssert.Contains(method, "TomcatProductInstanceManager.IsSharedTomcatRunning()");
         StringAssert.Contains(method, "TomcatRuntimeProbe.ArePortsListening");

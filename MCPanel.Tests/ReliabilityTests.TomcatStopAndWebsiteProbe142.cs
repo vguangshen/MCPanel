@@ -32,11 +32,8 @@ public sealed partial class ReliabilityTests
     [TestMethod]
     public void EnvironmentTomcatStateTracksSharedServerNotIndependentInstances()
     {
-        var code = ReadRepositoryFile("EnvironmentRuntimeService.cs");
-        var start = code.IndexOf("private static EnvironmentRuntimeState GetTomcatState", StringComparison.Ordinal);
-        var end = code.IndexOf("private static EnvironmentRuntimeState GetSqlServerState", start, StringComparison.Ordinal);
-        Assert.IsTrue(start >= 0 && end > start);
-        var method = code.Substring(start, end - start);
+        var method = ReadRepositoryMethod("EnvironmentRuntimeService.Tomcat.cs",
+            "private static EnvironmentRuntimeState GetTomcatState");
         StringAssert.Contains(method, "var anyRunning = sharedProcessRunning;");
         StringAssert.Contains(method, "一个或多个应用正在单独运行，请在“网站”页面管理");
         Assert.IsFalse(method.Contains("var anyRunning = sharedRunning || managedRunning;", StringComparison.Ordinal));

@@ -27,10 +27,12 @@ public sealed class ServiceItem(string name, EnvironmentKind kind, string descri
     private string _statusText = "检测中";
     private string _badgeText = "检测中";
     private Brush _badgeBrush = Brushes.Gray;
+    private readonly string _defaultDescription = description;
+    private string _description = description;
 
     public string Name { get; } = name;
     public EnvironmentKind Kind { get; } = kind;
-    public string Description { get; } = description;
+    public string Description { get => _description; private set => SetProperty(ref _description, value); }
 
     public bool IsInstalled
     {
@@ -83,10 +85,10 @@ public sealed class ServiceItem(string name, EnvironmentKind kind, string descri
     public string BadgeText { get => _badgeText; set => SetProperty(ref _badgeText, value); }
     public Brush BadgeBrush { get => _badgeBrush; set => SetProperty(ref _badgeBrush, value); }
 
-    public bool CanStart => IsInstalled && !IsRunning && !IsBusy && _statusKind != RuntimeStatusKind.Unknown;
+    public bool CanStart => IsInstalled && !IsRunning && !IsBusy && _statusKind == RuntimeStatusKind.Stopped;
     public bool CanStop => IsInstalled && IsRunning && !IsBusy;
-    public bool CanRestart => IsInstalled && !IsBusy && _statusKind != RuntimeStatusKind.Unknown;
-    public bool CanUninstall => IsInstalled && !IsBusy;
+    public bool CanRestart => IsInstalled && !IsBusy && _statusKind is RuntimeStatusKind.Running or RuntimeStatusKind.Stopped;
+    public bool CanUninstall => IsInstalled && !IsBusy && _statusKind is not (RuntimeStatusKind.Starting or RuntimeStatusKind.Stopping);
     public Visibility ServiceControlsVisibility => IsInstalled ? Visibility.Visible : Visibility.Collapsed;
     public Visibility InstallHintVisibility => IsInstalled ? Visibility.Collapsed : Visibility.Visible;
 
@@ -95,6 +97,7 @@ public sealed class ServiceItem(string name, EnvironmentKind kind, string descri
         _statusKind = state.StatusKind;
         IsInstalled = state.IsInstalled;
         IsRunning = state.IsRunning;
+        Description = state.ConnectionDescription ?? _defaultDescription;
         StatusText = state.IsInstalled
             ? state.IsRunning ? "运行中" : state.StatusKind is RuntimeStatusKind.Starting or RuntimeStatusKind.Stopping ? RuntimeStatusVisuals.Text(state.StatusKind) : "已安装，未运行"
             : "未安装";
@@ -115,6 +118,16 @@ public sealed class ServiceItem(string name, EnvironmentKind kind, string descri
         StatusText = statusText;
         BadgeText = badgeText;
         BadgeBrush = RuntimeStatusVisuals.Brush(RuntimeStatusKind.Starting);
+    }
+
+    public void ApplyProbeFailure(string message)
+    {
+        _statusKind = RuntimeStatusKind.Unknown;
+        StatusText = $"状态暂时无法确认：{message}";
+        BadgeText = RuntimeStatusVisuals.Text(_statusKind);
+        BadgeBrush = RuntimeStatusVisuals.Brush(_statusKind);
+        OnPropertyChanged(nameof(CanStart));
+        OnPropertyChanged(nameof(CanRestart));
     }
 }
 
@@ -252,7 +265,7 @@ public sealed class EnvironmentItem(EnvironmentKind kind, string title, string o
         : _installRestartRequired ? "继续安装"
         : IsIisModule && _iisConfigurationRepairRequired ? "修复配置"
         : IsInstalled ? "已安装" : "安装";
-    public bool CanInstall => !IsBusy && (!IsSqlServerModule || SelectedSqlServerRelease.IsSupported);
+    public bool CanInstall => !IsBusy && (_statusKind != RuntimeStatusKind.Unknown || _iisUninstallRestartRequired || _installRestartRequired) && (!IsSqlServerModule || SelectedSqlServerRelease.IsSupported);
     public bool CanSelectMySqlVersion => IsMySqlModule && !IsInstalled && !IsBusy;
     public bool CanSelectSqlServerVersion => IsSqlServerModule && !IsInstalled && !IsBusy;
     public bool IsFrpModule => Kind == EnvironmentKind.FrpTunnel;
@@ -402,12 +415,12 @@ public sealed class EnvironmentItem(EnvironmentKind kind, string title, string o
         }
     }
 
-    public bool CanStart => IsInstalled && !IsRunning && !IsBusy && _statusKind != RuntimeStatusKind.Unknown;
+    public bool CanStart => IsInstalled && !IsRunning && !IsBusy && _statusKind == RuntimeStatusKind.Stopped;
     public bool CanStop => IsInstalled && IsRunning && !IsBusy;
-    public bool CanRestart => IsInstalled && !IsBusy && _statusKind != RuntimeStatusKind.Unknown;
-    public bool CanUninstall => IsInstalled && !IsBusy;
+    public bool CanRestart => IsInstalled && !IsBusy && _statusKind is RuntimeStatusKind.Running or RuntimeStatusKind.Stopped;
+    public bool CanUninstall => IsInstalled && !IsBusy && _statusKind is not (RuntimeStatusKind.Starting or RuntimeStatusKind.Stopping);
     public bool CanManage => IsInstalled && !IsBusy;
-    public bool CanStartCatalina => IsTomcatModule && IsInstalled && !IsRunning && !IsBusy;
+    public bool CanStartCatalina => IsTomcatModule && CanStart;
 
     public void ApplyInstallProgress(InstallProgress update)
     {
@@ -574,6 +587,15 @@ public sealed class EnvironmentItem(EnvironmentKind kind, string title, string o
         OnPropertyChanged(nameof(IsTomcatModule));
     }
 
+    public void ApplyProbeFailure(string message)
+    {
+        _statusKind = RuntimeStatusKind.Unknown;
+        StatusText = $"状态暂时无法确认：{message}";
+        BadgeText = RuntimeStatusVisuals.Text(_statusKind);
+        BadgeBrush = RuntimeStatusVisuals.Brush(_statusKind);
+        RaiseStateProperties();
+    }
+
     private IReadOnlyList<CredentialField> LoadCredentialFields()
     {
         if (Kind == EnvironmentKind.MySql)
@@ -671,7 +693,7 @@ public static class RuntimeStatusVisuals
         RuntimeStatusKind.Stopping => "停止中",
         RuntimeStatusKind.Stopped => "未运行",
         RuntimeStatusKind.NotInstalled => "未安装",
-        _ => "检测中"
+        _ => "无法确认"
     };
 
     public static Brush Brush(RuntimeStatusKind kind) => kind switch

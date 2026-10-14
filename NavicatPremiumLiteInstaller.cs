@@ -229,7 +229,7 @@ internal sealed class NavicatPremiumLiteInstaller
             AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
         };
         var client = new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(30) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("MCPanel/1.1 NavicatPremiumLiteInstaller");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd($"MCPanel/{ApplicationUpdateService.CurrentVersionText} NavicatPremiumLiteInstaller");
         client.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-CN,zh;q=0.9");
         return client;
     }
