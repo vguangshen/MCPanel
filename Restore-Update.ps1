@@ -21,6 +21,7 @@ foreach ($process in [Diagnostics.Process]::GetProcessesByName('MCPanel')) {
 
 $temporary = Join-Path ([IO.Path]::GetTempPath()) ('MCPanel-Recovery-' + [Guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($temporary) | Out-Null
+$transactionLock = $null
 try {
     if ([string]::IsNullOrWhiteSpace($PackageFile)) {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -47,20 +48,26 @@ try {
         'Nginx', 'MySQL', 'MSSQL', 'Tomcat', 'SSMS', 'Navicat Premium Lite', 'config.ini', 'config.ini.previous',
         'device.identity', 'database.config', 'database.config.previous', 'logs') + @($layout.preservedTopLevelNames)
 
-    # An old updater may already have deleted the live configuration. Prefer the
-    # current rollback snapshot, then previously preserved snapshots; never pick
-    # the package defaults while an original configuration is available.
-    $configurationSource = Join-Path $installRoot 'MCPanel.exe.config'
-    if (!(Test-Path -LiteralPath $configurationSource -PathType Leaf)) {
-        $rollback = Join-Path $installRoot 'StoreData\Updates\Rollback'
-        $candidates = @((Join-Path $rollback 'Current\MCPanel.exe.config'))
-        if (Test-Path -LiteralPath $rollback) {
-            $candidates += @(Get-ChildItem -LiteralPath $rollback -Directory -Filter 'Current.failed-*' |
-                Sort-Object LastWriteTimeUtc -Descending | ForEach-Object { Join-Path $_.FullName 'MCPanel.exe.config' })
-        }
-        $configurationSource = $candidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
-        if (!$configurationSource) { throw 'Original MCPanel.exe.config not found. Preserve StoreData and recover the original configuration before continuing.' }
+    if (!$WhatIfPreference) {
+        $updates = Join-Path $installRoot 'StoreData\Updates'
+        [IO.Directory]::CreateDirectory($updates) | Out-Null
+        $transactionLock = [IO.FileStream]::new((Join-Path $updates 'apply-update.lock'),
+            [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None, 1, [IO.FileOptions]::DeleteOnClose)
     }
+    # A missing EXE can coexist with a partially copied default configuration.
+    # In that case the current rollback snapshot is the original source of truth.
+    $rollback = Join-Path $installRoot 'StoreData\Updates\Rollback'
+    $liveConfiguration = Join-Path $installRoot 'MCPanel.exe.config'
+    $rollbackConfiguration = Join-Path $rollback 'Current\MCPanel.exe.config'
+    $candidates = if (Test-Path -LiteralPath (Join-Path $installRoot 'MCPanel.exe') -PathType Leaf) {
+        @($liveConfiguration, $rollbackConfiguration)
+    } else { @($rollbackConfiguration, $liveConfiguration) }
+    if (Test-Path -LiteralPath $rollback) {
+        $candidates += @(Get-ChildItem -LiteralPath $rollback -Directory -Filter 'Current.failed-*' |
+            Sort-Object Name -Descending | ForEach-Object { Join-Path $_.FullName 'MCPanel.exe.config' })
+    }
+    $configurationSource = $candidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+    if (!$configurationSource) { throw 'Original MCPanel.exe.config not found. Preserve StoreData and recover the original configuration before continuing.' }
     [xml]$oldConfiguration = Get-Content -LiteralPath $configurationSource -Raw -Encoding UTF8
     [xml]$newConfiguration = Get-Content -LiteralPath (Join-Path $payload 'MCPanel.exe.config') -Raw -Encoding UTF8
     foreach ($setting in $oldConfiguration.SelectNodes('/configuration/appSettings/add')) {
@@ -162,5 +169,6 @@ try {
     Write-Output ('Original files retained at: ' + $recoveryRoot)
     Write-Output 'Recovery complete. Start MCPanel.exe directly; no old online updater is needed.'
 } finally {
+    if ($null -ne $transactionLock) { $transactionLock.Dispose() }
     if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Recurse -Force }
 }

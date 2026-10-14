@@ -12,7 +12,9 @@ public sealed partial class ApplicationUpdateService
         using var transactionLock = new FileStream(Path.Combine(updatesRoot, "apply-update.lock"),
             FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.DeleteOnClose);
         var rollbackRoot = Path.Combine(updatesRoot, "Rollback", "Current");
-        var incomingRoot = Path.Combine(plan.StagingRoot, "Prepared-" + Guid.NewGuid().ToString("N"));
+        // Keep AtomicFile's extra temporary suffix below Framework MAX_PATH
+        // limits even when the installation already has a long staging path.
+        var incomingRoot = Path.Combine(updatesRoot, "Prepared-" + Guid.NewGuid().ToString("N"));
         try
         {
             // Finish all copying and configuration merging before touching the

@@ -65,6 +65,15 @@ function Invoke-Updater([string]$Runtime, $Case, [string]$OldLayout) {
     return [pscustomobject]@{ ExitCode = $exitCode; Result = $result }
 }
 
+function Invoke-Recovery($Case, [string]$Package, [switch]$Preview) {
+    $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot '..\Restore-Update.ps1'),
+        '-InstallDirectory', $Case.Install, '-PackageFile', $Package)
+    if ($Preview) { $arguments += '-WhatIf' }
+    # Match the user's Windows PowerShell 5.1, including its XML/encoding behavior.
+    & (Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe') @arguments
+    if ($LASTEXITCODE -ne 0) { throw ('Windows PowerShell recovery failed with exit code ' + $LASTEXITCODE) }
+}
+
 try {
     $zip = Join-Path $root 'MCPanel-1.3.58.zip'
     Invoke-WebRequest -Uri 'https://github.com/vguangshen/MCPanel/releases/download/v1.3.58/MCPanel-1.3.58.zip' -OutFile $zip
@@ -118,6 +127,7 @@ try {
         if (Test-Path -LiteralPath (Join-Path $lockedCase.Install 'MCPanel.exe')) { throw 'The missing-EXE regression was not reproduced.' }
         if (!(Test-Path -LiteralPath (Join-Path $lockedCase.Install 'StoreData\Updates\Rollback\Current\MCPanel.exe.config'))) { throw 'Legacy rollback did not retain the original configuration.' }
         Write-Host 'Reproduced: real 1.3.58 deletes MCPanel.exe, then both replacement and rollback fail on a readable but deletion-locked DLL.'
+        Write-Text (Join-Path $lockedCase.Install 'MCPanel.exe.config') '<configuration><appSettings><add key="Ai.Model" value="partially-copied-default" /></appSettings></configuration>'
 
         $recoveryPackage = Join-Path $root 'recovery.zip'
         Compress-Archive -Path (Join-Path $lockedCase.Payload '*') -DestinationPath $recoveryPackage
@@ -127,11 +137,10 @@ try {
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\deployment-layout.json') -Destination $recoveryPayload
         Compress-Archive -Path (Join-Path $recoveryPayload '*') -DestinationPath $recoveryPackage -Force
         Write-Text ($recoveryPackage + '.sha256') ((Get-FileHash -LiteralPath $recoveryPackage -Algorithm SHA256).Hash + '  recovery.zip')
-        $restore = Join-Path $PSScriptRoot '..\Restore-Update.ps1'
-        & $restore -InstallDirectory $lockedCase.Install -PackageFile $recoveryPackage -WhatIf
+        Invoke-Recovery $lockedCase $recoveryPackage -Preview
         if (Test-Path -LiteralPath (Join-Path $lockedCase.Install 'MCPanel.exe')) { throw 'Recovery preview changed installed files.' }
-        & $restore -InstallDirectory $lockedCase.Install -PackageFile $recoveryPackage
-        & $restore -InstallDirectory $lockedCase.Install -PackageFile $recoveryPackage
+        Invoke-Recovery $lockedCase $recoveryPackage
+        Invoke-Recovery $lockedCase $recoveryPackage
         if ([IO.File]::ReadAllText((Join-Path $lockedCase.Install 'MCPanel.exe')) -ne 'new') { throw 'Recovery did not restore the missing executable.' }
         [xml]$recoveredConfig = Get-Content -LiteralPath (Join-Path $lockedCase.Install 'MCPanel.exe.config') -Raw -Encoding UTF8
         $settings = @{}
