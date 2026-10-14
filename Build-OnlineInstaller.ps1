@@ -104,8 +104,10 @@ if (!$CompilerPath) {
         if ($install.ExitCode -ne 0) { throw ('Inno Setup compiler installation failed: ' + $install.ExitCode) }
     }
 }
-$compilerVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($CompilerPath).FileVersion
-if ($compilerVersion -ne $catalog.compiler.version -and !$compilerVersion.StartsWith($catalog.compiler.version + '.')) { throw ('Expected pinned Inno Setup ' + $catalog.compiler.version + ', got ' + $compilerVersion) }
+$compilerHelp = (& $CompilerPath '/?' 2>&1 | Out-String)
+if ($compilerHelp -notmatch ('Inno Setup ' + [regex]::Escape($catalog.compiler.version) + '(?:\s|$)')) {
+    throw ('The pinned Inno Setup compiler engine was not found: ' + $compilerHelp)
+}
 & $CompilerPath ('/DGeneratedDirectory=' + $work) ('/O' + $OutputDirectory) (Join-Path $PSScriptRoot 'Installer\MCPanel.iss')
 if ($LASTEXITCODE -ne 0) { throw ('Inno Setup compilation failed: ' + $LASTEXITCODE) }
 $setup = Join-Path $OutputDirectory 'MCPanel-Setup.exe'
