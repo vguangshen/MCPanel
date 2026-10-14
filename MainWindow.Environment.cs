@@ -649,7 +649,7 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
         return "已打开 IIS 管理器。";
     }
 
-    internal void NginxOpenManagement_Click(object sender, RoutedEventArgs e)
+    internal async void NginxOpenManagement_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is not EnvironmentItem item)
         {

@@ -1335,6 +1335,23 @@ internal void LaunchUpdater(
             : extractRoot;
     }
 
+    internal static string NormalizeGitHubRepository(string? value)
+    {
+        var repository = (value ?? string.Empty).Trim();
+        if (repository.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var parts = repository.Split('/');
+        if (parts.Length != 2 || parts.Any(part => !IsValidGitHubRepositoryPart(part)))
+        {
+            throw new InvalidDataException("GitHub 更新仓库必须使用 owner/repository 格式。");
+        }
+
+        return $"{parts[0]}/{parts[1]}";
+    }
+
     private static bool IsValidGitHubRepositoryPart(string value)
     {
         if (string.IsNullOrWhiteSpace(value) || value is "." or ".." || value.Length > 100)

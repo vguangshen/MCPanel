@@ -7,7 +7,7 @@ public partial class MainWindow
     private IDisposable? TryBeginComponentOperation(EnvironmentKind kind) =>
         _model.ComponentOperations.TryBegin(kind);
 
-    private bool ConfirmComponentRuntimeAction(EnvironmentKind kind, string action)
+    private async Task<bool> ConfirmComponentRuntimeActionAsync(EnvironmentKind kind, string action)
     {
         if (action == "Uninstall")
         {
@@ -17,7 +17,8 @@ public partial class MainWindow
         }
 
         if (kind != EnvironmentKind.Tomcat || action is not ("Start" or "Restart")) return true;
-        var runningProducts = TomcatProductInstanceManager.GetRunningProductIds();
+        var runningProducts = await Task.Run(TomcatProductInstanceManager.GetRunningProductIds);
+        if (_isClosed) return false;
         if (runningProducts.Count == 0) return true;
         var preview = string.Join("、", runningProducts.Take(8));
         if (runningProducts.Count > 8) preview += $" 等 {runningProducts.Count} 个应用";
@@ -29,7 +30,7 @@ public partial class MainWindow
 
     private Task<string?> RunComponentRuntimeActionAsync(EnvironmentKind kind, string action) =>
         _model.ComponentOperations.RunAsync(kind,
-            () => ConfirmComponentRuntimeAction(kind, action),
+            () => ConfirmComponentRuntimeActionAsync(kind, action),
             () =>
             {
                 var badge = RuntimeBusyBadgeText(action);
@@ -55,10 +56,25 @@ public partial class MainWindow
 
     private async Task RefreshComponentStateAsync(EnvironmentItem item)
     {
-        var state = await Task.Run(() => item.Kind == EnvironmentKind.FrpTunnel
-            ? _frpManager.GetState() : _runtimeService.GetState(item.Kind));
+        var probe = await Task.Run(() => CaptureComponentState(() => item.Kind == EnvironmentKind.FrpTunnel
+            ? _frpManager.GetState() : _runtimeService.GetState(item.Kind)));
         if (_isClosed) return;
-        item.ApplyRuntimeState(state);
-        _model.Services.First(service => service.Kind == item.Kind).ApplyRuntimeState(state);
+        var service = _model.Services.First(service => service.Kind == item.Kind);
+        if (probe.Key is null)
+        {
+            item.ApplyProbeFailure(probe.Value!);
+            service.ApplyProbeFailure(probe.Value!);
+        }
+        else
+        {
+            item.ApplyRuntimeState(probe.Key);
+            service.ApplyRuntimeState(probe.Key);
+        }
+    }
+
+    private static KeyValuePair<EnvironmentRuntimeState?, string?> CaptureComponentState(Func<EnvironmentRuntimeState> probe)
+    {
+        try { return new(probe(), null); }
+        catch (Exception error) { return new(null, error.Message); }
     }
 }

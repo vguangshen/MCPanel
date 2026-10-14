@@ -351,11 +351,7 @@ public partial class MainWindow : Window
     private async Task<RuntimeSample> CaptureRuntimeSampleAsync()
     {
         var snapshotTask = Task.Run(_runtimeService.GetSnapshot);
-        var frpTask = Task.Run(() =>
-        {
-            try { return new KeyValuePair<EnvironmentRuntimeState?, string?>(_frpManager.GetState(), null); }
-            catch (Exception error) { return new KeyValuePair<EnvironmentRuntimeState?, string?>(null, error.Message); }
-        });
+        var frpTask = Task.Run(() => CaptureComponentState(_frpManager.GetState));
         await Task.WhenAll(snapshotTask, frpTask);
         var snapshot = await snapshotTask;
         var frp = await frpTask;

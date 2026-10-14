@@ -24,13 +24,18 @@ internal sealed class ComponentOperationCoordinator
         return new Operation(this, kind);
     }
 
-    public async Task<string?> RunAsync(
+    public Task<string?> RunAsync(
         EnvironmentKind kind,
         Func<bool> confirm,
+        Func<Task<string>> execute) => RunAsync(kind, () => Task.FromResult(confirm()), execute);
+
+    public async Task<string?> RunAsync(
+        EnvironmentKind kind,
+        Func<Task<bool>> confirm,
         Func<Task<string>> execute)
     {
         using var operation = TryBegin(kind);
-        if (operation is null || !confirm()) return null;
+        if (operation is null || !await confirm()) return null;
         return await execute();
     }
 
