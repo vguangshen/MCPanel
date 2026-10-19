@@ -16,8 +16,6 @@ internal static class EnvironmentComponentCatalog
     public const string TomcatDirectoryName = "apache-tomcat-" + TomcatVersion;
     public const string TomcatPackageFileName = TomcatDirectoryName + ".zip";
     public const string FrpDirectoryName = "Frp";
-    public const string FrpVersion = "0.71.0";
-    public const string FrpPackageFileName = "frp_" + FrpVersion + "_windows_amd64.zip";
 
     public static IReadOnlyList<EnvironmentComponentDefinition> All { get; } =
     [
@@ -31,8 +29,8 @@ internal static class EnvironmentComponentCatalog
             "选择 Express 或 Enterprise Developer 版本后下载对应官方 SQL Server 安装包；默认按当前 Windows 版本推荐。", "本机 SQL Server 数据库连接", "MSSQL"),
         new(EnvironmentKind.Tomcat, "Tomcat Server", "Tomcat Server", "Tomcat " + TomcatVersion,
             "从原版服务器下载定制 Tomcat，自动解压并配置启动脚本。", "Java Web 应用运行服务", "Tomcat"),
-        new(EnvironmentKind.FrpTunnel, "FRP 内网穿透", "FRP 内网穿透", "frp " + FrpVersion + " windows amd64",
-            "点击安装后下载 FRP 客户端，并注册、启动 Windows 服务；可配置连接和代理映射。", "客户端映射与网页配置管理", FrpDirectoryName)
+        new(EnvironmentKind.FrpTunnel, "FRP 内网穿透", "FRP 内网穿透", "frp 最新稳定版 windows amd64",
+            "点击安装后下载最新稳定版 FRP 客户端，并注册、启动 Windows 服务；可配置连接和代理映射。", "客户端映射与网页配置管理", FrpDirectoryName)
     ];
 
     public static EnvironmentComponentDefinition Get(EnvironmentKind kind) => All.First(item => item.Kind == kind);

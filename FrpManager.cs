@@ -13,8 +13,6 @@ public sealed class FrpManager : IDisposable
 {
     private const int PreferredPort = 57400;
     private const int MaxManagementBodyBytes = 4 * 1024 * 1024;
-    private const string FrpVersion = EnvironmentComponentCatalog.FrpVersion;
-    private const string FrpPackageFileName = EnvironmentComponentCatalog.FrpPackageFileName;
     private const string FrpVersionMarkerFileName = "frp-version.txt";
     private static readonly Encoding Utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
     private static readonly HttpClient FrpDownloadClient = CreateFrpDownloadClient();
@@ -22,6 +20,8 @@ public sealed class FrpManager : IDisposable
     private CancellationTokenSource? _serverCts;
     private int _managementPort = PreferredPort;
     private readonly string _applicationRoot;
+    private readonly HttpClient _downloadClient;
+    private readonly string? _packageUrl;
     private readonly SemaphoreSlim _operationLock = new(1, 1);
     private readonly SemaphoreSlim _serverLock = new(1, 1);
     private readonly SemaphoreSlim _frpFilesLock = new(1, 1);
@@ -34,6 +34,11 @@ public sealed class FrpManager : IDisposable
     }
 
     internal FrpManager(string applicationRoot)
+        : this(applicationRoot, FrpDownloadClient)
+    {
+    }
+
+    internal FrpManager(string applicationRoot, HttpClient downloadClient, string? packageUrl = null)
     {
         if (string.IsNullOrWhiteSpace(applicationRoot))
         {
@@ -41,6 +46,8 @@ public sealed class FrpManager : IDisposable
         }
 
         _applicationRoot = Path.GetFullPath(applicationRoot);
+        _downloadClient = downloadClient;
+        _packageUrl = packageUrl;
     }
 
     public string ManagementUrl => $"http://127.0.0.1:{_managementPort}/?token={Uri.EscapeDataString(_managementToken)}";
@@ -515,25 +522,28 @@ public sealed class FrpManager : IDisposable
         context.Response.Close();
     }
 
-    private async Task EnsureFrpFilesAsync(Action<InstallProgress>? progress, CancellationToken cancellationToken)
+    internal async Task EnsureFrpFilesAsync(Action<InstallProgress>? progress, CancellationToken cancellationToken)
     {
         await _frpFilesLock.WaitAsync(cancellationToken);
         try
         {
+            progress?.Invoke(new InstallProgress(10, "正在确认 FRP 最新稳定版本..."));
+            var release = await FrpReleaseResolver.ResolveAsync(
+                _downloadClient, _packageUrl ?? EnvironmentDownloadSettings.Load().FrpPackageUrl, cancellationToken);
             Directory.CreateDirectory(FrpWorkDirectory);
 
-            if (!IsCurrentFrpVersion())
+            if (!IsCurrentFrpVersion(release.Version))
             {
                 progress?.Invoke(new InstallProgress(
                     15,
-                    $"正在联网下载 FRP {FrpVersion}...",
+                    $"正在联网下载 FRP {release.Version}...",
                     InstallProgressStage.Downloading,
                     0));
-                await DownloadAndInstallFrpAsync(progress, cancellationToken);
+                await DownloadAndInstallFrpAsync(release, progress, cancellationToken);
 
                 if (File.Exists(FrpcPath))
                 {
-                    AtomicFile.WriteAllText(FrpVersionMarkerPath, FrpVersion, Encoding.UTF8);
+                    AtomicFile.WriteAllText(FrpVersionMarkerPath, release.Version, Encoding.UTF8);
                 }
             }
 
@@ -562,21 +572,22 @@ public sealed class FrpManager : IDisposable
     }
 
     private async Task DownloadAndInstallFrpAsync(
+        FrpRelease release,
         Action<InstallProgress>? progress,
         CancellationToken cancellationToken)
     {
-        var archivePath = FrpArchivePath;
-        var downloadUrl = EnvironmentDownloadSettings.Load().FrpPackageUrl;
+        var archivePath = Path.Combine(FrpDownloadDirectory, release.PackageFileName);
         Directory.CreateDirectory(FrpDownloadDirectory);
 
         try
         {
-            await EnsureFrpArchiveAsync(archivePath, downloadUrl, progress, cancellationToken);
+            await EnsureFrpArchiveAsync(archivePath, release, progress, cancellationToken);
         }
-        catch (Exception ex) when (ex is HttpRequestException || ex is TaskCanceledException || ex is InvalidDataException)
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested &&
+                                   (ex is HttpRequestException || ex is TaskCanceledException || ex is InvalidDataException))
         {
             throw new InvalidOperationException(
-                $"未找到本地 FRP 客户端，且无法下载 FRP {FrpVersion}。请检查网络后重试。\n下载地址：{downloadUrl}",
+                $"无法下载 FRP 最新稳定版 {release.Version}。请检查网络后重试。\n下载地址：{string.Join("\n", release.DownloadUrls)}",
                 ex);
         }
 
@@ -586,12 +597,12 @@ public sealed class FrpManager : IDisposable
             "FRP 下载完成，正在校验并解压客户端...",
             InstallProgressStage.Installing,
             10));
-        var executable = FindArchiveEntry(archive, "frpc.exe");
-        var config = FindArchiveEntry(archive, "frpc.toml");
-        var license = FindArchiveEntry(archive, "LICENSE");
+        var executable = FindArchiveEntry(archive, release, "frpc.exe");
+        var config = FindArchiveEntry(archive, release, "frpc.toml");
+        var license = FindArchiveEntry(archive, release, "LICENSE");
         if (executable is null || config is null)
         {
-            throw new InvalidDataException($"FRP {FrpVersion} 压缩包中缺少 frpc.exe 或 frpc.toml。\n下载地址：{downloadUrl}");
+            throw new InvalidDataException($"FRP {release.Version} 压缩包中缺少对应版本的 frpc.exe 或 frpc.toml。");
         }
 
         var stagedExecutable = Path.Combine(FrpWorkDirectory, "frpc.exe.download");
@@ -620,13 +631,14 @@ public sealed class FrpManager : IDisposable
         }
     }
 
-    private static async Task EnsureFrpArchiveAsync(
+    private async Task EnsureFrpArchiveAsync(
         string archivePath,
-        string downloadUrl,
+        FrpRelease release,
         Action<InstallProgress>? progress,
         CancellationToken cancellationToken)
     {
-        if (IsUsableFrpArchive(archivePath))
+        cancellationToken.ThrowIfCancellationRequested();
+        if (IsUsableFrpArchive(archivePath, release))
         {
             progress?.Invoke(new InstallProgress(
                 75,
@@ -639,44 +651,58 @@ public sealed class FrpManager : IDisposable
         var partialPath = archivePath + ".part";
         DeleteIfExists(partialPath);
 
-        using var response = await FrpDownloadClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        await DownloadService.SaveResponseAsync(
-            response,
-            archivePath,
-            snapshot =>
+        var urls = release.DownloadUrls.ToArray();
+        for (var index = 0; index < urls.Length; index++)
+        {
+            try
             {
-                var stagePercent = snapshot.TotalBytes is > 0
-                    ? Compat.Clamp(snapshot.BytesReceived * 100d / snapshot.TotalBytes.Value, 0, 100)
-                    : (double?)null;
-                var overallPercent = snapshot.TotalBytes is > 0
-                    ? 15 + 60 * snapshot.BytesReceived / snapshot.TotalBytes.Value
-                    : 15;
-                var downloadedText = snapshot.TotalBytes is > 0
-                    ? $"{ProductTransferFormatting.FormatBytes(snapshot.BytesReceived)} / {ProductTransferFormatting.FormatBytes(snapshot.TotalBytes.Value)}"
-                    : ProductTransferFormatting.FormatBytes(snapshot.BytesReceived);
-                progress?.Invoke(new InstallProgress(
-                    Compat.Clamp(overallPercent, 15, 75),
-                    $"正在下载 FRP：{downloadedText}",
-                    InstallProgressStage.Downloading,
-                    stagePercent,
-                    ProductTransferFormatting.FormatRate(snapshot.BytesPerSecond)));
-            },
-            cancellationToken: cancellationToken,
-            temporarySuffix: ".part",
-            bufferSize: 81920,
-            validatePartial: path =>
+                using var response = await _downloadClient.GetAsync(urls[index], HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                await DownloadService.SaveResponseAsync(
+                    response,
+                    archivePath,
+                    snapshot =>
+                    {
+                        var stagePercent = snapshot.TotalBytes is > 0
+                            ? Compat.Clamp(snapshot.BytesReceived * 100d / snapshot.TotalBytes.Value, 0, 100)
+                            : (double?)null;
+                        var overallPercent = snapshot.TotalBytes is > 0
+                            ? 15 + 60 * snapshot.BytesReceived / snapshot.TotalBytes.Value
+                            : 15;
+                        var downloadedText = snapshot.TotalBytes is > 0
+                            ? $"{ProductTransferFormatting.FormatBytes(snapshot.BytesReceived)} / {ProductTransferFormatting.FormatBytes(snapshot.TotalBytes.Value)}"
+                            : ProductTransferFormatting.FormatBytes(snapshot.BytesReceived);
+                        progress?.Invoke(new InstallProgress(
+                            Compat.Clamp(overallPercent, 15, 75),
+                            $"正在下载 FRP：{downloadedText}",
+                            InstallProgressStage.Downloading,
+                            stagePercent,
+                            ProductTransferFormatting.FormatRate(snapshot.BytesPerSecond)));
+                    },
+                    cancellationToken: cancellationToken,
+                    temporarySuffix: ".part",
+                    bufferSize: 81920,
+                    validatePartial: path =>
+                    {
+                        if (!IsUsableFrpArchive(path, release))
+                        {
+                            throw new InvalidDataException($"下载的 FRP 压缩包版本或 SHA-256 校验不符，预期版本：{release.Version}。");
+                        }
+                    },
+                    emptyFileMessage: "下载的 FRP 压缩包为空。",
+                    incompleteFileMessage: (expected, actual) =>
+                        $"下载的 FRP 压缩包不完整：应为 {expected} 字节，实际 {actual} 字节。");
+                return;
+            }
+            catch (Exception ex) when (index + 1 < urls.Length && !cancellationToken.IsCancellationRequested &&
+                                       (ex is HttpRequestException || ex is TaskCanceledException || ex is InvalidDataException))
             {
-                if (!IsUsableFrpArchive(path))
-                {
-                    throw new InvalidDataException("下载的 FRP 压缩包无法读取。");
-                }
-            },
-            emptyFileMessage: "下载的 FRP 压缩包为空。",
-            incompleteFileMessage: (expected, actual) =>
-                $"下载的 FRP 压缩包不完整：应为 {expected} 字节，实际 {actual} 字节。");
+                progress?.Invoke(new InstallProgress(15, "FRP 镜像下载失败，正在切换到官方发布源...",
+                    InstallProgressStage.Downloading, 0));
+            }
+        }
     }
 
-    private static bool IsUsableFrpArchive(string path)
+    internal static bool IsUsableFrpArchive(string path, FrpRelease release)
     {
         if (!File.Exists(path) || new FileInfo(path).Length == 0)
         {
@@ -686,7 +712,17 @@ public sealed class FrpManager : IDisposable
         try
         {
             using var archive = ZipFile.OpenRead(path);
-            return FindArchiveEntry(archive, "frpc.exe") is not null && FindArchiveEntry(archive, "frpc.toml") is not null;
+            if (FindArchiveEntry(archive, release, "frpc.exe") is not { Length: > 0 } ||
+                FindArchiveEntry(archive, release, "frpc.toml") is not { Length: > 0 })
+            {
+                return false;
+            }
+
+            if (release.Sha256 is null) return true;
+            using var stream = File.OpenRead(path);
+            using var sha256 = SHA256.Create();
+            var actualHash = BitConverter.ToString(sha256.ComputeHash(stream)).Replace("-", string.Empty);
+            return string.Equals(actualHash, release.Sha256, StringComparison.OrdinalIgnoreCase);
         }
         catch (InvalidDataException)
         {
@@ -698,14 +734,11 @@ public sealed class FrpManager : IDisposable
         }
     }
 
-    private static ZipArchiveEntry? FindArchiveEntry(ZipArchive archive, string fileName)
+    private static ZipArchiveEntry? FindArchiveEntry(ZipArchive archive, FrpRelease release, string fileName)
     {
-        var expectedPath = $"frp_{FrpVersion}_windows_amd64/{fileName}";
+        var expectedPath = $"{release.ArchiveRoot}/{fileName}";
         return archive.Entries.FirstOrDefault(entry =>
-                   string.Equals(entry.FullName.Replace('\\', '/'), expectedPath, StringComparison.OrdinalIgnoreCase))
-               ?? archive.Entries.FirstOrDefault(entry =>
-                   !entry.FullName.EndsWith("/", StringComparison.Ordinal) &&
-                   string.Equals(Path.GetFileName(entry.FullName.Replace('/', Path.DirectorySeparatorChar)), fileName, StringComparison.OrdinalIgnoreCase));
+            string.Equals(entry.FullName.Replace('\\', '/'), expectedPath, StringComparison.OrdinalIgnoreCase));
     }
 
     private static async Task ExtractArchiveEntryAsync(
@@ -868,7 +901,6 @@ public sealed class FrpManager : IDisposable
     private string ConfigPath => Path.Combine(FrpWorkDirectory, "frpc.toml");
     private string FrpVersionMarkerPath => Path.Combine(FrpWorkDirectory, FrpVersionMarkerFileName);
     private string FrpDownloadDirectory => Path.Combine(_applicationRoot, "Downloads", "Frp");
-    private string FrpArchivePath => Path.Combine(FrpDownloadDirectory, FrpPackageFileName);
 
     private void RequireInstalled()
     {
@@ -921,7 +953,7 @@ public sealed class FrpManager : IDisposable
         }
     }
 
-    private bool IsCurrentFrpVersion()
+    private bool IsCurrentFrpVersion(string version)
     {
         if (!File.Exists(FrpcPath) || !File.Exists(FrpVersionMarkerPath))
         {
@@ -930,7 +962,7 @@ public sealed class FrpManager : IDisposable
 
         try
         {
-            return string.Equals(File.ReadAllText(FrpVersionMarkerPath, Encoding.UTF8).Trim(), FrpVersion, StringComparison.Ordinal);
+            return string.Equals(File.ReadAllText(FrpVersionMarkerPath, Encoding.UTF8).Trim(), version, StringComparison.Ordinal);
         }
         catch (IOException)
         {

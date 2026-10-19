@@ -39,7 +39,7 @@ public static class EnvironmentDownloadCatalog
     public const string DefaultSqlServer2008ExpressX64Url = "http://regservice.itmc.cn/down/SQLServer/SQLEXPR_2008_x64.exe";
     public const string DefaultSqlServer2008ExpressX86Url = "http://regservice.itmc.cn/down/SQLServer/SQLEXPR_2008_x86.exe";
     public const string DefaultTomcatPackageUrl = "http://regservice.itmc.cn/down/tomcat/" + EnvironmentComponentCatalog.TomcatPackageFileName;
-    public const string DefaultFrpPackageUrl = "https://mirrors.nju.edu.cn/github-release/fatedier/frp/LatestRelease/" + EnvironmentComponentCatalog.FrpPackageFileName;
+    public const string DefaultFrpPackageUrl = "https://mirrors.nju.edu.cn/github-release/fatedier/frp/LatestRelease/";
 
     public static IReadOnlyList<EnvironmentDownloadDefinition> All { get; } =
     [
