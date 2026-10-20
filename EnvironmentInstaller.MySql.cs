@@ -124,16 +124,19 @@ public sealed partial class EnvironmentInstaller
         BuildMySqlInstallStopScript(new[] { mysqlRoot }, "cleanup-failed-mysql-install.log");
 
     internal static string BuildMySqlInstallPreparationScript() =>
-        BuildMySqlInstallStopScript(ComponentPaths.MySqlSearchRoots, "prepare-mysql-install.log");
+        BuildMySqlInstallStopScript(ComponentPaths.MySqlInstallationRoots, "prepare-mysql-install.log", allowLegacy: true);
 
-    private static string BuildMySqlInstallStopScript(IEnumerable<string> roots, string logName)
+    private static string BuildMySqlInstallStopScript(IEnumerable<string> roots, string logName, bool allowLegacy = false)
     {
         var allowedRoots = string.Join(", ", roots.Distinct(StringComparer.OrdinalIgnoreCase)
             .Select(root => $"'{EscapePowerShellPath(root)}'"));
+        var legacyParents = allowLegacy ? string.Join(", ", new[] { ComponentPaths.RuntimeRoot, ComponentPaths.LegacyRuntimeRoot }
+            .Select(root => $"'{EscapePowerShellPath(root)}'")) : string.Empty;
         return $$"""
             $ErrorActionPreference = 'Stop'
             {{EnvironmentRuntimeService.RuntimeUninstallFunctions}}
             $mysqlRoots = @({{allowedRoots}})
+            $legacyParents = @({{legacyParents}})
             $log = '{{EscapePowerShellPath(Path.Combine(GetTempDirectory(), logName))}}'
             [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($log)) | Out-Null
             Start-Transcript -Path $log -Append | Out-Null
@@ -142,11 +145,15 @@ public sealed partial class EnvironmentInstaller
                 if ($service) {
                     $executable = Get-ServiceExecutable $service.ImagePath
                     $serverName = [IO.Path]::GetFileName($executable)
+                    $serviceRoot = [IO.Path]::GetDirectoryName([IO.Path]::GetDirectoryName($executable))
+                    $legacy = [IO.Path]::GetFileName($serviceRoot).StartsWith('mysql', [StringComparison]::OrdinalIgnoreCase) -and
+                        @($legacyParents | Where-Object { [IO.Path]::GetFullPath($_).TrimEnd('\').Equals([IO.Path]::GetDirectoryName($serviceRoot), [StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
                     if ($serverName -notin @('mysqld.exe', 'mysqld-itmc.exe') -or
                         [IO.Path]::GetFileName([IO.Path]::GetDirectoryName($executable)) -ne 'bin' -or
-                        @($mysqlRoots | Where-Object { Test-PathUnderRoot $executable $_ }).Count -eq 0) {
+                        (-not $legacy -and @($mysqlRoots | Where-Object { Test-PathUnderRoot $executable $_ }).Count -eq 0)) {
                         throw ('检测到非 MCPanel 管理的 MySQL80 服务，已停止操作以保护现有实例：' + $executable)
                     }
+                    if ($legacy) { $mysqlRoots += $serviceRoot }
                     Stop-ComponentService 'MySQL80'
                 }
                 $names = @('mysqld.exe', 'mysqld-itmc.exe', 'mysql.exe', 'mysqladmin.exe', 'mysqldump.exe')
@@ -319,22 +326,7 @@ public sealed partial class EnvironmentInstaller
                 return $code -eq 0
             }
 
-            function Stop-TemporaryMySqlProcess($process, $seconds = 90) {
-                if (!$process -or $process.HasExited) { return }
-                # mysqladmin shutdown also supports 5.6, whose SQL grammar
-                # does not yet accept the SHUTDOWN statement.
-                $mysqlAdmin = Join-Path ([IO.Path]::GetDirectoryName($mysql)) 'mysqladmin.exe'
-                if (-not (Test-Path -LiteralPath $mysqlAdmin)) { throw '缺少 mysqladmin.exe，无法安全停止数据库维护进程。' }
-                Invoke-NativeQuiet $mysqlAdmin @('--connect-timeout=10', '--shutdown-timeout=90', '-h127.0.0.1', '-P{{mysqlPort}}', '-uroot', "-p$rootPassword", 'shutdown') | Out-Null
-                $deadline = [DateTime]::UtcNow.AddSeconds($seconds)
-                while ([DateTime]::UtcNow -lt $deadline) {
-                    if ($process.HasExited) { return }
-                    Start-Sleep -Milliseconds 250
-                }
-                if (-not $process.HasExited) {
-                    throw 'MySQL 维护进程未能正常关闭，已保留数据库文件，请正常停止后重试。'
-                }
-            }
+            {{MySqlMaintenanceShutdownFunction}}
 
             function Reset-RootPassword {
                 Step '重置 root 密码'
@@ -369,7 +361,7 @@ public sealed partial class EnvironmentInstaller
                 }
                 catch { $failure = $_.Exception.Message }
                 finally {
-                    try { Stop-TemporaryMySqlProcess $proc }
+                    try { Stop-TemporaryMySqlProcess $proc $mysql {{mysqlPort}} $rootPassword }
                     finally { Remove-Item -LiteralPath $initFile -Force -ErrorAction SilentlyContinue }
                 }
 
@@ -440,4 +432,24 @@ public sealed partial class EnvironmentInstaller
             }
             """;
     }
+
+    internal const string MySqlMaintenanceShutdownFunction = """
+            function Stop-TemporaryMySqlProcess($process, $mysql, $port, $rootPassword, $seconds = 90) {
+                if (!$process -or $process.HasExited) { return }
+                # mysqladmin shutdown also supports 5.6, whose SQL grammar
+                # does not yet accept the SHUTDOWN statement.
+                $mysqlAdmin = Join-Path ([IO.Path]::GetDirectoryName($mysql)) 'mysqladmin.exe'
+                if (-not (Test-Path -LiteralPath $mysqlAdmin)) { throw '缺少 mysqladmin.exe，无法安全停止数据库维护进程。' }
+                Invoke-NativeQuiet $mysqlAdmin @('--connect-timeout=10', '--shutdown-timeout=90', '-h127.0.0.1', "-P$port", '-uroot', "-p$rootPassword", 'shutdown') | Out-Null
+                $deadline = [DateTime]::UtcNow.AddSeconds($seconds)
+                while ([DateTime]::UtcNow -lt $deadline) {
+                    if ($process.HasExited) { return }
+                    Start-Sleep -Milliseconds 250
+                }
+                if (-not $process.HasExited) {
+                    throw 'MySQL 维护进程未能正常关闭，已保留数据库文件，请正常停止后重试。'
+                }
+            }
+            """;
+
 }

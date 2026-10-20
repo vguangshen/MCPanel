@@ -341,18 +341,6 @@ public sealed partial class EnvironmentRuntimeService
                 }
             }
 
-            function Stop-StoreDataMySqlClients {
-                foreach ($name in @('mysql','mysqladmin','mysqldump')) {
-                    Get-Process -Name $name -ErrorAction SilentlyContinue | ForEach-Object {
-                        $path = $null
-                        try { $path = $_.Path } catch { }
-                        if ($path -and ($mysqlRoots | Where-Object { $path.StartsWith($_, [StringComparison]::OrdinalIgnoreCase) })) {
-                            Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
-                        }
-                    }
-                }
-            }
-
             function Wait-ServiceState($target, $seconds) {
                 $deadline = (Get-Date).AddSeconds($seconds)
                 while ((Get-Date) -lt $deadline) {
@@ -391,7 +379,6 @@ public sealed partial class EnvironmentRuntimeService
 
             function Start-MySqlService {
                 $paths = Get-MySqlPaths
-                Stop-StoreDataMySqlClients
                 $svc = Get-Service -Name 'MySQL80' -ErrorAction SilentlyContinue
                 if (-not $svc) { Fail 'MySQL80 服务未注册，请先安装 MySQL。' }
                 if ($svc.Status -eq 'Running') { return $paths }
@@ -444,18 +431,7 @@ public sealed partial class EnvironmentRuntimeService
                 return $false
             }
 
-            function Stop-TemporaryMySqlProcess($process, $paths) {
-                if (!$process -or $process.HasExited) { return }
-                Invoke-RootQuery $paths 'SHUTDOWN;' | Out-Null
-                for ($i = 0; $i -lt 30; $i++) {
-                    if ($process.HasExited) { return }
-                    Start-Sleep -Milliseconds 500
-                }
-                if (-not $process.HasExited) {
-                    Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-                    Start-Sleep -Seconds 2
-                }
-            }
+            {{EnvironmentInstaller.MySqlMaintenanceShutdownFunction}}
 
             function Reset-RootPassword($paths) {
                 Write-Output 'Resetting MySQL root password...'
@@ -489,8 +465,8 @@ public sealed partial class EnvironmentRuntimeService
                 }
                 catch { $failure = $_.Exception.Message }
                 finally {
-                    Stop-TemporaryMySqlProcess $proc $paths
-                    Remove-Item -LiteralPath $initFile -Force -ErrorAction SilentlyContinue
+                    try { Stop-TemporaryMySqlProcess $proc $paths.Mysql $port $rootPassword }
+                    finally { Remove-Item -LiteralPath $initFile -Force -ErrorAction SilentlyContinue }
                 }
 
                 if (!$updated) {

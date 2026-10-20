@@ -190,6 +190,8 @@ public sealed partial class ReliabilityTests
     [DataRow("process-alive")]
     [DataRow("reappeared")]
     [DataRow("pending-delete")]
+    [DataRow("shared-runtime")]
+    [DataRow("legacy-service")]
     public async Task MySqlReinstallRequiresAConfirmedCleanShutdown(string scenario)
     {
         var root = CreateTemporaryDirectory();
@@ -198,13 +200,17 @@ public sealed partial class ReliabilityTests
             var live = Directory.CreateDirectory(Path.Combine(root, "MySQL")).FullName;
             var events = Path.Combine(root, "events.txt");
             File.WriteAllText(Path.Combine(live, "keep.ibd"), "database");
-            var source = EnvironmentInstaller.BuildMySqlInstallCleanupScript(live);
+            var source = scenario is "shared-runtime" or "legacy-service"
+                ? EnvironmentInstaller.BuildMySqlInstallPreparationScript()
+                : EnvironmentInstaller.BuildMySqlInstallCleanupScript(live);
             var mocks = $$"""
                 $scenario = '{{scenario}}'
                 $log = '{{PsTestPath(Path.Combine(root, "test.log"))}}'
                 function Get-ComponentService($name) {
                     $root = '{{PsTestPath(live)}}'
                     if ($scenario -eq 'prefix-sibling') { $root += '-other' }
+                    if ($scenario -eq 'shared-runtime') { $root = '{{PsTestPath(Path.Combine(ComponentPaths.RuntimeRoot, "unrelated"))}}' }
+                    if ($scenario -eq 'legacy-service') { $root = '{{PsTestPath(Path.Combine(ComponentPaths.RuntimeRoot, "mysql-legacy"))}}' }
                     return [pscustomobject]@{ ImagePath = '"' + $root + '\bin\mysqld.exe" MySQL80' }
                 }
                 function Stop-ComponentService($name) {
@@ -223,10 +229,10 @@ public sealed partial class ReliabilityTests
                 """;
             source = source.Replace("Start-Transcript -Path $log -Append | Out-Null", mocks + "\nStart-Transcript -Path $log -Append | Out-Null");
             var result = await RunUninstallScriptTestAsync(root, source);
-            Assert.AreEqual(scenario == "success" ? 0 : 1, result.ExitCode, result.CombinedOutput);
+            Assert.AreEqual(scenario is "success" or "legacy-service" ? 0 : 1, result.ExitCode, result.CombinedOutput);
             Assert.AreEqual("database", File.ReadAllText(Path.Combine(live, "keep.ibd")));
             var calls = File.Exists(events) ? File.ReadAllLines(events) : Array.Empty<string>();
-            var expected = scenario == "prefix-sibling" ? Array.Empty<string>() :
+            var expected = scenario is "prefix-sibling" or "shared-runtime" ? Array.Empty<string>() :
                 scenario is "stop-failure" or "process-alive" ? new[] { "stop" } : new[] { "stop", "remove" };
             CollectionAssert.AreEqual(expected, calls);
         }
@@ -234,9 +240,11 @@ public sealed partial class ReliabilityTests
     }
 
     [DataTestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public async Task MySqlMaintenanceUsesLegacyCompatibleShutdownAndNeverForceKills(bool remainsRunning)
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    [DataRow(false, true)]
+    [DataRow(true, true)]
+    public async Task MySqlMaintenanceUsesLegacyCompatibleShutdownAndNeverForceKills(bool remainsRunning, bool runtimeAction)
     {
         var root = CreateTemporaryDirectory();
         try
@@ -244,7 +252,9 @@ public sealed partial class ReliabilityTests
             var mysql = Path.Combine(root, "mysql.exe");
             File.WriteAllText(Path.Combine(root, "mysqladmin.exe"), "mock administrative client");
             var source = Path.Combine(root, "install.ps1");
-            File.WriteAllText(source, EnvironmentInstaller.BuildMySqlScript(root, Path.Combine(root, "mysqld.exe"), mysql, "test-only"), new UTF8Encoding(true));
+            File.WriteAllText(source, runtimeAction
+                ? EnvironmentRuntimeService.BuildMySqlServiceActionScript("restart", "test.log", "test.result")
+                : EnvironmentInstaller.BuildMySqlScript(root, Path.Combine(root, "mysqld.exe"), mysql, "test-only"), new UTF8Encoding(true));
             var script = $$"""
                 $ErrorActionPreference = 'Stop'
                 $tokens=$null; $errors=$null
@@ -263,7 +273,7 @@ public sealed partial class ReliabilityTests
                     return 0
                 }
                 $failed = $false
-                try { Stop-TemporaryMySqlProcess $script:process 0 } catch { $failed = $true }
+                try { Stop-TemporaryMySqlProcess $script:process $mysql 3306 'test-only' 0 } catch { $failed = $true }
                 if (-not $script:called -or $failed -ne ${{remainsRunning.ToString().ToLowerInvariant()}}) { throw 'Unsafe maintenance shutdown result.' }
                 """;
             var result = await RunUninstallScriptTestAsync(root, script);
