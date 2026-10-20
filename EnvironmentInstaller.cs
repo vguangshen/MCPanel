@@ -32,7 +32,9 @@ public sealed partial class EnvironmentInstaller : IDisposable
 {
     private readonly HttpClient _httpClient;
 
-    public EnvironmentInstaller()
+    public EnvironmentInstaller() : this(null) { }
+
+    internal EnvironmentInstaller(HttpMessageHandler? messageHandler)
     {
         // The elevated worker targets .NET Framework 4.6.2. Enable the TLS
         // versions required by current Microsoft/CDN endpoints and the legacy
@@ -42,7 +44,7 @@ public sealed partial class EnvironmentInstaller : IDisposable
             (SecurityProtocolType)768 |
             (SecurityProtocolType)3072;
 
-        var handler = new HttpClientHandler
+        var handler = messageHandler ?? new HttpClientHandler
         {
             AllowAutoRedirect = true,
             AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
@@ -109,9 +111,9 @@ public sealed partial class EnvironmentInstaller : IDisposable
         }
     }
 
-    private async Task<string> DownloadAbsoluteFileAsync(string url, string directory, string fileName, Action<InstallProgress> progress, double from, double to, CancellationToken cancellationToken)
+    private async Task<string> DownloadAbsoluteFileAsync(string url, string directory, string fileName, Action<InstallProgress> progress, double from, double to, CancellationToken cancellationToken, int? expectedProductMajor = null)
     {
-        return await DownloadCoreAsync(url, directory, fileName, progress, from, to, cancellationToken);
+        return await DownloadCoreAsync(url, directory, fileName, progress, from, to, cancellationToken, expectedProductMajor);
     }
 
     private static InstallProgress InstallingProgress(double percent, string message, double? stagePercent = null) =>
@@ -121,11 +123,11 @@ public sealed partial class EnvironmentInstaller : IDisposable
             InstallProgressStage.Installing,
             stagePercent ?? Compat.Clamp(percent, 0, 100));
 
-    private async Task<string> DownloadCoreAsync(string url, string directory, string fileName, Action<InstallProgress> progress, double from, double to, CancellationToken cancellationToken)
+    internal async Task<string> DownloadCoreAsync(string url, string directory, string fileName, Action<InstallProgress> progress, double from, double to, CancellationToken cancellationToken, int? expectedProductMajor = null)
     {
         Directory.CreateDirectory(directory);
         var target = Path.Combine(directory, fileName);
-        if (File.Exists(target) && ValidateEnvironmentPackage(target, throwOnFailure: false))
+        if (File.Exists(target) && ValidateEnvironmentPackage(target, throwOnFailure: false, expectedProductMajor: expectedProductMajor))
         {
             progress(new InstallProgress(to, $"已存在缓存文件：{fileName}", InstallProgressStage.Downloading, 100));
             return target;
@@ -134,11 +136,24 @@ public sealed partial class EnvironmentInstaller : IDisposable
         TryDeleteFile(target);
 
         using var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            var finalUrl = response.RequestMessage?.RequestUri ?? new Uri(url);
+            throw new HttpRequestException($"下载 {fileName} 失败：HTTP {(int)response.StatusCode} {response.ReasonPhrase}。" +
+                $"请求地址：{DescribeDownloadSource(new Uri(url))}；最终地址：{DescribeDownloadSource(finalUrl)}。");
+        }
+        if (expectedProductMajor.HasValue && response.RequestMessage?.RequestUri is Uri finalUri &&
+            (finalUri.Host.Equals("download.microsoft.com", StringComparison.OrdinalIgnoreCase) ||
+             finalUri.Host.EndsWith(".download.microsoft.com", StringComparison.OrdinalIgnoreCase)) &&
+            !Path.GetFileName(Uri.UnescapeDataString(finalUri.AbsolutePath)).Equals(fileName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException($"SQL Server 下载入口返回了其他安装包，已停止安装。预期：{fileName}；" +
+                $"实际：{Path.GetFileName(finalUri.AbsolutePath)}。请检查所选版本和下载地址。");
+        }
         var contentType = response.Content.Headers.ContentType?.MediaType ?? string.Empty;
         if (contentType.Contains("text/html", StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidOperationException($"服务器返回了 HTML，未找到环境包：{url}");
+            throw new InvalidOperationException($"服务器返回了 HTML，未找到环境包 {fileName}：{DescribeDownloadSource(new Uri(url))}");
         }
 
         var result = await DownloadService.SaveResponseAsync(
@@ -166,7 +181,8 @@ public sealed partial class EnvironmentInstaller : IDisposable
             validatePartial: path => ValidateEnvironmentPackage(
                 path,
                 throwOnFailure: true,
-                expectedFileName: fileName),
+                expectedFileName: fileName,
+                expectedProductMajor: expectedProductMajor),
             emptyFileMessage: $"下载文件为空：{fileName}",
             incompleteFileMessage: (expected, actual) =>
                 $"下载不完整：{fileName} 应为 {expected} 字节，实际 {actual} 字节。");
@@ -180,7 +196,13 @@ public sealed partial class EnvironmentInstaller : IDisposable
         return target;
     }
 
-    private static bool ValidateEnvironmentPackage(string path, bool throwOnFailure, string? expectedFileName = null)
+    private static string DescribeDownloadSource(Uri uri)
+    {
+        var safe = new UriBuilder(uri) { UserName = string.Empty, Password = string.Empty, Query = string.Empty, Fragment = string.Empty };
+        return safe.Uri.AbsoluteUri;
+    }
+
+    private static bool ValidateEnvironmentPackage(string path, bool throwOnFailure, string? expectedFileName = null, int? expectedProductMajor = null)
     {
         try
         {
@@ -206,6 +228,12 @@ public sealed partial class EnvironmentInstaller : IDisposable
                 if (stream.ReadByte() != 'M' || stream.ReadByte() != 'Z')
                 {
                     throw new InvalidDataException("EXE 文件头无效。");
+                }
+                if (expectedProductMajor.HasValue)
+                {
+                    var actual = FileVersionInfo.GetVersionInfo(path);
+                    if (actual.ProductMajorPart != expectedProductMajor.Value)
+                        throw new InvalidDataException($"SQL Server 安装包版本不匹配：预期产品主版本 {expectedProductMajor.Value}，实际为 {actual.ProductVersion ?? "未知"}。已停止安装，避免安装错误版本。");
                 }
             }
             else if (extension.Equals(".msi", StringComparison.OrdinalIgnoreCase))

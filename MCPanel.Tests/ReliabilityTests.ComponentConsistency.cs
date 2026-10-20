@@ -154,11 +154,19 @@ public sealed partial class ReliabilityTests
             const string oldXml = "<configuration><appSettings><add key='Ai.Model' value='custom-model-中文'/><add key='Ai.ApiKey' value=''/><add key='Environment.Frp.PackageUrl' value='https://example.test/frp.zip'/><add key='Internal.Build' value='old'/></appSettings></configuration>";
             const string newXml = "<configuration><appSettings><add key='Ai.Model' value='new-default'/><add key='Ai.ApiKey' value='new-default-key'/><add key='Environment.Frp.PackageUrl' value='https://example.test/default.zip'/><add key='Internal.Build' value='new'/><add key='New.Feature' value='enabled'/></appSettings></configuration>";
             File.WriteAllText(oldConfig, oldXml);
+            var oldDocument = XDocument.Load(oldConfig);
+            foreach (var migration in EnvironmentDownloadCatalog.Migrations)
+                oldDocument.Root!.Element("appSettings")!.Add(new XElement("add",
+                    new XAttribute("key", migration.Key), new XAttribute("value", migration.PreviousUrl)));
+            oldDocument.Save(oldConfig);
             File.WriteAllText(appConfig, newXml);
             File.WriteAllText(publishConfig, newXml);
             DeploymentConfigurationSettings.Apply(appConfig, DeploymentConfigurationSettings.Capture(oldConfig));
             var helper = Path.Combine(root, "Deployment-Configuration.ps1");
             File.WriteAllText(helper, ReadRepositoryFile("Deployment-Configuration.ps1"));
+            Directory.CreateDirectory(Path.Combine(root, "Installer"));
+            File.WriteAllText(Path.Combine(root, "Installer", "download-url-migrations.json"),
+                ReadRepositoryFile("Installer/download-url-migrations.json"));
             var manifest = Path.Combine(root, "deployment-layout.json");
             File.WriteAllText(manifest, ReadRepositoryFile("deployment-layout.json"));
             string Quote(string value) => "'" + value.Replace("'", "''") + "'";
@@ -181,6 +189,8 @@ public sealed partial class ReliabilityTests
             Assert.AreEqual("https://example.test/frp.zip", inApp["Environment.Frp.PackageUrl"]);
             Assert.AreEqual("new", inApp["Internal.Build"]);
             Assert.AreEqual("enabled", inApp["New.Feature"]);
+            foreach (var migration in EnvironmentDownloadCatalog.Migrations)
+                Assert.AreEqual(migration.CurrentUrl, inApp[migration.Key], "Known retired defaults must be repaired by both update paths.");
         }
         finally { DeleteTemporaryTree(root); }
     }

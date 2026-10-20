@@ -161,6 +161,10 @@ jobs:
           & .\Publish-WinX64.ps1 -OutputDirectory $publishDir
           "MCPANEL_PUBLISH_DIR=$publishDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
+      - name: Verify official SQL Server downloads and 2017 installation media
+        shell: pwsh
+        run: .\MCPanel.Tests\Verify-SqlServerDownloads.ps1 -ApplicationDirectory $env:MCPANEL_PUBLISH_DIR
+
       - name: Build update assets
         shell: pwsh
         run: |

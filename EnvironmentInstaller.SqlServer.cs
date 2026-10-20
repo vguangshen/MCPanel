@@ -48,7 +48,8 @@ public sealed partial class EnvironmentInstaller
             progress,
             0,
             plan.UsesSseiInstaller ? 45 : 80,
-            cancellationToken);
+            cancellationToken,
+            expectedProductMajor: plan.ProductMajor);
         var dataRoot = ComponentPaths.SelectSqlServerDataRoot(WindowsServiceExists("MSSQLSERVER"));
         Directory.CreateDirectory(dataRoot);
 

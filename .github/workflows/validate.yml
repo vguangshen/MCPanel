@@ -65,6 +65,10 @@ jobs:
         shell: pwsh
         run: .\MCPanel.Tests\Verify-UpdateCompatibility.ps1
 
+      - name: Verify official SQL Server downloads and 2017 installation media
+        shell: pwsh
+        run: .\MCPanel.Tests\Verify-SqlServerDownloads.ps1
+
       - name: Build and verify native online installer
         shell: pwsh
         run: |

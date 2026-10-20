@@ -183,6 +183,52 @@ public sealed partial class ReliabilityTests
         });
     }
 
+    [TestMethod]
+    public void MainBrandLogoDecodesAndCardFlipButtonsRenderBothFacesWithoutIconFonts()
+    {
+        RunWebsiteUiTest(() =>
+        {
+            var window = CreateUiTestWindow();
+            try
+            {
+                window.Width = 1280;
+                window.Height = 820;
+                window.FontFamily = new FontFamily("MCPanel-Intentionally-Unavailable-Font");
+                window.Show();
+                var logo = (Image)window.FindName("MainBrandLogo");
+                var bitmap = logo.Source as BitmapSource;
+                Assert.IsNotNull(bitmap, "The embedded logo must decode in the application rather than resolve as a missing loose file.");
+                Assert.IsTrue(bitmap!.PixelWidth > 0 && bitmap.PixelHeight > 0);
+                var renderedLogo = new RenderTargetBitmap(42, 42, 96, 96, PixelFormats.Pbgra32);
+                renderedLogo.Render(logo);
+                Assert.IsTrue(IconPixels(renderedLogo).Where((_, index) => index % 4 == 3).Count(alpha => alpha > 0) > 100,
+                    "The title logo must draw actual visible pixels.");
+                Assert.IsFalse(typeof(MainWindow).Assembly.GetCustomAttributes(typeof(System.Windows.Resources.AssemblyAssociatedContentFileAttribute), false)
+                    .Cast<System.Windows.Resources.AssemblyAssociatedContentFileAttribute>()
+                    .Any(attribute => attribute.RelativeContentFilePath.Equals("assets/appicon/mcpanel-logo.png", StringComparison.OrdinalIgnoreCase)));
+
+                var model = (MainViewModel)window.DataContext;
+                foreach (var item in model.EnvironmentItems) item.IsInstalled = true;
+                FindVisualChildren<RadioButton>(window).First(button => Equals(button.CommandParameter, "Environment")).IsChecked = true;
+                foreach (var flipped in new[] { false, true })
+                {
+                    foreach (var item in model.EnvironmentItems) item.IsFlipped = flipped;
+                    window.UpdateLayout();
+                    window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+                    var buttons = FindVisualChildren<Button>(window).Where(button => button.IsVisible && Equals(button.Content, "\uE8AB")).ToArray();
+                    Assert.IsTrue(buttons.Length >= 2, "Installed environment cards must expose the flip control on both faces.");
+                    foreach (var button in buttons)
+                    {
+                        StringAssert.Contains(button.ToolTip.ToString()!, "翻转卡片");
+                        Assert.IsTrue(FindVisualChildren<PanelIcon>(button).Any(icon => icon.Text == "\uE8AB"));
+                    }
+                    SaveVectorIconPreview(window, 1280, 820, flipped ? "environment-back" : "environment-front");
+                }
+            }
+            finally { window.Close(); }
+        });
+    }
+
     private static bool IsPrivateIconCharacter(char character) => character >= '\uE000' && character <= '\uF8FF';
     private static void LayoutIconHost(FrameworkElement host)
     {

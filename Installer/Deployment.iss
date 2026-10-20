@@ -142,7 +142,7 @@ begin
       Target.setAttribute('key', Key);
       Settings.appendChild(Target);
     end;
-    Target.setAttribute('value', Node.getAttribute('value'));
+    Target.setAttribute('value', NormalizeEnvironmentDownloadUrl(Key, Node.getAttribute('value')));
   end;
   NewDoc.save(NewConfig);
   Log('Preserved original settings from ' + Original);
