@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.ComponentModel;
 using System.Configuration;
+using System.Collections.Specialized;
 using System.IO;
 using System.IO.Compression;
 using System.Net;
@@ -44,10 +45,12 @@ internal sealed class ApplicationUpdateAuthorization
     public bool PlanSubmitted { get; set; }
 }
 
+internal sealed record GitHubReleaseUpdateSource(string Repository);
+
 internal sealed class GitHubReleaseUpdate
 {
     public OnlineUpdateManifest Manifest { get; init; } = new();
-    public GitHubReleaseUpdateSource Source { get; init; } = new(string.Empty, string.Empty);
+    public GitHubReleaseUpdateSource Source { get; init; } = new(string.Empty);
     public long PackageAssetId { get; init; }
 }
 
@@ -95,6 +98,7 @@ public sealed partial class ApplicationUpdateService
     private const int MaxManifestBytes = 1024 * 1024;
     internal const string GitHubReleaseManifestFormat = "mcpanel-github-release-v1";
     internal const string GitHubUpdateRepositoryConfigKey = "GitHubUpdateRepository";
+    internal const string DefaultGitHubUpdateRepository = "vguangshen/MCPanel";
     private const string GitHubApiVersion = "2022-11-28";
 
     private const long MaxExpandedBytes = 20L * 1024 * 1024 * 1024;
@@ -105,13 +109,22 @@ public sealed partial class ApplicationUpdateService
         Timeout = TimeSpan.FromMinutes(30)
     };
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true, PropertyNameCaseInsensitive = true };
-    private readonly GitHubUpdateCredentialStore _gitHubUpdateCredentials = new();
+    private readonly HttpClient _gitHubClient;
+    private readonly string? _updatesRoot;
     private int _updaterCleanupStarted;
     private static readonly IReadOnlyCollection<string> PreservedTopLevelNames =
         DeploymentLayoutManifest.PreservedTopLevelNames;
-    public string UpdatesRoot => ComponentPaths.UpdatesRoot;
+    public string UpdatesRoot => _updatesRoot ?? ComponentPaths.UpdatesRoot;
     public static Version CurrentVersion => Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 0, 0, 0);
     public static string CurrentVersionText => $"{CurrentVersion.Major}.{CurrentVersion.Minor}.{Math.Max(0, CurrentVersion.Build)}";
+
+    public ApplicationUpdateService() : this(GitHubClient) { }
+
+    internal ApplicationUpdateService(HttpClient gitHubClient, string? updatesRoot = null)
+    {
+        _gitHubClient = gitHubClient ?? throw new ArgumentNullException(nameof(gitHubClient));
+        _updatesRoot = updatesRoot;
+    }
 
     public string LoadManifestUrl()
     {
@@ -129,19 +142,23 @@ public sealed partial class ApplicationUpdateService
     {
         try
         {
-            return (ConfigurationManager.AppSettings[GitHubUpdateRepositoryConfigKey] ?? string.Empty).Trim();
+            return ResolveGitHubUpdateRepository(ConfigurationManager.AppSettings);
         }
         catch
         {
-            return string.Empty;
+            return DefaultGitHubUpdateRepository;
         }
     }
 
-    public bool HasStoredGitHubUpdateToken() => _gitHubUpdateCredentials.HasStoredCredential();
-
-    public void SaveGitHubUpdateToken(string accessToken) => _gitHubUpdateCredentials.SaveAccessToken(accessToken);
-
-    public void ClearGitHubUpdateToken() => _gitHubUpdateCredentials.ClearAccessToken();
+    internal static string ResolveGitHubUpdateRepository(NameValueCollection settings)
+    {
+        var repository = settings[GitHubUpdateRepositoryConfigKey]?.Trim();
+        if (!string.IsNullOrWhiteSpace(repository)) return repository!;
+        // Retain administrator-defined manifest sources, while new or incomplete
+        // configurations use the public project without any setup step.
+        return string.IsNullOrWhiteSpace(settings["UpdateManifestUrl"])
+            ? DefaultGitHubUpdateRepository : string.Empty;
+    }
 
     internal GitHubReleaseUpdateSource LoadGitHubReleaseUpdateSource()
     {
@@ -151,13 +168,7 @@ public sealed partial class ApplicationUpdateService
             throw new InvalidOperationException("尚未配置 GitHub 更新仓库。");
         }
 
-        var accessToken = _gitHubUpdateCredentials.LoadAccessToken();
-        if (accessToken.Length == 0)
-        {
-            throw new InvalidOperationException("尚未配置 GitHub 私有更新访问令牌。");
-        }
-
-        return new GitHubReleaseUpdateSource(repository, accessToken);
+        return new GitHubReleaseUpdateSource(repository);
     }
 
     public string ConsumeLastUpdateResult()
@@ -225,16 +236,14 @@ public sealed partial class ApplicationUpdateService
         }
 
         var repository = NormalizeGitHubRepository(source.Repository);
-        var accessToken = GitHubUpdateCredentialStore.NormalizeAccessToken(source.AccessToken);
-        if (repository.Length == 0 || accessToken.Length == 0)
+        if (repository.Length == 0)
         {
-            throw new InvalidOperationException("GitHub 私有更新源未完成配置。");
+            throw new InvalidOperationException("GitHub 更新仓库未配置。");
         }
 
         GitHubReleaseResponse? release;
         using (var response = await SendGitHubApiRequestAsync(
                    CreateGitHubLatestReleaseUri(repository),
-                   accessToken,
                    acceptBinary: false,
                    cancellationToken))
         {
@@ -257,7 +266,7 @@ public sealed partial class ApplicationUpdateService
         }
 
         GitHubReleaseManifest? releaseManifest;
-        using (var response = await DownloadGitHubAssetAsync(repository, accessToken, manifestAsset.Id, cancellationToken))
+        using (var response = await DownloadGitHubAssetAsync(repository, manifestAsset.Id, cancellationToken))
         {
             EnsureGitHubResponse(response, "更新清单");
             var json = await ReadResponseTextAsync(response.Content, cancellationToken);
@@ -298,7 +307,7 @@ public sealed partial class ApplicationUpdateService
         return new GitHubReleaseUpdate
         {
             Manifest = onlineManifest,
-            Source = new GitHubReleaseUpdateSource(repository, accessToken),
+            Source = new GitHubReleaseUpdateSource(repository),
             PackageAssetId = packageAsset.Id
         };
     }
@@ -338,15 +347,14 @@ public sealed partial class ApplicationUpdateService
         }
 
         var repository = NormalizeGitHubRepository(update.Source.Repository);
-        var accessToken = GitHubUpdateCredentialStore.NormalizeAccessToken(update.Source.AccessToken);
-        if (repository.Length == 0 || accessToken.Length == 0)
+        if (repository.Length == 0)
         {
-            throw new InvalidOperationException("GitHub 私有更新源未完成配置。");
+            throw new InvalidOperationException("GitHub 更新仓库未配置。");
         }
 
         return PrepareRemotePackageAsync(
             update.Manifest,
-            token => DownloadGitHubAssetAsync(repository, accessToken, update.PackageAssetId, token),
+            token => DownloadGitHubAssetAsync(repository, update.PackageAssetId, token),
             response => EnsureGitHubResponse(response, "更新包"),
             progress,
             status,
@@ -1396,28 +1404,25 @@ internal void LaunchUpdater(
             UriKind.Absolute);
     }
 
-    private static async Task<HttpResponseMessage> SendGitHubApiRequestAsync(
+    private async Task<HttpResponseMessage> SendGitHubApiRequestAsync(
         Uri uri,
-        string accessToken,
         bool acceptBinary,
         CancellationToken cancellationToken)
     {
-        using var request = CreateGitHubRequest(uri, accessToken, acceptBinary, includeAuthorization: true);
-        return await GitHubClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        using var request = CreateGitHubRequest(uri, acceptBinary);
+        return await _gitHubClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
     }
 
-    private static async Task<HttpResponseMessage> DownloadGitHubAssetAsync(
+    private async Task<HttpResponseMessage> DownloadGitHubAssetAsync(
         string repository,
-        string accessToken,
         long assetId,
         CancellationToken cancellationToken)
     {
         var current = CreateGitHubReleaseAssetUri(repository, assetId);
         for (var redirectCount = 0; redirectCount < 4; redirectCount++)
         {
-            var includeAuthorization = redirectCount == 0;
-            using var request = CreateGitHubRequest(current, accessToken, acceptBinary: true, includeAuthorization);
-            var response = await GitHubClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            using var request = CreateGitHubRequest(current, acceptBinary: true);
+            var response = await _gitHubClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             if (!IsRedirect(response.StatusCode))
             {
                 return response;
@@ -1442,9 +1447,7 @@ internal void LaunchUpdater(
 
     private static HttpRequestMessage CreateGitHubRequest(
         Uri uri,
-        string accessToken,
-        bool acceptBinary,
-        bool includeAuthorization)
+        bool acceptBinary)
     {
         if (!string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
         {
@@ -1456,15 +1459,9 @@ internal void LaunchUpdater(
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(
             acceptBinary ? "application/octet-stream" : "application/vnd.github+json"));
 
-        if (includeAuthorization)
+        request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true };
+        if (string.Equals(uri.Host, "api.github.com", StringComparison.OrdinalIgnoreCase))
         {
-            if (!string.Equals(uri.Host, "api.github.com", StringComparison.OrdinalIgnoreCase))
-            {
-                request.Dispose();
-                throw new InvalidDataException("GitHub 更新凭据只能发送给 GitHub API。");
-            }
-
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
             request.Headers.TryAddWithoutValidation("X-GitHub-Api-Version", GitHubApiVersion);
         }
 
@@ -1484,7 +1481,7 @@ internal void LaunchUpdater(
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {
             throw new InvalidOperationException(
-                "无法访问 GitHub 私有更新源。请重新保存仅限该仓库、Contents: read 权限的访问令牌。");
+                "暂时无法访问公开更新服务，请检查网络或稍后重试。");
         }
 
         if (response.StatusCode == HttpStatusCode.NotFound)

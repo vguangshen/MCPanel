@@ -136,19 +136,15 @@ cache entries are retained for inspection rather than deleted. Older `StoreData\
 `StoreData\Downloads`, `StoreData\Tools`, and `StoreData\ProductIcons`
 directories are migrated on startup.
 
-## Private GitHub Release updates
+## Public GitHub Release updates
 
-MCPanel can check the latest private GitHub Release from the repository named
-by `GitHubUpdateRepository` in `MCPanel.exe.config`. The distributed default is
-`vguangshen/MCPanel`.
-
-On each computer, click **Settings → Software update → Configure GitHub** once
-and save a fixed fine-grained GitHub token that is limited to that repository
-and has only **Contents: read** permission. The token is protected with Windows
-DPAPI for the current Windows user under `StoreData`; it is not written into
-`MCPanel.exe.config`, logs, source control, or update packages. A cloud computer
-therefore needs its own one-time token setup, but subsequent checks and downloads
-run automatically.
+Click **Settings → Software update → Check and update** to retrieve the latest
+public release, download its update package, and install it. No GitHub login,
+access token, or per-computer setup is required. The default public repository is
+`vguangshen/MCPanel`; optional deployment overrides remain available through
+`GitHubUpdateRepository` or the legacy HTTPS `UpdateManifestUrl` setting. Missing
+update settings use the public project automatically. Previously saved update
+credentials are no longer read or used.
 
 The standard release path is automated by `.github/workflows/release.yml`. Update
 `Version`, `FileVersion`, and `AssemblyVersion` in `MCPanel.csproj`, update
@@ -167,9 +163,8 @@ $version = ([xml](Get-Content .\MCPanel.csproj -Raw)).Project.PropertyGroup.Vers
 
 Publish the ZIP, its `.sha256` sidecar, and `update-manifest.json` as assets of
 the matching `v<version>` GitHub Release. MCPanel retrieves the release and assets
-through the GitHub API over HTTPS, sends the token only to `api.github.com`,
-follows signed asset redirects without forwarding the token, and verifies the
-ZIP SHA-256 before any extraction or replacement.
+through the GitHub API anonymously over HTTPS, follows signed asset redirects,
+and verifies the ZIP SHA-256 before any extraction or replacement.
 
 ## Recover an interrupted update
 

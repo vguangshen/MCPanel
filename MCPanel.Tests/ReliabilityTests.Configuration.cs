@@ -129,32 +129,6 @@ public sealed partial class ReliabilityTests
     }
 
     [TestMethod]
-    public void GitHubUpdateTokenIsDpapiProtectedAndCanBeCleared()
-    {
-        var root = CreateTemporaryDirectory();
-        try
-        {
-            var credentialFile = Path.Combine(root, "github-update-credential.json");
-            var store = new GitHubUpdateCredentialStore(credentialFile);
-            const string token = "mcpanel_test_token_0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-
-            store.SaveAccessToken(token);
-
-            Assert.IsTrue(store.HasStoredCredential());
-            Assert.AreEqual(-1, File.ReadAllText(credentialFile).IndexOf(token, StringComparison.Ordinal));
-            Assert.AreEqual(token, store.LoadAccessToken());
-
-            store.ClearAccessToken();
-            Assert.IsFalse(store.HasStoredCredential());
-            Assert.AreEqual(string.Empty, store.LoadAccessToken());
-        }
-        finally
-        {
-            DeleteTemporaryTree(root);
-        }
-    }
-
-    [TestMethod]
     public void GitHubReleaseManifestRequiresBoundVersionAndSha256()
     {
         const string hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
