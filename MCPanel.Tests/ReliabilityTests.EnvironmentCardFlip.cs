@@ -46,7 +46,8 @@ public sealed partial class ReliabilityTests
                     Assert.AreEqual(beforeExtent, outerScroll.ExtentHeight, 1d,
                         "Back content must not enlarge the outer page's scrolling extent.");
                     if (!flipped) continue;
-                    var innerScroll = FindVisualChildren<ScrollViewer>(tomcatCard).Single(scroll => scroll.IsVisible);
+                    var innerScroll = FindVisualChildren<ScrollViewer>(tomcatCard).Single(scroll =>
+                        scroll.IsVisible && scroll.Content is ItemsControl content && ReferenceEquals(content.ItemsSource, tomcat.TomcatPorts));
                     Assert.IsTrue(innerScroll.ViewportHeight > 20d && innerScroll.ScrollableHeight > 0d,
                         "Long port lists must scroll inside the card.");
                     innerScroll.ScrollToBottom();
