@@ -62,6 +62,7 @@ try {
     $uninstall = Join-Path $install 'Maintenance\unins000.exe'
     if (!(Test-Path -LiteralPath $executable) -or !(Test-Path -LiteralPath $uninstall)) { throw 'Fresh native setup did not install both application and uninstaller.' }
     Write-Host 'Passed: native bootstrapper installs the real application into a Unicode path with spaces, without starting the UI.'
+    & (Join-Path $PSScriptRoot 'Verify-InstallerUI.ps1') -InstallerFile $InstallerFile -InstallDirectory (Join-Path $root 'preview')
 
     [xml]$document = Get-Content -LiteralPath $config -Raw -Encoding UTF8
     foreach ($setting in $document.configuration.appSettings.add) {
@@ -190,7 +191,6 @@ class Fixture : ServiceBase {
     Write-Host 'Passed: Windows Settings uninstall removes the complete installation directory, readonly data and registration, while preserving junction targets outside it.'
 
     & (Join-Path $PSScriptRoot 'Verify-InstallerPrerequisites.ps1') -PackageFile $PackageFile -CaseRoot $root
-    & (Join-Path $PSScriptRoot 'Verify-InstallerUI.ps1') -InstallerFile $InstallerFile -InstallDirectory (Join-Path $root 'preview')
     $guiInstall = Join-Path $root 'uninstall-ui-completion'
     $null = Invoke-Setup $guiInstall
     & (Join-Path $PSScriptRoot 'Verify-InstallerUI.ps1') -UninstallRoot $guiInstall -CompleteUninstall

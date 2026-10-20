@@ -69,6 +69,22 @@ using Microsoft.Win32.SafeHandles;
 public static class MCPanelDeleteProbe {
     [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
     static extern uint GetLongPathName(string path, StringBuilder result, uint capacity);
+    [ComImport, Guid("00021401-0000-0000-C000-000000000046")]
+    class ShellLinkObject { }
+    [ComImport, InterfaceType(ComInterfaceType.InterfaceIsIUnknown), Guid("000214F9-0000-0000-C000-000000000046")]
+    interface IShellLinkUnicode {
+        void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder path, int capacity, IntPtr findData, uint flags);
+    }
+    public static string ShortcutTarget(string path) {
+        var link = new ShellLinkObject();
+        try {
+            ((System.Runtime.InteropServices.ComTypes.IPersistFile)link).Load(path, 0);
+            var buffer = new StringBuilder(32768);
+            ((IShellLinkUnicode)link).GetPath(buffer, buffer.Capacity, IntPtr.Zero, 4);
+            return Environment.ExpandEnvironmentVariables(buffer.ToString());
+        } catch (COMException) { return String.Empty; }
+        finally { Marshal.FinalReleaseComObject(link); }
+    }
     public static string LongPath(string path) {
         var full = Path.GetFullPath(path);
         var result = new StringBuilder(32768);
@@ -178,23 +194,20 @@ function Remove-OwnedUserState {
 }
 function Remove-OwnedStartupAndShortcuts {
     Remove-OwnedUserState
-    $shell = New-Object -ComObject WScript.Shell
-    try {
-        $folders = @([Environment]::GetFolderPath('CommonPrograms'), [Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('CommonDesktopDirectory'), [Environment]::GetFolderPath('DesktopDirectory')) + $script:ProfileShortcutFolders | Select-Object -Unique
-        foreach ($folder in $folders) {
-            if (!$folder -or !(Test-Path -LiteralPath $folder)) { continue }
-            foreach ($file in @(Get-ChildItem -LiteralPath $folder -Filter '*.lnk' -File -Recurse -Force -ErrorAction Stop)) {
-                $shortcut = $shell.CreateShortcut($file.FullName)
-                try {
-                    if ($shortcut.TargetPath -and (Test-OwnedPath $shortcut.TargetPath)) { [IO.File]::Delete($file.FullName) }
-                    elseif ($file.BaseName -eq 'MCPanel') { Write-Host ('Preserved shortcut to another target: ' + $file.FullName + ' -> ' + $shortcut.TargetPath) }
-                } finally { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($shortcut) }
-            }
-            $group = Join-Path $folder 'MCPanel'
-            if ((Test-Path -LiteralPath $group) -and @(Get-ChildItem -LiteralPath $group -Force).Count -eq 0) { [IO.Directory]::Delete($group) }
+    $folders = @([Environment]::GetFolderPath('CommonPrograms'), [Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('CommonDesktopDirectory'), [Environment]::GetFolderPath('DesktopDirectory')) + $script:ProfileShortcutFolders | Select-Object -Unique
+    foreach ($folder in $folders) {
+        if (!$folder -or !(Test-Path -LiteralPath $folder)) { continue }
+        foreach ($file in @(Get-ChildItem -LiteralPath $folder -Filter '*.lnk' -File -Recurse -Force -ErrorAction Stop)) {
+            # WScript.Shell can convert a Unicode target through the system ANSI
+            # code page. Read IShellLinkW directly so Chinese install paths survive.
+            $target = [MCPanelDeleteProbe]::ShortcutTarget($file.FullName)
+            if ($target -and (Test-OwnedPath $target)) { [IO.File]::Delete($file.FullName) }
         }
-    } finally { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($shell) }
+        $group = Join-Path $folder 'MCPanel'
+        if ((Test-Path -LiteralPath $group) -and @(Get-ChildItem -LiteralPath $group -Force).Count -eq 0) { [IO.Directory]::Delete($group) }
+    }
 }
+
 function Remove-OwnedFirewallRules {
     $policy = New-Object -ComObject HNetCfg.FwPolicy2
     try {
