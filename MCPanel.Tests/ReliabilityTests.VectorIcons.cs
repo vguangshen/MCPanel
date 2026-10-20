@@ -150,6 +150,7 @@ public sealed partial class ReliabilityTests
                 window.Width = 1280;
                 window.Height = 820;
                 window.Show();
+                window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
                 FindVisualChildren<RadioButton>(window).First(button => Equals(button.CommandParameter, "Sites")).IsChecked = true;
                 foreach (var dark in new[] { false, true })
                 {
@@ -195,6 +196,9 @@ public sealed partial class ReliabilityTests
                 window.Height = 820;
                 window.FontFamily = new FontFamily("MCPanel-Intentionally-Unavailable-Font");
                 window.Show();
+                // Let the initial ContentRendered navigation complete before
+                // selecting a test page, as it does during a real user launch.
+                window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
                 var logo = (Image)window.FindName("MainBrandLogo");
                 var bitmap = logo.Source as BitmapSource;
                 Assert.IsNotNull(bitmap, "The embedded logo must decode in the application rather than resolve as a missing loose file.");

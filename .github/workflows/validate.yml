@@ -58,6 +58,7 @@ jobs:
           Write-Host "SharpSvn runtime installed: $runtime ($version)."
 
       - name: Build application and tests
+        id: build
         shell: pwsh
         run: dotnet build MCPanel.Tests/MCPanel.Tests.csproj --configuration Release --framework net462
 
@@ -82,6 +83,7 @@ jobs:
           dotnet test MCPanel.Tests/MCPanel.Tests.csproj --configuration Release --framework net462 --no-build
 
       - name: Verify official SQL Server downloads and 2017 installation media
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         shell: pwsh
         run: .\MCPanel.Tests\Verify-SqlServerDownloads.ps1
 

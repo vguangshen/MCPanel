@@ -14,7 +14,9 @@ function Get-PreservedAppSettings([string]$ConfigFile, [string[]]$Keys) {
 function Set-PreservedAppSettings([string]$ConfigFile, [hashtable]$Settings) {
     if ($Settings.Count -eq 0) { return }
     if (!(Test-Path -LiteralPath $ConfigFile)) { throw "Published configuration is missing: $ConfigFile" }
-    $migrations = @(Get-Content -LiteralPath (Join-Path $PSScriptRoot 'Installer\download-url-migrations.json') -Raw -Encoding UTF8 | ConvertFrom-Json)
+    # Windows PowerShell 5.1 returns a JSON array as a single pipeline object;
+    # avoid @() wrapping it in another array and hiding its individual entries.
+    $migrations = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'Installer\download-url-migrations.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     [xml]$document = Get-Content -LiteralPath $ConfigFile -Raw -Encoding UTF8
     $appSettings = $document.configuration.appSettings
     if ($null -eq $appSettings) {
