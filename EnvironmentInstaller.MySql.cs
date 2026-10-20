@@ -31,237 +31,143 @@ public sealed partial class EnvironmentInstaller
             65,
             cancellationToken);
 
-        var stagingContainer = Path.Combine(GetTempDirectory(), "mysql-staging", $"mysql.{Guid.NewGuid():N}");
-        Directory.CreateDirectory(stagingContainer);
-        progress(InstallingProgress(65, $"正在暂存并校验 {release.DisplayName} 安装包...", 0));
-        await ExtractZipAsync(archive, stagingContainer, cancellationToken);
-        var stagedMySqlExe = Directory.GetFiles(stagingContainer, "mysql.exe", SearchOption.AllDirectories)
-            .FirstOrDefault(path => path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase));
-        var stagedMysqldExe = Directory.GetFiles(stagingContainer, "mysqld*.exe", SearchOption.AllDirectories)
-            .FirstOrDefault(path => Path.GetFileName(path).Equals("mysqld.exe", StringComparison.OrdinalIgnoreCase) || Path.GetFileName(path).Equals("mysqld-itmc.exe", StringComparison.OrdinalIgnoreCase));
-        if (stagedMySqlExe is null || stagedMysqldExe is null)
-        {
-            DeleteDirectoryBestEffort(stagingContainer);
-            throw new FileNotFoundException("MySQL 暂存包中未找到 mysql.exe 或 mysqld.exe。");
-        }
-
-        var stagedMySqlRoot = Directory.GetParent(Path.GetDirectoryName(stagedMySqlExe)!)!.FullName;
-        var existingMySqlExe = new ComponentLocator().FindMySqlExecutable(root, stagingContainer);
-        var targetMySqlRoot = existingMySqlExe is null
-            ? IsSamePath(root, ComponentPaths.MySqlRoot) ? root : Path.Combine(root, "mysql")
-            : Directory.GetParent(Path.GetDirectoryName(existingMySqlExe)!)!.FullName;
-
-        progress(InstallingProgress(67, "下载校验完成，正在停止旧 MySQL 服务...", 10));
-        var prepareScript = Path.Combine(GetTempDirectory(), "prepare-mysql-install.ps1");
-        await FileCompat.WriteAllTextAsync(prepareScript, BuildMySqlInstallPreparationScript(), new UTF8Encoding(true), cancellationToken);
-        await RunElevatedPowerShellAsync(prepareScript, progress, 12, 20, cancellationToken, requireExistingAdministrator: true);
-
-        progress(InstallingProgress(70, "正在切换 MySQL 运行目录并保留原数据库...", 28));
-        using var runtimeTransaction = MySqlRuntimeTransaction.Commit(
-            stagingContainer,
-            stagedMySqlRoot,
-            targetMySqlRoot,
-            Path.Combine(GetTempDirectory(), "mysql-rollback"));
-        var mysqlRoot = runtimeTransaction.ProductRoot;
-        var mysqlExe = Directory.GetFiles(mysqlRoot, "mysql.exe", SearchOption.AllDirectories)
-            .First(path => path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase));
-        var mysqldExe = Directory.GetFiles(mysqlRoot, "mysqld*.exe", SearchOption.AllDirectories)
-            .First(path => Path.GetFileName(path).Equals("mysqld.exe", StringComparison.OrdinalIgnoreCase) || Path.GetFileName(path).Equals("mysqld-itmc.exe", StringComparison.OrdinalIgnoreCase));
-        var credentials = existingMySqlExe is null ? MySqlCredentialStore.CreateNew() : MySqlCredentialStore.Load();
-        var script = Path.Combine(GetTempDirectory(), "install-mysql.ps1");
-        await FileCompat.WriteAllTextAsync(script, BuildMySqlScript(mysqlRoot, mysqldExe, mysqlExe, credentials.Password, credentials.Port), new UTF8Encoding(true), cancellationToken);
-
+        // The native compatibility root can be on a different drive from the
+        // panel (for example D:\中文目录 versus C:\ProgramData). Directory.Move
+        // needs staging, the live tree and its backup on the same volume.
+        var stagingContainer = CreateMySqlStagingContainer(root);
+        var transactionOwnsStaging = false;
         try
         {
-            progress(InstallingProgress(82, "正在注册并启动 MySQL 服务...", 45));
-            await RunElevatedPowerShellAsync(script, progress, 48, 95, cancellationToken, requireExistingAdministrator: true);
-            MySqlCredentialStore.Save(credentials);
-            runtimeTransaction.Complete();
-            progress(InstallingProgress(100, $"{release.DisplayName} 已安装到 {mysqlRoot}。连接信息：127.0.0.1:{credentials.Port}，账号 root。"));
+            Directory.CreateDirectory(stagingContainer);
+            progress(InstallingProgress(65, $"正在暂存并校验 {release.DisplayName} 安装包...", 0));
+            await ExtractZipAsync(archive, stagingContainer, cancellationToken);
+            var stagedMySqlExe = Directory.GetFiles(stagingContainer, "mysql.exe", SearchOption.AllDirectories)
+                .FirstOrDefault(path => path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase));
+            var stagedMysqldExe = Directory.GetFiles(stagingContainer, "mysqld*.exe", SearchOption.AllDirectories)
+                .FirstOrDefault(path => Path.GetFileName(path).Equals("mysqld.exe", StringComparison.OrdinalIgnoreCase) || Path.GetFileName(path).Equals("mysqld-itmc.exe", StringComparison.OrdinalIgnoreCase));
+            if (stagedMySqlExe is null || stagedMysqldExe is null)
+            {
+                DeleteDirectoryBestEffort(stagingContainer);
+                throw new FileNotFoundException("MySQL 暂存包中未找到 mysql.exe 或 mysqld.exe。");
+            }
+
+            var stagedMySqlRoot = Directory.GetParent(Path.GetDirectoryName(stagedMySqlExe)!)!.FullName;
+            var existingMySqlExe = new ComponentLocator().FindMySqlExecutable(root, stagingContainer);
+            var targetMySqlRoot = existingMySqlExe is null
+                ? IsSamePath(root, ComponentPaths.MySqlRoot) ? root : Path.Combine(root, "mysql")
+                : Directory.GetParent(Path.GetDirectoryName(existingMySqlExe)!)!.FullName;
+
+            progress(InstallingProgress(67, "下载校验完成，正在停止旧 MySQL 服务...", 10));
+            var prepareScript = Path.Combine(GetTempDirectory(), "prepare-mysql-install.ps1");
+            await FileCompat.WriteAllTextAsync(prepareScript, BuildMySqlInstallPreparationScript(), new UTF8Encoding(true), cancellationToken);
+            await RunElevatedPowerShellAsync(prepareScript, progress, 12, 20, cancellationToken, requireExistingAdministrator: true);
+
+            progress(InstallingProgress(70, "正在切换 MySQL 运行目录并保留原数据库...", 28));
+            transactionOwnsStaging = true;
+            using var runtimeTransaction = MySqlRuntimeTransaction.Commit(
+                stagingContainer,
+                stagedMySqlRoot,
+                targetMySqlRoot,
+                Path.Combine(stagingContainer, "rollback"));
+            var mysqlRoot = runtimeTransaction.ProductRoot;
+            var mysqlExe = Directory.GetFiles(mysqlRoot, "mysql.exe", SearchOption.AllDirectories)
+                .First(path => path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase));
+            var mysqldExe = Directory.GetFiles(mysqlRoot, "mysqld*.exe", SearchOption.AllDirectories)
+                .First(path => Path.GetFileName(path).Equals("mysqld.exe", StringComparison.OrdinalIgnoreCase) || Path.GetFileName(path).Equals("mysqld-itmc.exe", StringComparison.OrdinalIgnoreCase));
+            var credentials = existingMySqlExe is null ? MySqlCredentialStore.CreateNew() : MySqlCredentialStore.Load();
+            var script = Path.Combine(GetTempDirectory(), "install-mysql.ps1");
+            await FileCompat.WriteAllTextAsync(script, BuildMySqlScript(mysqlRoot, mysqldExe, mysqlExe, credentials.Password, credentials.Port), new UTF8Encoding(true), cancellationToken);
+
+            try
+            {
+                progress(InstallingProgress(82, "正在注册并启动 MySQL 服务...", 45));
+                await RunElevatedPowerShellAsync(script, progress, 48, 95, cancellationToken, requireExistingAdministrator: true);
+                MySqlCredentialStore.Save(credentials);
+                runtimeTransaction.Complete();
+                progress(InstallingProgress(100, $"{release.DisplayName} 已安装到 {mysqlRoot}。连接信息：127.0.0.1:{credentials.Port}，账号 root。"));
+            }
+            catch (Exception error)
+            {
+                try { await CleanupFailedMySqlInstallAsync(mysqlRoot); }
+                catch (Exception cleanupError)
+                {
+                    // Never swap/delete a database directory while mysqld may
+                    // still be writing. Preserve both trees for a safe retry.
+                    runtimeTransaction.PreserveForRecovery();
+                    throw new AggregateException($"MySQL 安装失败且数据库未能安全停止，已保留运行目录和备份：{mysqlRoot}；{stagingContainer}。", error, cleanupError);
+                }
+                runtimeTransaction.Rollback();
+                throw;
+            }
         }
-        catch
+        finally
         {
-            await CleanupFailedMySqlInstallAsync(mysqlRoot);
-            runtimeTransaction.Rollback();
-            throw;
+            // Commit/Rollback own recovery once directory switching begins.
+            if (!transactionOwnsStaging) DeleteDirectoryBestEffort(stagingContainer);
         }
     }
+
+    internal static string CreateMySqlStagingContainer(string installRoot) =>
+        Path.Combine(Path.GetDirectoryName(Path.GetFullPath(installRoot))!, ".mcpanel-mysql-" + Guid.NewGuid().ToString("N"));
 
     private static async Task CleanupFailedMySqlInstallAsync(string mysqlRoot)
     {
-        try
-        {
-            var script = Path.Combine(GetTempDirectory(), "cleanup-failed-mysql-install.ps1");
-            await FileCompat.WriteAllTextAsync(
-                script,
-                BuildMySqlInstallCleanupScript(mysqlRoot),
-                new UTF8Encoding(true),
-                CancellationToken.None);
-            await RunElevatedPowerShellAsync(
-                script,
-                _ => { },
-                0,
-                0,
-                CancellationToken.None,
-                requireExistingAdministrator: true);
-        }
-        catch
-        {
-            // Preserve the original installation error.  The generated install
-            // script already performs the same cleanup when it can complete.
-        }
+        var script = Path.Combine(GetTempDirectory(), "cleanup-failed-mysql-install.ps1");
+        await FileCompat.WriteAllTextAsync(script, BuildMySqlInstallCleanupScript(mysqlRoot),
+            new UTF8Encoding(true), CancellationToken.None);
+        await RunElevatedPowerShellAsync(script, _ => { }, 0, 0, CancellationToken.None,
+            requireExistingAdministrator: true);
     }
 
-    internal static string BuildMySqlInstallCleanupScript(string mysqlRoot)
+    internal static string BuildMySqlInstallCleanupScript(string mysqlRoot) =>
+        BuildMySqlInstallStopScript(new[] { mysqlRoot }, "cleanup-failed-mysql-install.log");
+
+    internal static string BuildMySqlInstallPreparationScript() =>
+        BuildMySqlInstallStopScript(ComponentPaths.MySqlSearchRoots, "prepare-mysql-install.log");
+
+    private static string BuildMySqlInstallStopScript(IEnumerable<string> roots, string logName)
     {
-        var root = EscapePowerShellPath(mysqlRoot);
-        var workRoot = EscapePowerShellPath(GetTempDirectory());
+        var allowedRoots = string.Join(", ", roots.Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(root => $"'{EscapePowerShellPath(root)}'"));
         return $$"""
-            $ErrorActionPreference = 'Continue'
-            $root = '{{root}}'
-            $workRoot = '{{workRoot}}'
-            if (!(Test-Path -LiteralPath $workRoot)) { New-Item -ItemType Directory -Path $workRoot -Force | Out-Null }
-            $log = Join-Path $workRoot 'cleanup-failed-mysql-install.log'
+            $ErrorActionPreference = 'Stop'
+            {{EnvironmentRuntimeService.RuntimeUninstallFunctions}}
+            $mysqlRoots = @({{allowedRoots}})
+            $log = '{{EscapePowerShellPath(Path.Combine(GetTempDirectory(), logName))}}'
+            [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($log)) | Out-Null
             Start-Transcript -Path $log -Append | Out-Null
-
-            function Get-ServiceExecutable($path) {
-                if ([string]::IsNullOrWhiteSpace($path)) { return $null }
-                $expanded = [Environment]::ExpandEnvironmentVariables($path).Trim()
-                if ($expanded.StartsWith('"')) {
-                    $end = $expanded.IndexOf('"', 1)
-                    if ($end -gt 1) { return $expanded.Substring(1, $end - 1) }
+            try {
+                $service = Get-ComponentService 'MySQL80'
+                if ($service) {
+                    $executable = Get-ServiceExecutable $service.ImagePath
+                    $serverName = [IO.Path]::GetFileName($executable)
+                    if ($serverName -notin @('mysqld.exe', 'mysqld-itmc.exe') -or
+                        [IO.Path]::GetFileName([IO.Path]::GetDirectoryName($executable)) -ne 'bin' -or
+                        @($mysqlRoots | Where-Object { Test-PathUnderRoot $executable $_ }).Count -eq 0) {
+                        throw ('检测到非 MCPanel 管理的 MySQL80 服务，已停止操作以保护现有实例：' + $executable)
+                    }
+                    Stop-ComponentService 'MySQL80'
                 }
-                $match = [regex]::Match($expanded, '^[^\r\n]*?\.exe', 'IgnoreCase')
-                if ($match.Success) { return $match.Value.Trim() }
-                return $null
-            }
-
-            $service = Get-CimInstance Win32_Service -Filter "Name='MySQL80'" -ErrorAction SilentlyContinue
-            $serviceExecutable = Get-ServiceExecutable ($service.PathName)
-            $managed = $service -and $serviceExecutable -and
-                ([IO.Path]::GetFullPath($serviceExecutable).StartsWith(([IO.Path]::GetFullPath($root).TrimEnd('\\') + '\\'), [StringComparison]::OrdinalIgnoreCase))
-            if ($managed) {
-                Get-Process -Name 'mysqld','mysqld-itmc','mysql','mysqladmin','mysqldump' -ErrorAction SilentlyContinue | ForEach-Object {
-                    try {
-                        if ($_.Path -and ([IO.Path]::GetFullPath($_.Path).StartsWith(([IO.Path]::GetFullPath($root).TrimEnd('\\') + '\\'), [StringComparison]::OrdinalIgnoreCase))) {
-                            Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
-                        }
-                    } catch { }
-                }
-                Stop-Service -Name 'MySQL80' -Force -ErrorAction SilentlyContinue
-                & sc.exe delete MySQL80 | Out-String | Write-Output
-            } elseif ($service) {
-                Write-Output ('未清理路径不属于本次安装的 MySQL80 服务：' + $service.PathName)
-            }
-
-            try { Stop-Transcript | Out-Null } catch { }
-            exit 0
-            """;
-    }
-
-    internal static string BuildMySqlInstallPreparationScript()
-    {
-        var mysqlRoots = ComponentPaths.MySqlSearchRoots
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Select(path => $"'{EscapePowerShellPath(path)}'");
-        var mysqlRootsLiteral = string.Join(", ", mysqlRoots);
-        var storeDataRoot = EscapePowerShellPath(GetStoreDataRoot());
-        return $$"""
-            $ErrorActionPreference = 'Continue'
-            $ProgressPreference = 'SilentlyContinue'
-            $mysqlRoots = @({{mysqlRootsLiteral}})
-            $workRoot = Join-Path '{{storeDataRoot}}' 'Work'
-            if (!(Test-Path $workRoot)) { New-Item -ItemType Directory -Path $workRoot -Force | Out-Null }
-            $log = Join-Path $workRoot 'prepare-mysql-install.log'
-            Start-Transcript -Path $log -Append | Out-Null
-
-            function Stop-StoreDataMySqlProcesses {
-                foreach ($name in @('mysqld','mysqld-itmc','mysql','mysqladmin','mysqldump')) {
-                    Get-Process -Name $name -ErrorAction SilentlyContinue | ForEach-Object {
-                        $path = $null
-                        try { $path = $_.Path } catch { }
-                        if ($path -and ($mysqlRoots | Where-Object { $path.StartsWith($_, [StringComparison]::OrdinalIgnoreCase) })) {
-                            Write-Output ('停止进程：' + $_.ProcessName + ' #' + $_.Id)
-                            Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
-                        }
+                $names = @('mysqld.exe', 'mysqld-itmc.exe', 'mysql.exe', 'mysqladmin.exe', 'mysqldump.exe')
+                foreach ($root in $mysqlRoots) {
+                    if (-not (Wait-ComponentProcesses $root $names 10)) {
+                        throw ('MySQL 进程尚未正常退出，已保留服务和数据库文件，请关闭后重试：' + $root)
                     }
                 }
-            }
-
-            function Wait-ServiceGone {
-                for ($i = 0; $i -lt 60; $i++) {
-                    if (-not (Get-Service -Name 'MySQL80' -ErrorAction SilentlyContinue)) { return $true }
-                    Start-Sleep -Milliseconds 500
-                }
-                return $false
-            }
-
-            function Get-ServiceExecutable($path) {
-                if ([string]::IsNullOrWhiteSpace($path)) { return $null }
-                $expanded = [Environment]::ExpandEnvironmentVariables($path).Trim()
-                if ($expanded.StartsWith('"')) {
-                    $end = $expanded.IndexOf('"', 1)
-                    if ($end -gt 1) { return $expanded.Substring(1, $end - 1) }
-                }
-                $match = [regex]::Match($expanded, '^[^\r\n]*?\.exe', 'IgnoreCase')
-                if ($match.Success) { return $match.Value.Trim() }
-                return $null
-            }
-
-            function Is-ManagedMySqlPath($path) {
-                if ([string]::IsNullOrWhiteSpace($path)) { return $false }
-                try {
-                    $full = [IO.Path]::GetFullPath($path)
-                    foreach ($root in $mysqlRoots) {
-                        $prefix = [IO.Path]::GetFullPath($root).TrimEnd('\') + '\'
-                        if ($full.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { return $true }
+                if ($service) { Remove-ComponentService 'MySQL80' }
+                foreach ($root in $mysqlRoots) {
+                    if (@(Get-ComponentProcesses $root $names).Count -gt 0) {
+                        throw ('MySQL 进程重新出现，已停止目录切换：' + $root)
                     }
-                } catch { }
-                return $false
-            }
-
-            $svc = Get-Service -Name 'MySQL80' -ErrorAction SilentlyContinue
-            $serviceExecutable = Get-ServiceExecutable ((Get-CimInstance Win32_Service -Filter "Name='MySQL80'" -ErrorAction SilentlyContinue).PathName)
-            $managedService = $svc -and (Is-ManagedMySqlPath $serviceExecutable)
-            if ($svc -and -not $managedService) {
-                throw ('检测到非 MCPanel 管理的 MySQL80 服务，已停止安装以保护现有实例：' + $serviceExecutable)
-            }
-            if ($svc -and $svc.Status -ne 'Stopped') {
-                Write-Output '正在停止 MySQL80 服务...'
-                Stop-Service -Name 'MySQL80' -Force -ErrorAction SilentlyContinue
-                try { $svc.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(45)) } catch { Start-Sleep -Seconds 2 }
-            }
-
-            Stop-StoreDataMySqlProcesses
-
-            $mysqld = $null
-            foreach ($mysqlRoot in $mysqlRoots) {
-                if (Test-Path $mysqlRoot) {
-                    $mysqld = Get-ChildItem $mysqlRoot -Filter 'mysqld*.exe' -Recurse -ErrorAction SilentlyContinue |
-                        Where-Object {
-                            $_.Name -in @('mysqld.exe', 'mysqld-itmc.exe') -and
-                            $_.FullName -like '*\bin\*'
-                        } |
-                        Select-Object -First 1
-                    if ($mysqld) { break }
                 }
+                Stop-Transcript | Out-Null
+                exit 0
             }
-            if ($mysqld -and (!$svc -or $managedService)) {
-                & $mysqld.FullName --remove MySQL80 | Out-Null
+            catch {
+                Write-Output $_.Exception.Message
+                try { Stop-Transcript | Out-Null } catch { }
+                exit 1
             }
-
-            if (Get-Service -Name 'MySQL80' -ErrorAction SilentlyContinue) {
-                if (-not $managedService) {
-                    throw 'MySQL80 服务归属无法确认，已停止安装以保护现有实例。'
-                }
-                & sc.exe delete MySQL80 | Out-String | Write-Output
-                if (!(Wait-ServiceGone)) { throw 'MySQL80 服务正在等待系统删除，请稍后重试或重启 Windows 后再安装。' }
-            }
-
-            Stop-StoreDataMySqlProcesses
-
-            Stop-Transcript | Out-Null
-            exit 0
             """;
     }
 

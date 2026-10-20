@@ -69,7 +69,10 @@ namespace MCPanel
         {
             if (overwrite && File.Exists(destination))
             {
-                File.Delete(destination);
+                // Keep the last usable configuration/package if the source is
+                // missing, locked, or the replacement cannot be committed.
+                File.Replace(source, destination, null);
+                return;
             }
 
             File.Move(source, destination);

@@ -207,61 +207,7 @@ public sealed class PanelSettingsService
         Directory.CreateDirectory(workDirectory);
         var script = Path.Combine(workDirectory, "configure-sql-local-certificate.ps1");
         var log = Path.Combine(workDirectory, "configure-sql-local-certificate.log");
-        var scriptText = $$"""
-            $ErrorActionPreference='Stop'
-            $log='{{EscapePowerShellLiteral(log)}}'
-            Start-Transcript -Path $log -Force | Out-Null
-            try {
-                $instance=(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL' -ErrorAction Stop).MSSQLSERVER
-                if ([string]::IsNullOrWhiteSpace($instance)) { throw '未找到 MSSQLSERVER 默认实例。' }
-                $reg="HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\$instance\MSSQLServer\SuperSocketNetLib"
-                $current=((Get-ItemProperty $reg -Name Certificate -ErrorAction SilentlyContinue).Certificate + '').Trim()
-                if (![string]::IsNullOrWhiteSpace($current)) {
-                    $configuredCert=Get-ChildItem "Cert:\LocalMachine\My\$current" -ErrorAction SilentlyContinue
-                    if ($configuredCert -and $configuredCert.FriendlyName -ne 'MCPanel SQL Server Local Certificate') {
-                        Write-Output ('SQL Server 已配置现有证书，保持不变：' + $configuredCert.Subject + ' [' + $configuredCert.Thumbprint + ']')
-                        Stop-Transcript | Out-Null
-                        exit 0
-                    }
-                    if (!$configuredCert) {
-                        Write-Output ('SQL Server 已配置证书指纹但证书存储中未找到对应证书，保持现有配置不变：' + $current)
-                        Stop-Transcript | Out-Null
-                        exit 0
-                    }
-                }
-
-                $subject='CN=localhost'
-                $cert=Get-ChildItem Cert:\LocalMachine\My | Where-Object {
-                    $_.Subject -eq $subject -and $_.FriendlyName -eq 'MCPanel SQL Server Local Certificate' -and $_.NotAfter -gt (Get-Date).AddDays(30)
-                } | Sort-Object NotAfter -Descending | Select-Object -First 1
-                if (!$cert) {
-                    $cert=New-SelfSignedCertificate -Subject $subject -DnsName @('localhost',$env:COMPUTERNAME) -CertStoreLocation 'Cert:\LocalMachine\My' -FriendlyName 'MCPanel SQL Server Local Certificate' -KeyAlgorithm RSA -KeyLength 2048 -HashAlgorithm SHA256 -KeyExportPolicy Exportable -KeySpec KeyExchange -Provider 'Microsoft RSA SChannel Cryptographic Provider' -NotAfter (Get-Date).AddYears(5)
-                }
-                if (!(Get-ChildItem "Cert:\LocalMachine\Root\$($cert.Thumbprint)" -ErrorAction SilentlyContinue)) {
-                    $cer=Join-Path $env:TEMP 'mcpanel-sql-local.cer'
-                    Export-Certificate -Cert $cert -FilePath $cer -Force | Out-Null
-                    Import-Certificate -FilePath $cer -CertStoreLocation 'Cert:\LocalMachine\Root' | Out-Null
-                    Remove-Item $cer -Force -ErrorAction SilentlyContinue
-                }
-                $keyName=$cert.PrivateKey.CspKeyContainerInfo.UniqueKeyContainerName
-                $keyPath=Join-Path $env:ProgramData ('Microsoft\Crypto\RSA\MachineKeys\' + $keyName)
-                & icacls.exe $keyPath /grant '*S-1-5-20:R' | Out-Null
-                if ($LASTEXITCODE -ne 0) { throw '无法授权 SQL Server 服务读取证书私钥。' }
-                $target=$cert.Thumbprint.ToLowerInvariant()
-                if ($current -ne $target) {
-                    Set-ItemProperty -Path $reg -Name Certificate -Value $target
-                    Set-ItemProperty -Path $reg -Name ForceEncryption -Value 0
-                    Restart-Service MSSQLSERVER -Force
-                    (Get-Service MSSQLSERVER).WaitForStatus('Running',[TimeSpan]::FromSeconds(90))
-                }
-                Stop-Transcript | Out-Null
-                exit 0
-            } catch {
-                Write-Error $_
-                try { Stop-Transcript | Out-Null } catch { }
-                exit 1
-            }
-            """;
+        var scriptText = BuildSqlServerLocalCertificateScript(log);
         await FileCompat.WriteAllTextAsync(script, scriptText, new UTF8Encoding(true), cancellationToken);
 
         using var process = ProcessRunner.StartPowerShellFile(script, elevated: true);
@@ -274,6 +220,14 @@ public sealed class PanelSettingsService
         }
 
         SqlServerCredentialStore.Save(SqlServerCredentialStore.Load() with { Host = "localhost" });
+    }
+
+    internal static string BuildSqlServerLocalCertificateScript(string logPath)
+    {
+        using var stream = typeof(PanelSettingsService).Assembly.GetManifestResourceStream("MCPanel.SqlServerCertificate.ps1")
+            ?? throw new InvalidOperationException("缺少 SQL Server 证书配置脚本。");
+        using var reader = new StreamReader(stream, Encoding.UTF8);
+        return "$log='" + EscapePowerShellLiteral(logPath) + "'" + Environment.NewLine + reader.ReadToEnd();
     }
 
     public bool TryOpenSqlManagementStudioForSqlServer()
