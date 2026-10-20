@@ -62,9 +62,19 @@ Assert-Installation
 Add-Type -TypeDefinition @'
 using System;
 using System.ComponentModel;
+using System.Text;
+using System.IO;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 public static class MCPanelDeleteProbe {
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    static extern uint GetLongPathName(string path, StringBuilder result, uint capacity);
+    public static string LongPath(string path) {
+        var full = Path.GetFullPath(path);
+        var result = new StringBuilder(32768);
+        var length = GetLongPathName(full, result, (uint)result.Capacity);
+        return length > 0 && length < result.Capacity ? result.ToString() : full;
+    }
     [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
     static extern SafeFileHandle CreateFile(string path, uint access, uint share, IntPtr security, uint creation, uint flags, IntPtr template);
     public static void Check(string path) {
@@ -110,7 +120,11 @@ function Get-OwnedServices {
 function Test-OwnedPath([string]$Path) {
     if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
     # Windows stores shell/AUMID and special application tokens alongside paths.
-    try { return Test-PathUnderRoot $Path.Trim('"') $script:InstallRoot }
+    try {
+        $full = [MCPanelDeleteProbe]::LongPath($Path.Trim('"'))
+        $base = [MCPanelDeleteProbe]::LongPath($script:InstallRoot)
+        return Test-PathUnderRoot $full $base
+    }
     catch { return $false }
 }
 function Remove-UserRegistry([string]$HiveName) {
@@ -173,6 +187,7 @@ function Remove-OwnedStartupAndShortcuts {
                 $shortcut = $shell.CreateShortcut($file.FullName)
                 try {
                     if ($shortcut.TargetPath -and (Test-OwnedPath $shortcut.TargetPath)) { [IO.File]::Delete($file.FullName) }
+                    elseif ($file.BaseName -eq 'MCPanel') { Write-Host ('Preserved shortcut to another target: ' + $file.FullName + ' -> ' + $shortcut.TargetPath) }
                 } finally { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($shortcut) }
             }
             $group = Join-Path $folder 'MCPanel'

@@ -6,7 +6,7 @@ public partial class App
 {
     private void App_StartupRegistration(object sender, StartupEventArgs e)
     {
-        if (IsNonInteractiveLaunch(e.Args))
+        if (IsNonInteractiveLaunch(e.Args) || InstallerRegistration.IsUninstallInProgress())
         {
             return;
         }

@@ -34,6 +34,8 @@ begin
   Side.Parent := WizardForm;
   Side.SetBounds(0, 0, ScaleX(270), ScaleY(560));
   Side.BevelOuter := bvNone;
+  Side.ParentBackground := False;
+  Side.StyleElements := [];
   Side.Color := $552D10;
   ExtractTemporaryFile('Brand.bmp');
   Logo := TBitmapImage.Create(WizardForm);
@@ -66,6 +68,8 @@ begin
   Card.Parent := WizardForm.SelectDirPage;
   Card.SetBounds(0, ScaleY(106), ScaleX(545), ScaleY(114));
   Card.BevelOuter := bvNone;
+  Card.ParentBackground := False;
+  Card.StyleElements := [];
   Card.Color := $FAF5EF;
   BrandText(Card, '环境就绪检查', 18, 13, 505, 26, 11, $4D2E17, True);
   DependencyStatus := BrandText(Card, '.NET Framework：' + DependencyText(DotNetAvailable) + #13#10 +
@@ -91,6 +95,8 @@ procedure UpdateBrandPage(CurPageID: Integer);
 begin
   if CurPageID = wpSelectDir then begin
     BrandHeading.Caption := '准备你的部署工作台';
+    BrandSubheading.Caption := 'MCPanel {#AppVersion}  /  Windows x64';
+    BrandSteps.Caption := '01  选择位置     /     02  准备环境     /     03  完成部署';
     WizardForm.NextButton.Caption := '开始安装 MCPanel';
   end else if CurPageID = wpFinished then begin
     BrandHeading.Caption := '部署工作台已就绪';

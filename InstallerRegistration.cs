@@ -11,6 +11,14 @@ internal static class InstallerRegistration
     internal const string TestId = "MCPanel.Setup.IntegrationTest_is1";
     private const string RegistryPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\";
 
+    internal const string UninstallMutexName = "Local\\MCPanel.Uninstall.v2";
+
+    internal static bool IsUninstallInProgress()
+    {
+        try { using var mutex = Mutex.OpenExisting(UninstallMutexName); return true; }
+        catch (WaitHandleCannotBeOpenedException) { return false; }
+    }
+
     private static string QuotePath(string path) => "\"" + path + "\"";
 
     internal static string BuildCommand(string root, bool silent = false) =>

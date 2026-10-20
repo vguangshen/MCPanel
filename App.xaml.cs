@@ -65,15 +65,10 @@ public partial class App : Application
                 Shutdown(await InstallationCleanupWorker.RunAsync(e.Args));
                 return;
             }
-            if (!IsNonInteractiveLaunch(e.Args))
+            if (!IsNonInteractiveLaunch(e.Args) && InstallerRegistration.IsUninstallInProgress())
             {
-                try
-                {
-                    using var uninstall = Mutex.OpenExisting("Local\\MCPanel.Uninstall.v2");
-                    Shutdown();
-                    return;
-                }
-                catch (WaitHandleCannotBeOpenedException) { }
+                Shutdown();
+                return;
             }
             ComponentStorageMigration.MigrateLegacyData();
 

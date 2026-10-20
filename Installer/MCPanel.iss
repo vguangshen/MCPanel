@@ -167,6 +167,7 @@ begin
   if ProgramDeployed then exit;
   Phase := '检查安装目录';
   try
+    if CheckForMutexes('Local\MCPanel.Uninstall.v2') then RaiseException('MCPanel 正在完整卸载，请等待卸载完成后重新安装。');
     ValidateInstallDirectory(ExpandConstant('{app}'));
     if CheckForMutexes('Local\MCPanel.MainWindow.v1') then
       RaiseException('请从托盘菜单完全退出 MCPanel，再重新点击安装。');

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MCPanel.Tests;
@@ -41,4 +42,21 @@ public sealed partial class ReliabilityTests
         }
         finally { DeleteTemporaryTree(root); }
     }
+    [TestMethod]
+    public void FullUninstallBlocksConcurrentUpdateBeforeChangingFiles()
+    {
+        var root = CreateTemporaryDirectory();
+        try
+        {
+            var plan = CreateDiagnosticUpdatePlan(root);
+            var executable = Path.Combine(plan.InstallDirectory, "MCPanel.exe");
+            var original = File.ReadAllBytes(executable);
+            using var mutex = new Mutex(false, InstallerRegistration.UninstallMutexName);
+            Assert.ThrowsException<InvalidOperationException>(() => ApplicationUpdateService.ApplyTransaction(plan));
+            CollectionAssert.AreEqual(original, File.ReadAllBytes(executable));
+            Assert.IsTrue(File.Exists(Path.Combine(plan.PayloadDirectory, "MCPanel.exe")));
+        }
+        finally { DeleteTemporaryTree(root); }
+    }
+
 }
