@@ -58,6 +58,7 @@
     <None Update="Installer\RuntimeCleanup.ps1" CopyToOutputDirectory="PreserveNewest" TargetPath="InstallerAssets\RuntimeCleanup.ps1" />
     <None Include="Assets\AppIcon\mcpanel-logo.png" Link="InstallerAssets\Brand.png" CopyToOutputDirectory="PreserveNewest" TargetPath="InstallerAssets\Brand.png" />
     <EmbeddedResource Include="Installer\download-url-migrations.json" LogicalName="MCPanel.DownloadUrlMigrations.json" />
+    <None Update="Installer\download-url-migrations.json" CopyToOutputDirectory="PreserveNewest" TargetPath="InstallerAssets\DownloadUrlMigrations.json" />
     <EmbeddedResource Include="Installer\RuntimeCleanup.ps1" LogicalName="MCPanel.RuntimeCleanup.ps1" />
   </ItemGroup>
 

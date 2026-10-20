@@ -1047,11 +1047,16 @@ public sealed partial class ReliabilityTests
         StringAssert.Contains(legacy, "/norestart");
         StringAssert.Contains(legacy, "SSMSInstallRoot=");
         Assert.IsFalse(legacy.Contains("--installPath"));
+        var intermediate = PanelSettingsService.BuildSsmsInstallArguments(SsmsReleaseCatalog.Ssms2021);
+        StringAssert.Contains(intermediate, "SSMSInstallRoot=");
+        Assert.IsFalse(intermediate.Contains("--installPath"));
 
         var current = PanelSettingsService.BuildSsmsInstallArguments(SsmsReleaseCatalog.Ssms22);
         StringAssert.Contains(current, "--installPath");
         StringAssert.Contains(current, "--path");
         Assert.IsFalse(current.Contains("SSMSInstallRoot="));
+        StringAssert.Contains(current, "--channelUri");
+        StringAssert.Contains(current, "https://aka.ms/ssms/22/release/channel");
     }
 
     [TestMethod]

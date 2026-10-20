@@ -65,7 +65,7 @@ try {
     & (Join-Path $PSScriptRoot 'Verify-InstallerUI.ps1') -InstallerFile $InstallerFile -InstallDirectory (Join-Path $root 'preview')
 
     [xml]$document = Get-Content -LiteralPath $config -Raw -Encoding UTF8
-    $urlMigrations = @(Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\Installer\download-url-migrations.json') -Raw -Encoding UTF8 | ConvertFrom-Json)
+    $urlMigrations = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\Installer\download-url-migrations.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     foreach ($setting in $document.configuration.appSettings.add) {
         if ($setting.key -eq 'Ai.Model') { $setting.value = '保留原配置' }
         if ($setting.key -eq 'Ai.ApiKey') { $setting.value = '' }

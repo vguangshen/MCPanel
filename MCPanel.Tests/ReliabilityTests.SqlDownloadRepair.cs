@@ -12,6 +12,61 @@ namespace MCPanel.Tests;
 
 public sealed partial class ReliabilityTests
 {
+    [DataTestMethod]
+    [DataRow("WindowsServer2012", 14, "18.12.1")]
+    [DataRow("WindowsServer2012R2", 14, "18.12.1")]
+    [DataRow("Windows81", 14, "18.12.1")]
+    [DataRow("WindowsServer2016", 16, "20.2.1")]
+    [DataRow("Windows10", 16, "20.2.1")]
+    [DataRow("WindowsServer2019", 14, "22")]
+    [DataRow("Windows11", 17, "22")]
+    [DataRow("WindowsServer2025", 11, "18.12.1")]
+    public void SsmsRecommendationMatchesBothOperatingSystemAndSqlServer(string family, int engineMajor, string expectedRelease)
+    {
+        var os = (WindowsSqlCompatibilityFamily)Enum.Parse(typeof(WindowsSqlCompatibilityFamily), family);
+        Assert.AreEqual(expectedRelease, SsmsReleaseCatalog.ResolveForPlatform(engineMajor, os).Id);
+    }
+
+    [TestMethod]
+    public async Task RecoveryLatestManifestPinsOneReleaseAndRejectsInvalidPackageMetadata()
+    {
+        var root = CreateTemporaryDirectory();
+        try
+        {
+            var recovery = Path.Combine(root, "Restore-Update.ps1");
+            File.WriteAllText(recovery, ReadRepositoryFile("Restore-Update.ps1"));
+            var script = Path.Combine(root, "verify-release.ps1");
+            File.WriteAllText(script, """
+                $ErrorActionPreference = 'Stop'
+                $tokens = $null; $errors = $null
+                $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'Restore-Update.ps1'), [ref]$tokens, [ref]$errors)
+                if ($errors.Count) { throw 'Recovery script does not parse in Windows PowerShell 5.1.' }
+                $function = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-RecoveryRelease' }, $true)
+                . ([scriptblock]::Create($function.Extent.Text))
+                $manifest = @{ format='mcpanel-github-release-v1'; version='9.8.7'; packageName='MCPanel-9.8.7.zip'; sha256=('a' * 64) }
+                $release = Get-RecoveryRelease ($manifest | ConvertTo-Json)
+                $url = 'https://github.com/vguangshen/MCPanel/releases/download/v9.8.7/MCPanel-9.8.7.zip'
+                if ($release.PackageUrl -cne $url -or $release.ChecksumUrl -cne ($url + '.sha256') -or $release.Sha256 -ne ('a' * 64)) { throw 'Recovery did not bind all assets to the manifest version.' }
+                foreach ($bad in @(
+                    @{ Key='packageName'; Value='../other.zip' },
+                    @{ Key='packageName'; Value='MCPanel-1.3.61.zip' },
+                    @{ Key='version'; Value='9.8.7/bad' },
+                    @{ Key='format'; Value='unknown' },
+                    @{ Key='sha256'; Value='invalid' }
+                )) {
+                    $copy = $manifest.Clone(); $copy[$bad.Key] = $bad.Value
+                    $rejected = $false
+                    try { $null = Get-RecoveryRelease ($copy | ConvertTo-Json) } catch { $rejected = $true }
+                    if (!$rejected) { throw ('Recovery accepted invalid ' + $bad.Key) }
+                }
+                """);
+            var result = await ProcessRunner.RunPowerShellFileAsync(script, false, default,
+                captureOutput: true, timeout: TimeSpan.FromSeconds(30));
+            Assert.AreEqual(0, result.ExitCode, result.CombinedOutput);
+        }
+        finally { DeleteTemporaryTree(root); }
+    }
+
     [TestMethod]
     public void SqlDownloadSettingsRepairRetiredDefaultsWithoutReplacingCustomSources()
     {

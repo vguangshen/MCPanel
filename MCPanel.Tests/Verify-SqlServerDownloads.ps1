@@ -12,21 +12,26 @@ if ($PSVersionTable.PSEdition -eq 'Core') {
 $root = Join-Path ([IO.Path]::GetTempPath()) ('MCPanelSqlMedia-' + [Guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($root) | Out-Null
 $appExe = Join-Path $ApplicationDirectory 'MCPanel.exe'
-[void][Reflection.Assembly]::LoadFrom($appExe)
 # Keep reflection arguments and background callbacks in managed code. Windows
 # PowerShell wraps cmdlet strings in PSObject when constructing object arrays,
 # and script-block callbacks have no runspace on HttpClient continuations.
-Add-Type -ReferencedAssemblies @($appExe, 'System.Net.Http.dll', 'System.Core.dll') -TypeDefinition @'
+Add-Type -ReferencedAssemblies 'System.Core.dll' -TypeDefinition @'
 using System;
+using System.Linq.Expressions;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 public static class MCPanelSqlDownloadProbe {
-    public static string Download(string url, string directory, string file, int major) {
-        using (var installer = new MCPanel.EnvironmentInstaller()) {
-            var method = typeof(MCPanel.EnvironmentInstaller).GetMethod("DownloadCoreAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+    public static string Download(string assemblyPath, string url, string directory, string file, int major) {
+        var assembly = Assembly.LoadFrom(assemblyPath);
+        var installerType = assembly.GetType("MCPanel.EnvironmentInstaller", true);
+        var progressType = assembly.GetType("MCPanel.InstallProgress", true);
+        var progress = Expression.Lambda(typeof(Action<>).MakeGenericType(progressType), Expression.Empty(),
+            new[] { Expression.Parameter(progressType, "progress") }).Compile();
+        using (var installer = (IDisposable)Activator.CreateInstance(installerType)) {
+            var method = installerType.GetMethod("DownloadCoreAsync", BindingFlags.Instance | BindingFlags.NonPublic);
             var task = (Task<string>)method.Invoke(installer, new object[] {
-                url, directory, file, new Action<MCPanel.InstallProgress>(p => {}), 0d, 100d, CancellationToken.None, (int?)major
+                url, directory, file, progress, 0d, 100d, CancellationToken.None, (int?)major
             });
             return task.GetAwaiter().GetResult();
         }
@@ -51,7 +56,7 @@ try {
     )) {
         $url = [string]($config.configuration.appSettings.add | Where-Object key -eq $release.Key).value
         if (!$url) { throw "Missing shipped SQL Server URL: $($release.Key)" }
-        $bootstrapper = [MCPanelSqlDownloadProbe]::Download($url, $root, $release.File, $release.Major)
+        $bootstrapper = [MCPanelSqlDownloadProbe]::Download($appExe, $url, $root, $release.File, $release.Major)
         Assert-MicrosoftInstaller $bootstrapper $release.Major
 
         # The reported Windows Server 2012 failure uses 2017. Verify its second

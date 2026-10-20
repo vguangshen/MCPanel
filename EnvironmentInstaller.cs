@@ -229,6 +229,15 @@ public sealed partial class EnvironmentInstaller : IDisposable
                 {
                     throw new InvalidDataException("EXE 文件头无效。");
                 }
+                if (stream.Length < 64) throw new InvalidDataException("EXE 文件不完整。");
+                using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);
+                stream.Position = 0x3c;
+                var peOffset = reader.ReadInt32();
+                if (peOffset < 64 || peOffset > stream.Length - 4)
+                    throw new InvalidDataException("EXE PE 文件头位置无效。");
+                stream.Position = peOffset;
+                if (reader.ReadUInt32() != 0x00004550)
+                    throw new InvalidDataException("EXE PE 文件头无效。");
                 if (expectedProductMajor.HasValue)
                 {
                     var actual = FileVersionInfo.GetVersionInfo(path);

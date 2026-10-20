@@ -18,6 +18,15 @@ function New-Case([string]$Name) {
     $payload = Join-Path $staging 'Payload'
     Write-Text (Join-Path $install 'MCPanel.exe') 'old'
     Write-Text (Join-Path $install 'MCPanel.exe.config') '<configuration><appSettings><add key="Ai.Model" value="custom-model" /><add key="Ai.ApiKey" value="" /><add key="Ai.Endpoint" value="https://example.com/中文" /></appSettings></configuration>'
+    [xml]$config = Get-Content -LiteralPath (Join-Path $install 'MCPanel.exe.config') -Raw -Encoding UTF8
+    $migrations = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\Installer\download-url-migrations.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    foreach ($migration in $migrations) {
+        $entry = $config.CreateElement('add'); $entry.SetAttribute('key', $migration.Key); $entry.SetAttribute('value', $migration.PreviousUrl)
+        [void]$config.configuration.appSettings.AppendChild($entry)
+    }
+    $entry = $config.CreateElement('add'); $entry.SetAttribute('key', 'Environment.SqlServer.Sql2012ExpressX64Url'); $entry.SetAttribute('value', 'https://custom.example.test/sql2012.exe')
+    [void]$config.configuration.appSettings.AppendChild($entry)
+    $config.Save((Join-Path $install 'MCPanel.exe.config'))
     # Deliberately invalid executable bytes prevent any UI/service startup after
     # the real updater finishes its file transaction; restart failure is benign.
     Write-Text (Join-Path $payload 'MCPanel.exe') 'new'
@@ -135,6 +144,8 @@ try {
         $recoveryPayload = Join-Path $root 'recovery-payload'
         Expand-Archive -LiteralPath $recoveryPackage -DestinationPath $recoveryPayload
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\deployment-layout.json') -Destination $recoveryPayload
+        [IO.Directory]::CreateDirectory((Join-Path $recoveryPayload 'InstallerAssets')) | Out-Null
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\Installer\download-url-migrations.json') -Destination (Join-Path $recoveryPayload 'InstallerAssets\DownloadUrlMigrations.json')
         Compress-Archive -Path (Join-Path $recoveryPayload '*') -DestinationPath $recoveryPackage -Force
         Write-Text ($recoveryPackage + '.sha256') ((Get-FileHash -LiteralPath $recoveryPackage -Algorithm SHA256).Hash + '  recovery.zip')
         Invoke-Recovery $lockedCase $recoveryPackage -Preview
@@ -146,9 +157,14 @@ try {
         $settings = @{}
         foreach ($setting in $recoveredConfig.configuration.appSettings.add) { $settings[[string]$setting.key] = [string]$setting.value }
         if ($settings['Ai.Model'] -ne 'custom-model' -or $settings['Ai.ApiKey'] -ne '' -or $settings['Ai.Endpoint'] -ne 'https://example.com/中文') { throw 'Recovery lost original or explicitly empty/Unicode settings.' }
+        foreach ($migration in (Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\Installer\download-url-migrations.json') -Raw -Encoding UTF8 | ConvertFrom-Json)) {
+            if ($settings[$migration.Key] -ne $migration.CurrentUrl) { throw 'Recovery retained a retired SQL Server default URL.' }
+        }
+        if ($settings['Environment.SqlServer.Sql2012ExpressX64Url'] -ne 'https://custom.example.test/sql2012.exe') { throw 'Recovery replaced a custom SQL Server URL.' }
         if ([IO.File]::ReadAllText((Join-Path $lockedCase.Install 'StoreData\user-data.txt')) -ne 'keep database and website settings') { throw 'Recovery modified operational data.' }
         if ([IO.File]::ReadAllText($lockedLibrary) -ne 'shared runtime') { throw 'Recovery replaced the unchanged locked runtime.' }
         Write-Host 'Passed: missing-EXE recovery previews safely, restores original settings, skips an unchanged locked DLL, and can run again.'
+        Write-Host 'Passed: Windows PowerShell recovery migrates retired SQL Server URLs and preserves custom sources.'
     } finally { $libraryHandle.Dispose() }
 
     $fixedLockedCase = New-Case 'fixed-readable-locked-library'
