@@ -757,14 +757,14 @@ public sealed partial class ReliabilityTests
             StringAssert.Contains(scripts[1].Text, "SQL Server 服务仍然存在");
             StringAssert.Contains(scripts[1].Text, "$migratedDataRoot");
             StringAssert.Contains(scripts[1].Text, "exit 1");
-            StringAssert.Contains(scripts[2].Text, "MySQL80 服务仍然存在");
+            StringAssert.Contains(scripts[2].Text, "服务仍然存在或已标记删除");
             StringAssert.Contains(scripts[2].Text, "exit 1");
             StringAssert.Contains(scripts[2].Text, "$mysqlInstallationRoots");
-            StringAssert.Contains(scripts[2].Text, "MySQL 安装目录与共享 Runtime 根目录重叠");
+            StringAssert.Contains(scripts[2].Text, "组件卸载目录与共享目录重叠");
             StringAssert.Contains(scripts[2].Text, "Removing MySQL installation directory");
             StringAssert.Contains(scripts[2].Text, "非 MCPanel 管理的 MySQL80 服务");
-            StringAssert.Contains(scripts[2].Text, "Is-ManagedMySqlPath");
-            StringAssert.Contains(scripts[2].Text, "Name -in @('mysqld.exe', 'mysqld-itmc.exe')");
+            StringAssert.Contains(scripts[2].Text, "Assert-ComponentRoot");
+            StringAssert.Contains(scripts[2].Text, "Stop-ComponentService 'MySQL80'");
             Assert.IsFalse(scripts[2].Text.Contains("$deleteTargets", StringComparison.Ordinal));
             StringAssert.Contains(scripts[3].Text, "--bind-address=127.0.0.1");
             Assert.IsFalse(scripts[3].Text.Contains("--skip-networking=0", StringComparison.OrdinalIgnoreCase));

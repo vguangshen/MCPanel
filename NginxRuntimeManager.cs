@@ -546,51 +546,6 @@ public static class NginxRuntimeManager
         }
     }
 
-    public static void DeleteRoot(string nginxRoot)
-    {
-        EnsureSafeDeleteRoot(nginxRoot);
-        KillProcessesUnderRoot(nginxRoot);
-        if (IsRunningUnderRoot(nginxRoot))
-        {
-            throw new InvalidOperationException(
-                $"Nginx 进程仍在运行，已取消删除目录：{Path.GetFullPath(nginxRoot)}。请先停止占用进程后重试。");
-        }
-
-        for (var attempt = 0; attempt < 5; attempt++)
-        {
-            try
-            {
-                if (Directory.Exists(nginxRoot))
-                {
-                    Directory.Delete(nginxRoot, recursive: true);
-                }
-
-                return;
-            }
-            catch when (attempt < 4)
-            {
-                Thread.Sleep(400);
-                KillProcessesUnderRoot(nginxRoot);
-                if (IsRunningUnderRoot(nginxRoot))
-                {
-                    throw new InvalidOperationException(
-                        $"Nginx 进程仍在运行，已取消删除目录：{Path.GetFullPath(nginxRoot)}。请先停止占用进程后重试。");
-                }
-            }
-        }
-
-        if (Directory.Exists(nginxRoot))
-        {
-            if (IsRunningUnderRoot(nginxRoot))
-            {
-                throw new InvalidOperationException(
-                    $"Nginx 进程仍在运行，已取消删除目录：{Path.GetFullPath(nginxRoot)}。请先停止占用进程后重试。");
-            }
-
-            Directory.Delete(nginxRoot, recursive: true);
-        }
-    }
-
     public static string ReadRecentErrorLog(string nginxRoot)
     {
         var errorLog = Path.Combine(nginxRoot, "logs", "error.log");

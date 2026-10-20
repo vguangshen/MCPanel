@@ -172,7 +172,7 @@ public sealed partial class EnvironmentRuntimeService
         var nginxExe = RequireNginxExe();
         var nginxRoot = Path.GetDirectoryName(nginxExe)!;
 
-        var nginxIsRunning = IsNginxOperational(nginxRoot);
+        var nginxIsRunning = IsNginxProcessOrServiceRunning(nginxRoot);
         if (NginxWindowsServiceManager.IsInstalled())
         {
             if (!NginxWindowsServiceManager.IsRegisteredForRoot(nginxRoot))

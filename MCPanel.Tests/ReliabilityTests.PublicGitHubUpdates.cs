@@ -173,8 +173,11 @@ public sealed partial class ReliabilityTests
                 Assert.IsTrue(((Button)window.FindName("CheckOnlineUpdateButton")).IsEnabled);
                 Assert.IsFalse(FindVisualChildren<TextBlock>(card).Any(text => text.Text.Contains("私有")));
                 Assert.IsTrue(card.ActualWidth > 0 && card.ActualHeight > 0);
-                SaveVectorIconPreview(card, (int)Math.Ceiling(card.ActualWidth),
-                    (int)Math.Ceiling(card.ActualHeight), "public-update-settings");
+                card.BringIntoView();
+                window.UpdateLayout();
+                window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+                SaveVectorIconPreview(window, (int)Math.Ceiling(window.ActualWidth),
+                    (int)Math.Ceiling(window.ActualHeight), "public-update-settings");
             }
             finally { window.Close(); }
         });

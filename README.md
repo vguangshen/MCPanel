@@ -136,6 +136,29 @@ cache entries are retained for inspection rather than deleted. Older `StoreData\
 `StoreData\Downloads`, `StoreData\Tools`, and `StoreData\ProductIcons`
 directories are migrated on startup.
 
+## Nginx and MySQL uninstallation
+
+Component uninstall runs in one elevated operation. Nginx stops the MCPanel
+service/watchdog first, then uses the documented `nginx -s quit` and `-s stop`
+signals for remaining processes in that installation. MySQL waits for Windows
+SCM to report `Stopped` and for its server processes to exit before `SC DELETE
+MySQL80`; a failed stop never triggers forced database termination or file removal.
+Service handles are closed before waiting for deletion, including the Windows
+"marked for deletion" case.
+
+Only the identified component directory is removed. Cleanup handles read-only
+temporary directories and files, retries transient locks, and repairs a denied
+entry's permissions under administrator authority. Shared roots, other services,
+other installations and junction targets are protected. A file lock is reported
+with the component path so the uninstall can be retried after closing its owner.
+MySQL uninstall deletes that component's data and configuration, as stated in
+the confirmation dialog; back up databases before confirming.
+
+References: [Nginx on Windows](https://nginx.org/en/docs/windows.html),
+[MySQL Windows service removal](https://dev.mysql.com/doc/refman/8.0/en/windows-start-service.html),
+[Windows service deletion and open handles](https://learn.microsoft.com/en-us/windows/win32/api/winsvc/nf-winsvc-deleteservice),
+and [directory deletion requirements](https://learn.microsoft.com/en-us/dotnet/api/system.io.directory.delete).
+
 ## Public GitHub Release updates
 
 Click **Settings → Software update → Check and update** to retrieve the latest

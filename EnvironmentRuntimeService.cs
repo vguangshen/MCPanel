@@ -304,12 +304,7 @@ public sealed partial class EnvironmentRuntimeService
             case EnvironmentKind.Nginx:
                 var nginxRoot = Path.GetDirectoryName(RequireNginxExe())!;
                 NginxRuntimeManager.EnsureSafeDeleteRoot(nginxRoot);
-                await StopNginxAsync(cancellationToken);
-                if (NginxWindowsServiceManager.IsRegisteredForRoot(nginxRoot))
-                {
-                    await RunNginxServiceActionAsync("delete", cancellationToken);
-                }
-                NginxRuntimeManager.DeleteRoot(nginxRoot);
+                await RunRuntimeUninstallAsync("nginx", log => BuildNginxUninstallScript(nginxRoot, log), cancellationToken);
                 return "Nginx 已卸载。";
             case EnvironmentKind.MySql:
                 await UninstallMySqlCompletelyAsync(cancellationToken);
