@@ -99,20 +99,29 @@ public sealed partial class ReliabilityTests
             acl.AddAccessRule(new FileSystemAccessRule(WindowsIdentity.GetCurrent().User!,
                 FileSystemRights.WriteAttributes, AccessControlType.Deny));
             Directory.SetAccessControl(denied, acl);
-            AssertPowerShellSuccess(await RunRuntimeCleanupTestAsync(root,
-                $"Remove-ComponentDirectory '{PsTestPath(Path.GetDirectoryName(denied)!)}'"));
+            var cleanup = await RunRuntimeCleanupTestAsync(root,
+                $"Remove-ComponentDirectory '{PsTestPath(Path.GetDirectoryName(denied)!)}'");
+            Console.WriteLine(cleanup.StandardOutput + Environment.NewLine + cleanup.StandardError);
+            AssertPowerShellSuccess(cleanup);
             Assert.IsFalse(Directory.Exists(Path.GetDirectoryName(denied)));
             Assert.AreEqual(siblingAcl, Directory.GetAccessControl(sibling).GetSecurityDescriptorSddlForm(AccessControlSections.Access));
         }
         finally
         {
-            if (original is not null && Directory.Exists(denied)) Directory.SetAccessControl(denied, original);
+            if (original is not null && Directory.Exists(denied))
+            {
+                var restored = new DirectorySecurity();
+                restored.SetSecurityDescriptorSddlForm(original.GetSecurityDescriptorSddlForm(AccessControlSections.Access),
+                    AccessControlSections.Access);
+                Directory.SetAccessControl(denied, restored);
+            }
             DeleteRuntimeUninstallTestTree(root);
         }
     }
 
     [DataTestMethod]
     [DataRow("mysql")]
+    [DataRow("mysql-legacy")]
     [DataRow("nginx")]
     public async Task ManagedUninstallStopsAndRemovesServiceBeforeDeletingReadOnlyFiles(string component)
     {
@@ -121,7 +130,7 @@ public sealed partial class ReliabilityTests
         try
         {
             var events = Path.Combine(work, "events.txt");
-            var script = BuildUninstallFixtureScript(component, root, events, "success");
+            var script = BuildUninstallFixtureScript(component.StartsWith("mysql") ? "mysql" : component, root, events, "success");
             AssertPowerShellSuccess(await RunUninstallScriptTestAsync(work, script));
             CollectionAssert.AreEqual(new[] { "stop", "remove" }, File.ReadAllLines(events));
             Assert.IsFalse(Directory.Exists(root));
@@ -198,10 +207,12 @@ public sealed partial class ReliabilityTests
 
     private static string CreateManagedUninstallFixture(string component)
     {
-        var root = Path.Combine(component == "mysql" ? ComponentPaths.MySqlRoot : ComponentPaths.NginxRoot,
-            "uninstall-test-" + Guid.NewGuid().ToString("N"));
+        var root = component == "mysql-legacy"
+            ? Path.Combine(ComponentPaths.RuntimeRoot, "mysql-uninstall-test-" + Guid.NewGuid().ToString("N"))
+            : Path.Combine(component == "mysql" ? ComponentPaths.MySqlRoot : ComponentPaths.NginxRoot,
+                "uninstall-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
-        if (component == "mysql")
+        if (component.StartsWith("mysql"))
         {
             Directory.CreateDirectory(Path.Combine(root, "bin"));
             File.WriteAllText(Path.Combine(root, "bin", "mysql.exe"), "client marker");

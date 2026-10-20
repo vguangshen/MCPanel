@@ -98,11 +98,15 @@ public sealed partial class EnvironmentRuntimeService
                 $serviceExe = Get-ServiceExecutable $service.ImagePath
                 $serviceRoot = [IO.Path]::GetDirectoryName([IO.Path]::GetDirectoryName($serviceExe))
                 $serverName = [IO.Path]::GetFileName($serviceExe)
+                $legacyParents = @({{PowerShellPaths(new[] { ComponentPaths.RuntimeRoot, ComponentPaths.LegacyRuntimeRoot })}})
+                $legacyMySql = [IO.Path]::GetFileName($serviceRoot).StartsWith('mysql', [StringComparison]::OrdinalIgnoreCase) -and
+                    @($legacyParents | Where-Object { [IO.Path]::GetFullPath($_).TrimEnd('\').Equals([IO.Path]::GetDirectoryName($serviceRoot), [StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
                 if ($serverName -notin @('mysqld.exe', 'mysqld-itmc.exe') -or
                     [IO.Path]::GetFileName([IO.Path]::GetDirectoryName($serviceExe)) -ne 'bin' -or
-                    @($mysqlInstallationRoots | Where-Object { Test-PathUnderRoot $serviceRoot $_ }).Count -eq 0) {
+                    (-not $legacyMySql -and @($mysqlInstallationRoots | Where-Object { Test-PathUnderRoot $serviceRoot $_ }).Count -eq 0)) {
                     throw ('检测到非 MCPanel 管理的 MySQL80 服务，已停止卸载以保护现有实例：' + $serviceExe)
                 }
+                if ($legacyMySql) { $mysqlInstallationRoots += $serviceRoot }
                 # The registered service identifies the actual installation,
                 # rather than whichever mysql.exe a broad search finds first.
                 $targetRoot = $serviceRoot
@@ -147,12 +151,26 @@ public sealed partial class EnvironmentRuntimeService
     // Windows Server 2012 ships PowerShell 3.0. Avoid newer cmdlet parameters,
     // recursive Remove-Item and recursive ACL changes, particularly at junctions.
     internal const string RuntimeUninstallFunctions = """
+        Add-Type -AssemblyName System.ServiceProcess
         function Get-ComponentService($name) {
-            $controller = Get-Service -Name $name -ErrorAction SilentlyContinue
-            if (-not $controller) { return $null }
+            $controller = New-Object System.ServiceProcess.ServiceController($name)
             try {
+                $status = $controller.Status
                 $key = Get-ItemProperty -LiteralPath ('HKLM:\SYSTEM\CurrentControlSet\Services\' + $name) -ErrorAction Stop
-                return [pscustomobject]@{ Status = $controller.Status; ImagePath = [Environment]::ExpandEnvironmentVariables($key.ImagePath) }
+                return [pscustomobject]@{ Status = $status; ImagePath = [Environment]::ExpandEnvironmentVariables($key.ImagePath) }
+            }
+            catch {
+                $exception = $_.Exception
+                while ($exception) {
+                    if ($exception -is [ComponentModel.Win32Exception]) {
+                        if ($exception.NativeErrorCode -eq 1060) { return $null }
+                        if ($exception.NativeErrorCode -eq 1072) {
+                            throw ($name + ' 服务已标记删除。请关闭服务管理器；必要时重启后再次卸载。组件文件尚未删除。')
+                        }
+                    }
+                    $exception = $exception.InnerException
+                }
+                throw
             }
             finally { $controller.Dispose() }
         }
@@ -247,10 +265,10 @@ public sealed partial class EnvironmentRuntimeService
         }
 
         function Test-ComponentAccessDenied($errorRecord) {
-            $error = $errorRecord.Exception
-            while ($error) {
-                if ($error -is [UnauthorizedAccessException] -or ($error.HResult -band 65535) -eq 5) { return $true }
-                $error = $error.InnerException
+            $exception = $errorRecord.Exception
+            while ($exception) {
+                if ($exception -is [UnauthorizedAccessException] -or ($exception.HResult -band 65535) -eq 5) { return $true }
+                $exception = $exception.InnerException
             }
             return $false
         }
