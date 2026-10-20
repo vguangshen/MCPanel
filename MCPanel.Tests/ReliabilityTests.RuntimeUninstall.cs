@@ -14,6 +14,42 @@ namespace MCPanel.Tests;
 public sealed partial class ReliabilityTests
 {
     [TestMethod]
+    public async Task FullUninstallCleansNativeMySqlRecoveryDirectoriesWithoutDeletingNeighborData()
+    {
+        var root = CreateTemporaryDirectory();
+        try
+        {
+            var native = Directory.CreateDirectory(Path.Combine(root, "native")).FullName;
+            var owned = new[] { "Nginx", "MySQL", ".mcpanel-mysql-" + Guid.NewGuid().ToString("N") };
+            var neighbors = new[] { "other-app", ".mcpanel-mysql-backup", ".mcpanel-mysql-" + new string('a', 33) };
+            foreach (var name in owned.Concat(neighbors))
+            {
+                Directory.CreateDirectory(Path.Combine(native, name));
+                File.WriteAllText(Path.Combine(native, name, "data.bin"), "preserved data");
+            }
+            var samePatternFile = Path.Combine(native, ".mcpanel-mysql-" + Guid.NewGuid().ToString("N"));
+            File.WriteAllText(samePatternFile, "unrelated file");
+            var source = Path.Combine(root, "Uninstall-MCPanel.ps1");
+            File.WriteAllText(source, ReadRepositoryFile("Uninstall-MCPanel.ps1"), new UTF8Encoding(true));
+            AssertPowerShellSuccess(await RunRuntimeCleanupTestAsync(root, $$"""
+                $tokens=$null; $errors=$null
+                $ast = [Management.Automation.Language.Parser]::ParseFile('{{PsTestPath(source)}}', [ref]$tokens, [ref]$errors)
+                if ($errors.Count) { throw ($errors | Out-String) }
+                $function = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-NativeRuntimeCleanupPaths' }, $true)
+                . ([scriptblock]::Create($function.Extent.Text))
+                foreach ($path in @(Get-NativeRuntimeCleanupPaths '{{PsTestPath(native)}}')) {
+                    Assert-NoComponentLink $path
+                    Remove-ComponentDirectory $path | Out-Null
+                }
+                """));
+            foreach (var name in owned) Assert.IsFalse(Directory.Exists(Path.Combine(native, name)), name);
+            foreach (var name in neighbors) Assert.AreEqual("preserved data", File.ReadAllText(Path.Combine(native, name, "data.bin")));
+            Assert.AreEqual("unrelated file", File.ReadAllText(samePatternFile));
+        }
+        finally { DeleteRuntimeUninstallTestTree(root); }
+    }
+
+    [TestMethod]
     public async Task RuntimeCleanupRemovesReadOnlyNginxTempDirectoriesAndFiles()
     {
         var root = CreateTemporaryDirectory();

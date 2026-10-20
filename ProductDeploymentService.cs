@@ -142,7 +142,9 @@ public sealed partial class ProductDeploymentService
                 result = result with { Message = $"{result.Message}{Environment.NewLine}{configuration.Message}。" };
             }
 
-            transaction.Complete();
+            var cleanupWarning = transaction.Complete();
+            if (cleanupWarning is not null)
+                result = result with { Message = result.Message + Environment.NewLine + cleanupWarning };
             await NginxProductProxyService.TrySyncAsync(cancellationToken);
             DeleteDownloadedPackage(packagePath);
             return result;
@@ -1962,7 +1964,7 @@ public sealed partial class ProductDeploymentService
         try { TomcatConfigurationMutex.ReleaseMutex(); } catch { }
     }
 
-    private sealed class ProductInstallTransaction : IDisposable
+    internal sealed class ProductInstallTransaction : IDisposable
     {
         private readonly string? _backupRoot;
         private readonly string? _stagingContainer;
@@ -1991,20 +1993,27 @@ public sealed partial class ProductDeploymentService
         public static ProductInstallTransaction ForExisting(string productRoot, string preparedPath) =>
             new(productRoot, preparedPath);
 
-        public void Complete()
+        public string? Complete()
         {
             if (_finished)
             {
-                return;
+                return null;
             }
 
-            if (!string.IsNullOrWhiteSpace(_backupRoot))
-            {
-                DeleteDirectoryIfExists(_backupRoot!);
-            }
-
-            CleanupStaging();
+            // Deployment is committed before retiring its backup. A locked
+            // cleanup file must never roll back to a partially deleted backup.
             _finished = true;
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(_backupRoot))
+                    DeleteDirectoryIfExists(_backupRoot!);
+                CleanupStaging();
+                return null;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                return $"产品已安装成功，但临时备份清理未完成，请关闭占用后清理：{_backupRoot}；{_stagingContainer}。{error.Message}";
+            }
         }
 
         public void Rollback()

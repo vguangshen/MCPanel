@@ -1,3 +1,19 @@
+# MCPanel 1.3.65
+
+- 修复 MySQL 重装时的失败恢复：目录切换失败后先取回暂存目录中的原数据库；恢复被占用阻断时保留数据与备份，并明确提示恢复路径。
+- MySQL 暂存、运行目录及回滚备份保持在同一磁盘，修复中文安装路径映射到系统盘后无法跨盘移动目录的问题；兼容不带顶层文件夹的安装包。
+- 完整卸载会清理中文安装路径映射目录内由 MCPanel 创建的 MySQL 恢复目录，保留不属于该命名规则的相邻内容。
+- MySQL 重装和失败清理必须确认服务及进程正常停止；服务停止超时、非托管服务、进程重新出现或服务待删除时中止操作。维护进程统一使用兼容 MySQL 5.6 的 mysqladmin shutdown，超时不强制终止数据库；启动服务不再终止已有客户端或备份进程。
+- 修复产品已部署成功后，备份或暂存文件被占用导致错误回滚、删除新产品的情况；清理未完成时保留已安装产品并给出路径提示。
+- 配置和下载文件替换改为原子提交，替换文件丢失或被占用时保留原有可用文件。
+- SQL Server 本机证书改用兼容 Windows Server 2012 的 certreq 和系统证书库 API，避免旧版命令参数或 PowerShell 模块冲突阻断连接。
+- 证书私钥权限按 SQL Server 实际服务账户授予，保留原有强制加密设置；证书切换后重启失败会恢复原绑定，原本停止的服务保持停止。
+
+官方依据：
+- Microsoft Windows Server 2012 certreq 文档：https://learn.microsoft.com/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/dn296456(v=ws.11)
+- MySQL Windows 服务停止与移除：https://dev.mysql.com/doc/refman/8.0/en/windows-start-service.html
+- MySQL 5.7.9 新增 SHUTDOWN SQL 语句：https://dev.mysql.com/doc/relnotes/mysql/5.7/en/news-5-7-9.html
+
 # MCPanel 1.3.64
 
 - 修复 SQL Server 2017 / 2022 安装下载 404：采用微软官方版本下载入口，旧版默认地址在运行时、在线更新和安装器修复时自动迁移；自定义下载地址保持不变。

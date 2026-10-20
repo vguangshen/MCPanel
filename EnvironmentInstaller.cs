@@ -589,7 +589,7 @@ public sealed partial class EnvironmentInstaller : IDisposable
 
     public void Dispose() => _httpClient.Dispose();
 
-    private sealed class MySqlRuntimeTransaction : IDisposable
+    internal sealed class MySqlRuntimeTransaction : IDisposable
     {
         private readonly string _stagingContainer;
         private readonly string _backupRoot;
@@ -608,17 +608,29 @@ public sealed partial class EnvironmentInstaller : IDisposable
             string stagingContainer,
             string stagedRoot,
             string targetRoot,
-            string rollbackBaseRoot)
+            string rollbackBaseRoot,
+            Action<string, string>? moveDirectory = null)
         {
+            moveDirectory ??= Directory.Move;
+            var stagedPrefix = Path.GetFullPath(stagedRoot).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            if ((Path.GetFullPath(rollbackBaseRoot).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar)
+                .StartsWith(stagedPrefix, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("MySQL 回滚目录不能位于待启用的运行目录中。");
             var rollbackDirectory = Path.Combine(rollbackBaseRoot, ".mysql-rollback");
             Directory.CreateDirectory(rollbackDirectory);
             var backupRoot = Path.Combine(rollbackDirectory, $"mysql.{Guid.NewGuid():N}");
 
             if (Directory.Exists(targetRoot))
             {
-                Directory.Move(targetRoot, backupRoot);
+                try { moveDirectory(targetRoot, backupRoot); }
+                catch
+                {
+                    if (!Directory.Exists(backupRoot)) DeleteDirectoryBestEffort(stagingContainer);
+                    throw;
+                }
             }
 
+            var dataTransferred = false;
             try
             {
                 var oldData = Path.Combine(backupRoot, "data");
@@ -626,16 +638,29 @@ public sealed partial class EnvironmentInstaller : IDisposable
                 if (Directory.Exists(oldData))
                 {
                     DeleteDirectoryBestEffort(stagedData);
-                    Directory.Move(oldData, stagedData);
+                    moveDirectory(oldData, stagedData);
+                    dataTransferred = true;
                 }
 
                 Directory.CreateDirectory(Path.GetDirectoryName(targetRoot)!);
-                Directory.Move(stagedRoot, targetRoot);
+                moveDirectory(stagedRoot, targetRoot);
                 return new MySqlRuntimeTransaction(stagingContainer, targetRoot, backupRoot);
             }
-            catch
+            catch (Exception error)
             {
-                RestoreBackup(targetRoot, backupRoot);
+                try
+                {
+                    // Activation can fail after the original database has
+                    // moved into staging. Restore that copy before removing
+                    // staging; the target does not contain it at this point.
+                    if (dataTransferred)
+                        Directory.Move(Path.Combine(stagedRoot, "data"), Path.Combine(backupRoot, "data"));
+                    RestoreBackup(targetRoot, backupRoot);
+                }
+                catch (Exception recoveryError)
+                {
+                    throw new AggregateException($"MySQL 目录切换失败，自动恢复未完成。原数据已保留，请勿删除：{stagingContainer}；{backupRoot}。", error, recoveryError);
+                }
                 DeleteDirectoryBestEffort(stagingContainer);
                 throw;
             }
@@ -660,10 +685,14 @@ public sealed partial class EnvironmentInstaller : IDisposable
                 return;
             }
 
+            // If recovery itself fails, Dispose must not attempt destructive
+            // recovery a second time while the original exception unwinds.
+            _finished = true;
             RestoreBackup(ProductRoot, _backupRoot);
             DeleteDirectoryBestEffort(_stagingContainer);
-            _finished = true;
         }
+
+        public void PreserveForRecovery() => _finished = true;
 
         public void Dispose()
         {

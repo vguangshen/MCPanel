@@ -280,7 +280,8 @@ public sealed partial class ReliabilityTests
         StringAssert.Contains(script, "--bind-address=127.0.0.1");
         StringAssert.Contains(script, "bind-address=127.0.0.1");
         StringAssert.Contains(script, "Remove-Item -LiteralPath $initFile");
-        StringAssert.Contains(script, "SHUTDOWN;");
+        // Maintenance shutdown compatibility and timeout behavior are executed
+        // in MySqlMaintenanceUsesLegacyCompatibleShutdownAndNeverForceKills.
         Assert.IsFalse(script.Contains("--skip-grant-tables", StringComparison.OrdinalIgnoreCase));
         Assert.IsFalse(script.Contains("skip-networking=0", StringComparison.OrdinalIgnoreCase));
         Assert.IsFalse(script.Contains("mysql_native_password", StringComparison.OrdinalIgnoreCase));
@@ -291,8 +292,9 @@ public sealed partial class ReliabilityTests
             "mysql-action.result");
         StringAssert.Contains(serviceAction, "--init-file=$initFile");
         StringAssert.Contains(serviceAction, "SET PASSWORD FOR 'root'@'localhost' = PASSWORD");
-        StringAssert.Contains(serviceAction, "SHUTDOWN;");
-        StringAssert.Contains(serviceAction, "$mysqlRoots | Where-Object");
+        // The same executed maintenance shutdown cases cover this script.
+        // Starting the service must preserve client/backup processes; this is
+        // executed in MySqlServiceStartDoesNotInterruptClientsOrBackups.
         StringAssert.Contains(serviceAction, "Name -in @('mysqld.exe', 'mysqld-itmc.exe')");
         Assert.IsFalse(serviceAction.Contains("$mysqlSearchRoots |", StringComparison.Ordinal));
         Assert.IsFalse(serviceAction.Contains("--skip-grant-tables", StringComparison.OrdinalIgnoreCase));

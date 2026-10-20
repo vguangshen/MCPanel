@@ -218,6 +218,19 @@ function Remove-OwnedFirewallRules {
         }
     } finally { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($policy) }
 }
+function Get-NativeRuntimeCleanupPaths([string]$NativeParent) {
+    if (!(Test-Path -LiteralPath $NativeParent)) { return }
+    Assert-NoComponentLink $NativeParent
+    foreach ($name in @('Nginx', 'MySQL')) {
+        $path = Join-Path $NativeParent $name
+        if (Test-Path -LiteralPath $path) { $path }
+    }
+    # Failed MySQL swaps deliberately retain their recovery data beside the
+    # live tree. Full uninstall also owns these exact generated directories.
+    foreach ($entry in @(Get-ChildItem -LiteralPath $NativeParent -Directory -Force -ErrorAction Stop)) {
+        if ($entry.Name -match '^\.mcpanel-mysql-[0-9a-f]{32}$') { $entry.FullName }
+    }
+}
 function Invoke-CompleteUninstall {
     $mutex = New-Object Threading.Mutex($false, 'Local\MCPanel.Uninstall.v2')
     $locked = $false
@@ -274,9 +287,8 @@ function Invoke-CompleteUninstall {
             if ($script:InstallRoot -match '[^\x00-\x7F]') {
                 $nativeParent = Join-Path $env:ProgramData 'MCPanel'
                 if ($nativeParent -match '[^\x00-\x7F]') { $nativeParent = Join-Path ($env:SystemDrive + '\') 'MCPanelData' }
-                foreach ($name in @('Nginx', 'MySQL')) {
-                    $path = Join-Path $nativeParent $name
-                    if (Test-Path -LiteralPath $path) { Assert-NoComponentLink $path; Assert-Deletable $path; Remove-ComponentDirectory $path | Out-Null }
+                foreach ($path in @(Get-NativeRuntimeCleanupPaths $nativeParent)) {
+                    Assert-NoComponentLink $path; Assert-Deletable $path; Remove-ComponentDirectory $path | Out-Null
                 }
                 if ((Test-Path -LiteralPath $nativeParent) -and @(Get-ChildItem -LiteralPath $nativeParent -Force).Count -eq 0) { [IO.Directory]::Delete($nativeParent) }
             }
