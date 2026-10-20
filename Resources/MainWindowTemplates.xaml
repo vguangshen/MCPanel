@@ -904,7 +904,7 @@
                 <Border.RenderTransform>
                     <ScaleTransform ScaleX="1" />
                 </Border.RenderTransform>
-                <Grid>
+                <local:CardFacePanel ClipToBounds="True">
                 <Grid Visibility="{Binding FrontFaceVisibility}">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -1022,11 +1022,13 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <Grid>
-                        <StackPanel>
+                        <StackPanel Margin="0,0,42,0">
                             <TextBlock Text="{Binding CredentialTitle}" FontSize="18" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextBrush}" />
+                                       Foreground="{DynamicResource TextBrush}" TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding CredentialTitle}" />
                             <TextBlock Text="{Binding CredentialSubtitle}" FontSize="12"
-                                       Foreground="{DynamicResource MutedBrush}" Margin="0,4,18,0" />
+                                       Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,0"
+                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding CredentialSubtitle}" />
                         </StackPanel>
                         <Button HorizontalAlignment="Right" VerticalAlignment="Top"
                                 Width="32" Height="32"
@@ -1038,7 +1040,10 @@
                                 Click="EnvironmentCardFlip_Click" />
                     </Grid>
 
-                    <ItemsControl Grid.Row="1" ItemsSource="{Binding CredentialFields}" Margin="0,12,0,8">
+                    <ScrollViewer Grid.Row="1" Margin="0,12,0,8"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding CredentialFields}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <UniformGrid Columns="2" />
@@ -1094,6 +1099,7 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+                    </ScrollViewer>
 
                     <Grid Grid.Row="2">
                         <TextBlock Text="{Binding CredentialNotice}" FontSize="11"
@@ -1171,7 +1177,7 @@
                                Foreground="{DynamicResource MemoryBrush}"
                                TextTrimming="CharacterEllipsis" />
                 </Grid>
-                </Grid>
+                </local:CardFacePanel>
             </Border>
         </DataTemplate>
 </ResourceDictionary>

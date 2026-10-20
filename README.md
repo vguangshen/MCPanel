@@ -27,10 +27,10 @@ remains available as a separate asset.
 Build an installer for an existing version-matched release ZIP:
 
 ```powershell
-.\Build-OnlineInstaller.ps1 -PackageFile 'C:\MCPanel-1.3.65.zip'
+.\Build-OnlineInstaller.ps1 -PackageFile 'C:\MCPanel-1.3.66.zip'
 ```
 
-Pass `-PackageUrl 'https://downloads.example.com/MCPanel-1.3.65.zip'` to use your
+Pass `-PackageUrl 'https://downloads.example.com/MCPanel-1.3.66.zip'` to use your
 own HTTPS download site; serve the exact same ZIP. The generated native EXE pins
 that version and checksum. Its stable release asset name supports the download
 link above without changing website code for each release. `Installer/dependencies.json`
@@ -38,7 +38,7 @@ is the pinned source for runtime and compiler metadata. Chinese translation is
 vendored from the official Inno Setup 6.7.3 tag with its attribution.
 
 For offline administrative deployment, place the matching official ZIP on the
-computer and run `MCPanel-Setup.exe /PACKAGEFILE="C:\MCPanel-1.3.65.zip"`.
+computer and run `MCPanel-Setup.exe /PACKAGEFILE="C:\MCPanel-1.3.66.zip"`.
 Missing Microsoft runtime packages still require network access. Silent deployment
 supports standard Inno options such as `/VERYSILENT /NORESTART /DIR="D:\MCPanel"`.
 
@@ -219,4 +219,4 @@ from its tray menu first. If a changed program file is locked, recovery reports
 the exact path before modifying installed files. Add `-WhatIf` for a preview.
 
 For offline recovery, place the official ZIP and its matching `.zip.sha256`
-sidecar together and add `-PackageFile 'C:\Downloads\MCPanel-1.3.65.zip'`.
+sidecar together and add `-PackageFile 'C:\Downloads\MCPanel-1.3.66.zip'`.
