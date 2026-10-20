@@ -9,6 +9,7 @@ $script:Form = $null
 $script:ResultFile = Join-Path ([IO.Path]::GetTempPath()) ('MCPanel-CompleteUninstall-' + [Guid]::NewGuid().ToString('N') + '.json')
 $script:UninstallKey = $null
 $script:UninstallId = $null
+$script:ProfileShortcutFolders = @()
 $registryBase = 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\'
 $powerShell = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -24,6 +25,8 @@ Set-Location -LiteralPath ([IO.Path]::GetTempPath())
 [Environment]::CurrentDirectory = [IO.Path]::GetTempPath()
 
 function Set-Status([string]$Text) {
+    if ($script:LastStatus -eq $Text) { return }
+    $script:LastStatus = $Text
     Write-Host $Text
     if ($script:Form) { $script:Status.Text = $Text; [Windows.Forms.Application]::DoEvents() }
 }
@@ -104,28 +107,72 @@ function Get-OwnedServices {
         }
     } finally { $services.Dispose() }
 }
-function Remove-OwnedStartupAndShortcuts {
-    # Touch only Run entries that point into this installation.
-    $users = [Microsoft.Win32.Registry]::Users
-    foreach ($sid in $users.GetSubKeyNames()) {
-        $run = $users.OpenSubKey($sid + '\Software\Microsoft\Windows\CurrentVersion\Run', $true)
-        try {
-            foreach ($name in @('MCPanel', 'MCPanelTomcatProducts')) {
-                if (!$run) { continue }
-                $command = [string]$run.GetValue($name)
-                if ($command -and $command.IndexOf($script:InstallRoot + '\', [StringComparison]::OrdinalIgnoreCase) -ge 0) { $run.DeleteValue($name, $false) }
-            }
-        } finally { if ($run) { $run.Dispose() } }
+function Test-OwnedPath([string]$Path) {
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
+    # Windows stores shell/AUMID and special application tokens alongside paths.
+    try { return Test-PathUnderRoot $Path.Trim('"') $script:InstallRoot }
+    catch { return $false }
+}
+function Remove-UserRegistry([string]$HiveName) {
+    $run = [Microsoft.Win32.Registry]::Users.OpenSubKey($HiveName + '\Software\Microsoft\Windows\CurrentVersion\Run', $true)
+    try {
+        foreach ($name in @('MCPanel', 'MCPanelTomcatProducts')) {
+            if (!$run) { continue }
+            $command = [string]$run.GetValue($name)
+            if ($command -and $command.IndexOf($script:InstallRoot + '\', [StringComparison]::OrdinalIgnoreCase) -ge 0) { $run.DeleteValue($name, $false) }
+        }
+    } finally { if ($run) { $run.Dispose() } }
+    if ($script:UninstallId -ne 'MCPanel.Setup.IntegrationTest_is1') {
+        $hive = [Microsoft.Win32.Registry]::Users.OpenSubKey($HiveName, $true)
+        try { if ($hive) { $hive.DeleteSubKeyTree('Software\MCPanel', $false) } }
+        finally { if ($hive) { $hive.Dispose() } }
     }
+}
+function Remove-OwnedUserState {
+    $loaded = @([Microsoft.Win32.Registry]::Users.GetSubKeyNames() | Where-Object { $_ -match '^S-\d+(?:-\d+)+$' })
+    foreach ($sid in $loaded) { Remove-UserRegistry $sid }
+    if ($script:UninstallId -eq 'MCPanel.Setup.IntegrationTest_is1') { return }
+    $machine = [Microsoft.Win32.RegistryKey]::OpenBaseKey('LocalMachine', 'Registry64')
+    $profiles = $machine.OpenSubKey('SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList')
+    try {
+        foreach ($sid in $profiles.GetSubKeyNames()) {
+            if ($sid -notmatch '^S-\d+(?:-\d+)+$') { continue }
+            $key = $profiles.OpenSubKey($sid)
+            try { $profile = [Environment]::ExpandEnvironmentVariables([string]$key.GetValue('ProfileImagePath')) }
+            finally { $key.Dispose() }
+            if (!$profile -or !(Test-Path -LiteralPath $profile)) { continue }
+            $script:ProfileShortcutFolders += @( (Join-Path $profile 'Desktop'), (Join-Path $profile 'AppData\Roaming\Microsoft\Windows\Start Menu\Programs') )
+            $fallback = Join-Path $profile 'AppData\Local\MCPanel'
+            if ((Test-Path -LiteralPath $fallback) -and !(Test-PathUnderRoot $script:InstallRoot $fallback)) { Assert-NoComponentLink $fallback; Assert-Deletable $fallback; Remove-ComponentDirectory $fallback | Out-Null }
+            # Logged-out profiles can also retain a per-user startup entry.
+            # Load only real user hives, closing every handle before unloading.
+            if ($sid -in $loaded -or $sid -in @('S-1-5-18', 'S-1-5-19', 'S-1-5-20')) { continue }
+            $hiveFile = Join-Path $profile 'NTUSER.DAT'
+            if (!(Test-Path -LiteralPath $hiveFile)) { continue }
+            $temporaryHive = 'MCPanel.Uninstall.' + [Guid]::NewGuid().ToString('N')
+            & reg.exe load ('HKU\' + $temporaryHive) $hiveFile | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw ('无法清理此用户的 MCPanel 启动配置，请退出该用户会话后重试：' + $profile) }
+            $global:LASTEXITCODE = 0
+            try { Remove-UserRegistry $temporaryHive }
+            finally {
+                & reg.exe unload ('HKU\' + $temporaryHive) | Out-Null
+                if ($LASTEXITCODE -ne 0) { throw '临时用户配置单元未能释放，请重启后再次卸载。' }
+                $global:LASTEXITCODE = 0
+            }
+        }
+    } finally { if ($profiles) { $profiles.Dispose() }; $machine.Dispose() }
+}
+function Remove-OwnedStartupAndShortcuts {
+    Remove-OwnedUserState
     $shell = New-Object -ComObject WScript.Shell
     try {
-        $folders = @([Environment]::GetFolderPath('CommonPrograms'), [Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('CommonDesktopDirectory'), [Environment]::GetFolderPath('DesktopDirectory')) | Select-Object -Unique
+        $folders = @([Environment]::GetFolderPath('CommonPrograms'), [Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('CommonDesktopDirectory'), [Environment]::GetFolderPath('DesktopDirectory')) + $script:ProfileShortcutFolders | Select-Object -Unique
         foreach ($folder in $folders) {
             if (!$folder -or !(Test-Path -LiteralPath $folder)) { continue }
             foreach ($file in @(Get-ChildItem -LiteralPath $folder -Filter '*.lnk' -File -Recurse -Force -ErrorAction Stop)) {
                 $shortcut = $shell.CreateShortcut($file.FullName)
                 try {
-                    if ($shortcut.TargetPath -and (Test-PathUnderRoot $shortcut.TargetPath $script:InstallRoot)) { [IO.File]::Delete($file.FullName) }
+                    if ($shortcut.TargetPath -and (Test-OwnedPath $shortcut.TargetPath)) { [IO.File]::Delete($file.FullName) }
                 } finally { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($shortcut) }
             }
             $group = Join-Path $folder 'MCPanel'
@@ -138,7 +185,7 @@ function Remove-OwnedFirewallRules {
     try {
         $rules = @($policy.Rules)
         foreach ($rule in $rules) {
-            $ownedProgram = $rule.ApplicationName -and (Test-PathUnderRoot ([Environment]::ExpandEnvironmentVariables($rule.ApplicationName)) $script:InstallRoot)
+            $ownedProgram = $rule.ApplicationName -and (Test-OwnedPath ([Environment]::ExpandEnvironmentVariables($rule.ApplicationName)))
             if ($ownedProgram -or ($script:UninstallId -ne 'MCPanel.Setup.IntegrationTest_is1' -and $rule.Name -like 'MCPanel *')) { $policy.Rules.Remove($rule.Name) }
         }
     } finally { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($policy) }
@@ -153,8 +200,16 @@ function Invoke-CompleteUninstall {
         catch [Threading.WaitHandleCannotBeOpenedException] { $panel = $null }
         if ($panel) { $panel.Dispose(); throw '请先在系统托盘中完全退出 MCPanel，然后重新点击完整卸载。' }
         Set-Status '正在检查文件占用和安装目录...'
-        # Check before component removal so ordinary locked files leave a runnable app.
-        Assert-Deletable $script:InstallRoot
+        # Running component binaries and databases are expected to be locked.
+        # Probe panel settings first, then stop components before the full probe.
+        foreach ($name in @('MCPanel.exe.config', 'Uninstall-MCPanel.ps1')) {
+            $path = Join-Path $script:InstallRoot $name
+            if (Test-Path -LiteralPath $path) { Assert-Deletable $path }
+        }
+        $stateRoot = Join-Path $script:InstallRoot 'StoreData'
+        if (Test-Path -LiteralPath $stateRoot) {
+            foreach ($file in @(Get-ChildItem -LiteralPath $stateRoot -File -Force)) { Assert-Deletable $file.FullName }
+        }
         $exe = Join-Path $script:InstallRoot 'MCPanel.exe'
         if (!(Test-Path -LiteralPath $exe)) { throw 'MCPanel.exe 缺失，请运行新版安装器修复后再次卸载。' }
         Set-Status '正在正常停止数据库、网站和托管服务...'
@@ -188,16 +243,16 @@ function Invoke-CompleteUninstall {
         Remove-OwnedFirewallRules
         # Native runtime paths exist only for non-ASCII installation directories.
         if ($script:UninstallId -ne 'MCPanel.Setup.IntegrationTest_is1') {
-            $programData = Join-Path $env:ProgramData 'MCPanel'
-            foreach ($name in @('Nginx', 'MySQL')) {
-                $path = Join-Path $programData $name
-                if (Test-Path -LiteralPath $path) { Assert-NoComponentLink $path; Assert-Deletable $path; Remove-ComponentDirectory $path | Out-Null }
+            if ($script:InstallRoot -match '[^\x00-\x7F]') {
+                $nativeParent = Join-Path $env:ProgramData 'MCPanel'
+                if ($nativeParent -match '[^\x00-\x7F]') { $nativeParent = Join-Path ($env:SystemDrive + '\') 'MCPanelData' }
+                foreach ($name in @('Nginx', 'MySQL')) {
+                    $path = Join-Path $nativeParent $name
+                    if (Test-Path -LiteralPath $path) { Assert-NoComponentLink $path; Assert-Deletable $path; Remove-ComponentDirectory $path | Out-Null }
+                }
+                if ((Test-Path -LiteralPath $nativeParent) -and @(Get-ChildItem -LiteralPath $nativeParent -Force).Count -eq 0) { [IO.Directory]::Delete($nativeParent) }
             }
-            if ((Test-Path -LiteralPath $programData) -and @(Get-ChildItem -LiteralPath $programData -Force).Count -eq 0) { [IO.Directory]::Delete($programData) }
-            $fallback = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'MCPanel'
-            if (Test-Path -LiteralPath $fallback) { Assert-NoComponentLink $fallback; Assert-Deletable $fallback; Remove-ComponentDirectory $fallback | Out-Null }
-            $current = [Microsoft.Win32.Registry]::CurrentUser
-            $current.DeleteSubKeyTree('Software\MCPanel', $false)
+
         }
         Set-Status '正在删除程序、配置、数据库、站点和缓存...'
         Assert-Deletable $script:InstallRoot
@@ -225,7 +280,7 @@ function Invoke-CompleteUninstall {
 }
 
 if ($Silent) {
-    try { Invoke-CompleteUninstall } catch { Write-Error $_ -ErrorAction Continue }
+    try { Invoke-CompleteUninstall } catch { Write-Host $_.ScriptStackTrace; Write-Error $_ -ErrorAction Continue }
     exit $script:ExitCode
 }
 Add-Type -AssemblyName System.Windows.Forms

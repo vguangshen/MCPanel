@@ -82,17 +82,18 @@ internal static class InstallationCleanupWorker
                     await frp.UninstallAsync();
                 }
             }
-            using (var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL"))
+            using (var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64))
+            using (var key = machine.OpenSubKey(@"SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL"))
             {
                 if (key?.GetValue("MSSQLSERVER") is string instance)
                 {
-                    using var parameters = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Microsoft SQL Server\" + instance + @"\MSSQLServer\Parameters");
+                    using var parameters = machine.OpenSubKey(@"SOFTWARE\Microsoft\Microsoft SQL Server\" + instance + @"\MSSQLServer\Parameters");
                     var values = parameters?.GetValueNames().Select(name => parameters.GetValue(name) as string ?? string.Empty) ?? [];
                     if (OwnsSqlServer(values, root))
                     {
                         Report("正在调用 SQL Server 官方卸载流程...");
                         await runtime.UninstallAsync(EnvironmentKind.SqlServer);
-                        using var remaining = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL");
+                        using var remaining = machine.OpenSubKey(@"SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL");
                         if (remaining?.GetValue("MSSQLSERVER") is not null)
                             throw new InvalidOperationException("SQL Server 官方卸载尚未完成，已保留 MCPanel 卸载入口。请先修复数据库卸载或重启后重试。");
                     }
