@@ -92,8 +92,14 @@ public sealed partial class ReliabilityTests
         try
         {
             Directory.CreateDirectory(denied);
+            File.WriteAllText(Path.Combine(denied, "cached-response"), "cache");
             var sibling = Directory.CreateDirectory(Path.Combine(root, "other-component")).FullName;
+            File.WriteAllText(Path.Combine(sibling, "keep.txt"), "other component");
             var siblingAcl = Directory.GetAccessControl(sibling).GetSecurityDescriptorSddlForm(AccessControlSections.Access);
+            var linked = ProcessRunner.RunSynchronously("cmd.exe",
+                $"/d /c mklink /J {Compat.QuoteCommandLineArgument(Path.Combine(denied, "linked-cache"))} {Compat.QuoteCommandLineArgument(sibling)}",
+                root, captureOutput: true, timeout: TimeSpan.FromSeconds(10));
+            Assert.AreEqual(0, linked.ExitCode, linked.StandardOutput + linked.StandardError);
             original = Directory.GetAccessControl(denied);
             var acl = Directory.GetAccessControl(denied);
             acl.AddAccessRule(new FileSystemAccessRule(WindowsIdentity.GetCurrent().User!,
@@ -105,6 +111,7 @@ public sealed partial class ReliabilityTests
             AssertPowerShellSuccess(cleanup);
             Assert.IsFalse(Directory.Exists(Path.GetDirectoryName(denied)));
             Assert.AreEqual(siblingAcl, Directory.GetAccessControl(sibling).GetSecurityDescriptorSddlForm(AccessControlSections.Access));
+            Assert.AreEqual("other component", File.ReadAllText(Path.Combine(sibling, "keep.txt")));
         }
         finally
         {

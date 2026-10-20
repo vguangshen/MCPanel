@@ -153,26 +153,18 @@ public sealed partial class EnvironmentRuntimeService
     internal const string RuntimeUninstallFunctions = """
         Add-Type -AssemblyName System.ServiceProcess
         function Get-ComponentService($name) {
-            $controller = New-Object System.ServiceProcess.ServiceController($name)
-            try {
-                $status = $controller.Status
-                $key = Get-ItemProperty -LiteralPath ('HKLM:\SYSTEM\CurrentControlSet\Services\' + $name) -ErrorAction Stop
-                return [pscustomobject]@{ Status = $status; ImagePath = [Environment]::ExpandEnvironmentVariables($key.ImagePath) }
+            # PowerShell can silently return null for a failing .NET property
+            # getter. Native exit codes distinguish absent from inaccessible.
+            $query = & sc.exe query $name
+            $queryExitCode = $LASTEXITCODE
+            $global:LASTEXITCODE = 0
+            if ($queryExitCode -eq 1060) { return $null }
+            if ($queryExitCode -eq 1072) {
+                throw ($name + ' 服务已标记删除。请关闭服务管理器；必要时重启后再次卸载。组件文件尚未删除。')
             }
-            catch {
-                $exception = $_.Exception
-                while ($exception) {
-                    if ($exception -is [ComponentModel.Win32Exception]) {
-                        if ($exception.NativeErrorCode -eq 1060) { return $null }
-                        if ($exception.NativeErrorCode -eq 1072) {
-                            throw ($name + ' 服务已标记删除。请关闭服务管理器；必要时重启后再次卸载。组件文件尚未删除。')
-                        }
-                    }
-                    $exception = $exception.InnerException
-                }
-                throw
-            }
-            finally { $controller.Dispose() }
+            if ($queryExitCode -ne 0) { throw ('无法查询服务 ' + $name + '，退出码：' + $queryExitCode + '。' + ($query -join ' ')) }
+            $key = Get-ItemProperty -LiteralPath ('HKLM:\SYSTEM\CurrentControlSet\Services\' + $name) -ErrorAction Stop
+            return [pscustomobject]@{ ImagePath = [Environment]::ExpandEnvironmentVariables($key.ImagePath) }
         }
 
         function Get-ServiceExecutable($imagePath) {
@@ -279,10 +271,12 @@ public sealed partial class EnvironmentRuntimeService
             & takeown.exe /F $path /A | Write-Output
             if ($LASTEXITCODE -ne 0) { throw ('无法取得组件文件权限：' + $path) }
             $global:LASTEXITCODE = 0
-            $item = Get-Item -LiteralPath $path -Force -ErrorAction Stop
-            if ($item.PSIsContainer) { $acl = New-Object Security.AccessControl.DirectorySecurity }
-            else { $acl = New-Object Security.AccessControl.FileSecurity }
-            $acl.SetAccessRuleProtection($true, $false)
+            $acl = Get-Acl -LiteralPath $path -ErrorAction Stop
+            # Preserve existing inheritable allow rules for child entries.
+            $acl.SetAccessRuleProtection($true, $true)
+            foreach ($rule in @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))) {
+                if ($rule.AccessControlType -eq 'Deny') { $acl.RemoveAccessRuleSpecific($rule) }
+            }
             foreach ($sid in @('S-1-5-32-544', 'S-1-5-18', [Security.Principal.WindowsIdentity]::GetCurrent().User.Value)) {
                 $identity = New-Object Security.Principal.SecurityIdentifier($sid)
                 $rule = New-Object Security.AccessControl.FileSystemAccessRule($identity, 'FullControl', 'Allow')
@@ -305,7 +299,9 @@ public sealed partial class EnvironmentRuntimeService
                         else { [IO.File]::Delete($path) }
                         return
                     }
-                    $item.Attributes = $item.Attributes -band (-bnot ([IO.FileAttributes]::ReadOnly -bor [IO.FileAttributes]::Hidden -bor [IO.FileAttributes]::System))
+                    # A static method preserves the native exception chain;
+                    # PowerShell's property setter wrapper can hide access errors.
+                    [IO.File]::SetAttributes($path, ($item.Attributes -band (-bnot ([IO.FileAttributes]::ReadOnly -bor [IO.FileAttributes]::Hidden -bor [IO.FileAttributes]::System))))
                     if ($item.PSIsContainer) {
                         # Leave install markers until last, so a blocked cleanup
                         # still appears installed and can be retried from MCPanel.
