@@ -931,9 +931,9 @@
                             <Button Width="28" Height="28" Margin="0,0,8,0"
                                     MinWidth="0" Padding="0"
                                     Style="{DynamicResource EnvironmentTonalButton}"
-                                    FontSize="13"
-                                    Content="&#xE7AD;"
-                                    ToolTip="查看管理信息"
+                                    FontSize="17"
+                                    Content="&#xE8AB;"
+                                    ToolTip="翻转卡片，查看管理信息" AutomationProperties.Name="翻转卡片，查看管理信息"
                                     Click="EnvironmentCardFlip_Click"
                                     Visibility="{Binding EnvironmentFlipVisibility}" />
                             <Border Height="28" CornerRadius="12" Padding="8,0" VerticalAlignment="Center"
@@ -1032,9 +1032,9 @@
                                 Width="32" Height="32"
                                 MinWidth="0" Padding="0" Margin="0"
                                 Style="{DynamicResource EnvironmentTonalButton}"
-                                FontSize="13"
-                                Content="&#xE7AD;"
-                                ToolTip="返回管理"
+                                FontSize="17"
+                                Content="&#xE8AB;"
+                                ToolTip="翻转卡片，返回管理" AutomationProperties.Name="翻转卡片，返回管理"
                                 Click="EnvironmentCardFlip_Click" />
                     </Grid>
 
@@ -1122,8 +1122,8 @@
                         </StackPanel>
                         <Button HorizontalAlignment="Right" VerticalAlignment="Top"
                                 Width="32" Height="32" MinWidth="0" Padding="0" Margin="0"
-                                Style="{DynamicResource EnvironmentTonalButton}" FontSize="13"
-                                Content="&#xE7AD;" ToolTip="返回管理"
+                                Style="{DynamicResource EnvironmentTonalButton}" FontSize="17"
+                                Content="&#xE8AB;" ToolTip="翻转卡片，返回管理" AutomationProperties.Name="翻转卡片，返回管理"
                                 Click="EnvironmentCardFlip_Click" />
                     </Grid>
 

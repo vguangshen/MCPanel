@@ -161,7 +161,7 @@ public sealed record EnvironmentDownloadSettings(
             var value = settings[definition.Key]?.Trim();
             return Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
                    (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
-                ? value!
+                ? EnvironmentDownloadCatalog.NormalizeUrl(definition.Key, value!)
                 : definition.DefaultUrl;
         }
         catch

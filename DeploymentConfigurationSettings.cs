@@ -39,7 +39,7 @@ internal static class DeploymentConfigurationSettings
                 element = new XElement("add", new XAttribute("key", setting.Key));
                 appSettings.Add(element);
             }
-            element.SetAttributeValue("value", setting.Value);
+            element.SetAttributeValue("value", EnvironmentDownloadCatalog.NormalizeUrl(setting.Key, setting.Value));
         }
         AtomicFile.WriteAllText(configFile, document.ToString());
     }

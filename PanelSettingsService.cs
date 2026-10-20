@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.IO;
-using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Win32;
@@ -301,9 +300,9 @@ public sealed class PanelSettingsService
 
     internal static string BuildSsmsInstallArguments(SsmsReleaseDefinition release)
     {
-        if (release.MajorVersion <= 18)
+        if (release.MajorVersion <= 20)
         {
-            // SSMS 18 uses the older Burn bootstrapper. Its documented
+            // SSMS 18 through 20 use the older Burn bootstrapper. Its documented
             // switches are slash-prefixed and the install root is a Burn
             // overridable variable, not the SSMS 21/22 --installPath option.
             return string.Join(" ",
@@ -316,6 +315,8 @@ public sealed class PanelSettingsService
             "--quiet",
             "--wait",
             "--norestart",
+            "--channelUri",
+            Compat.QuoteCommandLineArgument($"https://aka.ms/ssms/{release.MajorVersion}/release/channel"),
             "--installPath",
             Compat.QuoteCommandLineArgument(ComponentPaths.SsmsRoot),
             "--path",
@@ -336,41 +337,12 @@ public sealed class PanelSettingsService
         Directory.CreateDirectory(ComponentPaths.SsmsCacheRoot);
         var installer = Path.Combine(installerDirectory, release.CacheFileName);
 
-        if (!File.Exists(installer) || new FileInfo(installer).Length < 1024 * 1024)
+        // Reuse the component downloader's TLS setup, package/cache validation,
+        // atomic downloads and actionable, sanitized HTTP diagnostics.
+        using (var downloader = new EnvironmentInstaller())
         {
-            progress?.Invoke(new InstallProgress(0, $"正在连接微软下载服务器，准备下载 {release.DisplayName}..."));
-            using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
-            using var response = await client.GetAsync(
-                release.DownloadUrl,
-                HttpCompletionOption.ResponseHeadersRead,
-                cancellationToken);
-            var result = await DownloadService.SaveResponseAsync(
-                response,
-                installer,
-                snapshot =>
-                {
-                    var percent = snapshot.TotalBytes is > 0
-                        ? snapshot.BytesReceived * 70d / snapshot.TotalBytes.Value
-                        : 0d;
-                    var downloadedText = snapshot.TotalBytes is > 0
-                        ? $"{FormatStorageSize(snapshot.BytesReceived)} / {FormatStorageSize(snapshot.TotalBytes.Value)}"
-                        : FormatStorageSize(snapshot.BytesReceived);
-                    progress?.Invoke(new InstallProgress(
-                        Compat.Clamp(percent, 0, 70),
-                        $"正在下载 {release.DisplayName}：{downloadedText}，速度 {ProductTransferFormatting.FormatRate(snapshot.BytesPerSecond)}"));
-                },
-                cancellationToken: cancellationToken,
-                emptyFileMessage: "SQL Server Management Studio 下载文件为空。",
-                incompleteFileMessage: (expected, actual) =>
-                    $"SQL Server Management Studio 下载不完整：应为 {expected} 字节，实际 {actual} 字节。");
-
-            progress?.Invoke(new InstallProgress(
-                70,
-                $"{release.DisplayName} 下载完成，平均速度 {ProductTransferFormatting.FormatRate(result.AverageBytesPerSecond)}，正在启动安装..."));
-        }
-        else
-        {
-            progress?.Invoke(new InstallProgress(70, $"已找到 {release.DisplayName} 缓存安装包，正在启动安装..."));
+            await downloader.DownloadCoreAsync(release.DownloadUrl, installerDirectory,
+                release.CacheFileName, progress ?? (_ => { }), 0, 70, cancellationToken);
         }
 
         using var process = ProcessRunner.Start(

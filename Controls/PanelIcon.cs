@@ -79,6 +79,7 @@ internal static class PanelIconCatalog
             ["\uE895"] = "M12,15 V3 M7,8 L12,3 17,8 M4,16 V21 H20 V16", // Upload
             ["\uE774"] = "M21,12 A9,9 0 1 1 3,12 A9,9 0 1 1 21,12 M3,12 H21 M12,3 C6,8 6,16 12,21 C18,16 18,8 12,3", // Globe
             ["\uE70D"] = "M5,9 L12,16 19,9", // Chevron
+            ["\uE8AB"] = "M5,7 H19 V17 H5 Z M7,4 C11,0 19,2 20,6 M20,6 V2 M20,6 L16,5 M17,20 C13,24 5,22 4,18 M4,18 V22 M4,18 L8,19", // Flip card front/back
             ["\uE7AD"] = "M10,5 L3,12 10,19 M3,12 H21", // Back
             ["\uE70F"] = "M4,16 L16,4 20,8 8,20 3,21 Z M13,7 L17,11", // Edit
             ["\uE8C8"] = "M8,8 H21 V21 H8 Z M16,8 V3 H3 V16 H8", // Copy

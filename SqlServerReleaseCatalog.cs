@@ -52,6 +52,8 @@ internal static class SqlServerOsCompatibility
 {
     private static readonly Lazy<(WindowsSqlCompatibilityFamily Family, string DisplayName)> Current = new(DetectCurrent);
 
+    internal static WindowsSqlCompatibilityFamily CurrentFamily => Current.Value.Family;
+
     public static SqlServerOsSupport GetCurrentSupport(string releaseId)
     {
         var current = Current.Value;

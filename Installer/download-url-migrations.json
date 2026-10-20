@@ -1,0 +1,12 @@
+[
+  {
+    "Key": "Environment.SqlServer.Sql2017ExpressUrl",
+    "PreviousUrl": "https://download.microsoft.com/download/5/E/9/5E9B18CC-8FD5-467E-B5BF-BADE39C51F73/SQLServer2017-SSEI-Expr.exe",
+    "CurrentUrl": "https://go.microsoft.com/fwlink/?linkid=853017"
+  },
+  {
+    "Key": "Environment.SqlServer.Sql2022ExpressUrl",
+    "PreviousUrl": "https://download.microsoft.com/download/5/1/4/5145fe04-4d30-4b85-b0d1-39533663a2f1/SQL2022-SSEI-Expr.exe",
+    "CurrentUrl": "https://go.microsoft.com/fwlink/?linkid=2215160"
+  }
+]

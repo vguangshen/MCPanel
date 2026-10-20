@@ -1,3 +1,6 @@
+﻿using System.IO;
+using System.Text.Json;
+
 namespace MCPanel;
 
 /// <summary>
@@ -32,8 +35,8 @@ public static class EnvironmentDownloadCatalog
     public const string DefaultMySqlPackageUrl = "http://regservice.itmc.cn/down/mysql/mysql.zip";
     public const string DefaultSqlServer2025ExpressUrl = "https://download.microsoft.com/download/7ab8f535-7eb8-4b16-82eb-eca0fa2d38f3/SQL2025-SSEI-Expr.exe";
     public const string DefaultSqlServer2025EnterpriseDeveloperUrl = "https://aka.ms/sql2025EnterpriseDev";
-    public const string DefaultSqlServer2022ExpressUrl = "https://download.microsoft.com/download/5/1/4/5145fe04-4d30-4b85-b0d1-39533663a2f1/SQL2022-SSEI-Expr.exe";
-    public const string DefaultSqlServer2017ExpressUrl = "https://download.microsoft.com/download/5/E/9/5E9B18CC-8FD5-467E-B5BF-BADE39C51F73/SQLServer2017-SSEI-Expr.exe";
+    public const string DefaultSqlServer2022ExpressUrl = "https://go.microsoft.com/fwlink/?linkid=2215160";
+    public const string DefaultSqlServer2017ExpressUrl = "https://go.microsoft.com/fwlink/?linkid=853017";
     public const string DefaultSqlServer2012ExpressX64Url = "https://download.microsoft.com/download/b/d/e/bde8fad6-33e5-44f6-b714-348f73e602b6/SQLEXPR_x64_ENU.exe";
     public const string DefaultSqlServer2012ExpressX86Url = "https://download.microsoft.com/download/b/d/e/bde8fad6-33e5-44f6-b714-348f73e602b6/SQLEXPR_x86_ENU.exe";
     public const string DefaultSqlServer2008ExpressX64Url = "http://regservice.itmc.cn/down/SQLServer/SQLEXPR_2008_x64.exe";
@@ -58,7 +61,23 @@ public static class EnvironmentDownloadCatalog
         new(FrpPackageKey, "FRP", DefaultFrpPackageUrl, "x64")
     ];
 
+    private static readonly Lazy<IReadOnlyList<EnvironmentDownloadUrlMigration>> UrlMigrations = new(() =>
+    {
+        using var stream = typeof(EnvironmentDownloadCatalog).Assembly.GetManifestResourceStream("MCPanel.DownloadUrlMigrations.json")
+            ?? throw new InvalidOperationException("下载地址迁移信息缺失。");
+        using var reader = new StreamReader(stream);
+        return JsonSerializer.Deserialize<EnvironmentDownloadUrlMigration[]>(reader.ReadToEnd()) ?? [];
+    });
+
+    internal static IReadOnlyList<EnvironmentDownloadUrlMigration> Migrations => UrlMigrations.Value;
+
+    internal static string NormalizeUrl(string key, string value) => Migrations.FirstOrDefault(migration =>
+        string.Equals(migration.Key, key, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(migration.PreviousUrl, value.Trim(), StringComparison.OrdinalIgnoreCase))?.CurrentUrl ?? value;
+
     public static EnvironmentDownloadDefinition? Find(string? key) =>
         All.FirstOrDefault(definition =>
             string.Equals(definition.Key, key, StringComparison.OrdinalIgnoreCase));
 }
+
+internal sealed record EnvironmentDownloadUrlMigration(string Key, string PreviousUrl, string CurrentUrl);

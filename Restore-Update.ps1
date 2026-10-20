@@ -5,6 +5,20 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+function Get-RecoveryRelease([string]$ManifestJson) {
+    $manifest = $ManifestJson | ConvertFrom-Json
+    $version = [string]$manifest.version
+    $package = [string]$manifest.packageName
+    $sha256 = [string]$manifest.sha256
+    if ($manifest.format -ne 'mcpanel-github-release-v1' -or
+        $version -notmatch '^\d+\.\d+\.\d+(\.\d+)?$' -or
+        $package -cne "MCPanel-$version.zip" -or $sha256 -notmatch '^[a-fA-F0-9]{64}$') {
+        throw 'The latest MCPanel release manifest is invalid. No installed files were changed.'
+    }
+    # Bind every asset to this exact release, even if "latest" changes while downloading.
+    $baseUri = 'https://github.com/vguangshen/MCPanel/releases/download/v' + $version + '/'
+    return @{ Version = $version; PackageName = $package; PackageUrl = $baseUri + $package; ChecksumUrl = $baseUri + $package + '.sha256'; Sha256 = $sha256 }
+}
 function Get-RecoveryHash([string]$Path) {
     # Windows PowerShell's Get-FileHash internally evaluates ProviderPath using
     # a cmdlet affected by an inherited -WhatIf. Hash directly for safe previews.
@@ -34,15 +48,18 @@ $transactionLock = $null
 try {
     if ([string]::IsNullOrWhiteSpace($PackageFile)) {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        $PackageFile = Join-Path $temporary 'MCPanel-1.3.61.zip'
-        $release = 'https://github.com/vguangshen/MCPanel/releases/download/v1.3.61/'
-        Invoke-WebRequest -Uri ($release + 'MCPanel-1.3.61.zip.sha256') -OutFile ($PackageFile + '.sha256') -UseBasicParsing
-        Invoke-WebRequest -Uri ($release + 'MCPanel-1.3.61.zip') -OutFile $PackageFile -UseBasicParsing
+        $manifestFile = Join-Path $temporary 'update-manifest.json'
+        Invoke-WebRequest -Uri 'https://github.com/vguangshen/MCPanel/releases/latest/download/update-manifest.json' -OutFile $manifestFile -UseBasicParsing
+        $onlineRelease = Get-RecoveryRelease ([IO.File]::ReadAllText($manifestFile))
+        $PackageFile = Join-Path $temporary $onlineRelease.PackageName
+        Invoke-WebRequest -Uri $onlineRelease.ChecksumUrl -OutFile ($PackageFile + '.sha256') -UseBasicParsing
+        Invoke-WebRequest -Uri $onlineRelease.PackageUrl -OutFile $PackageFile -UseBasicParsing
     }
     $PackageFile = [IO.Path]::GetFullPath($PackageFile)
     $sidecar = $PackageFile + '.sha256'
     if (!(Test-Path -LiteralPath $sidecar -PathType Leaf)) { throw 'The package needs its matching .zip.sha256 file.' }
     $expected = ((Get-Content -LiteralPath $sidecar -Raw).Trim() -split '\s+')[0]
+    if ($onlineRelease -and $expected -ine $onlineRelease.Sha256) { throw 'The release manifest and package checksum disagree. No installed files were changed.' }
     if ($expected -notmatch '^[a-fA-F0-9]{64}$' -or (Get-RecoveryHash $PackageFile) -ine $expected) {
         throw 'Package SHA-256 verification failed. No installed files were changed.'
     }
@@ -79,6 +96,9 @@ try {
     if (!$configurationSource) { throw 'Original MCPanel.exe.config not found. Preserve StoreData and recover the original configuration before continuing.' }
     [xml]$oldConfiguration = Get-Content -LiteralPath $configurationSource -Raw -Encoding UTF8
     [xml]$newConfiguration = Get-Content -LiteralPath (Join-Path $payload 'MCPanel.exe.config') -Raw -Encoding UTF8
+    $urlMigrations = @()
+    $migrationFile = Join-Path $payload 'InstallerAssets\DownloadUrlMigrations.json'
+    if (Test-Path -LiteralPath $migrationFile) { $urlMigrations = Get-Content -LiteralPath $migrationFile -Raw -Encoding UTF8 | ConvertFrom-Json }
     foreach ($setting in $oldConfiguration.SelectNodes('/configuration/appSettings/add')) {
         $key = $setting.GetAttribute('key')
         if (@($layout.preservedAppSettingKeys) -notcontains $key) { continue }
@@ -93,7 +113,11 @@ try {
             $target.SetAttribute('key', $key)
             $appSettings.AppendChild($target) | Out-Null
         }
-        $target.SetAttribute('value', $setting.GetAttribute('value'))
+        $value = $setting.GetAttribute('value')
+        foreach ($migration in $urlMigrations) {
+            if ($key -ieq $migration.Key -and $value.Trim() -ieq $migration.PreviousUrl) { $value = $migration.CurrentUrl }
+        }
+        $target.SetAttribute('value', $value)
     }
     $newConfiguration.Save((Join-Path $payload 'MCPanel.exe.config'))
 

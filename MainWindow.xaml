@@ -67,7 +67,7 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="18,0,0,0">
-                    <Image Source="Assets/AppIcon/mcpanel-logo.png"
+                        <Image x:Name="MainBrandLogo" Source="pack://application:,,,/MCPanel;component/Assets/AppIcon/mcpanel-logo.png"
                            Width="42"
                            Height="42"
                            Stretch="Uniform"

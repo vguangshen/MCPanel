@@ -13,9 +13,9 @@
     <NoWarn>$(NoWarn);SYSLIB0039</NoWarn>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
-    <Version>1.3.63</Version>
-    <FileVersion>1.3.63.0</FileVersion>
-    <AssemblyVersion>1.3.63.0</AssemblyVersion>
+    <Version>1.3.64</Version>
+    <FileVersion>1.3.64.0</FileVersion>
+    <AssemblyVersion>1.3.64.0</AssemblyVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -56,7 +56,9 @@
     <None Update="Restore-Update.ps1" CopyToOutputDirectory="PreserveNewest" />
     <None Update="Uninstall-MCPanel.ps1" CopyToOutputDirectory="PreserveNewest" />
     <None Update="Installer\RuntimeCleanup.ps1" CopyToOutputDirectory="PreserveNewest" TargetPath="InstallerAssets\RuntimeCleanup.ps1" />
-    <Content Include="Assets\AppIcon\mcpanel-logo.png" CopyToOutputDirectory="PreserveNewest" TargetPath="InstallerAssets\Brand.png" />
+    <None Include="Assets\AppIcon\mcpanel-logo.png" Link="InstallerAssets\Brand.png" CopyToOutputDirectory="PreserveNewest" TargetPath="InstallerAssets\Brand.png" />
+    <EmbeddedResource Include="Installer\download-url-migrations.json" LogicalName="MCPanel.DownloadUrlMigrations.json" />
+    <None Update="Installer\download-url-migrations.json" CopyToOutputDirectory="PreserveNewest" TargetPath="InstallerAssets\DownloadUrlMigrations.json" />
     <EmbeddedResource Include="Installer\RuntimeCleanup.ps1" LogicalName="MCPanel.RuntimeCleanup.ps1" />
   </ItemGroup>
 

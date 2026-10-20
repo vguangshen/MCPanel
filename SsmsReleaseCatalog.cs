@@ -34,6 +34,7 @@ public sealed record SsmsReleaseRecommendation(
 public static class SsmsReleaseCatalog
 {
     public const string Ssms22Id = "22";
+    public const string Ssms2021Id = "20.2.1";
     public const string Ssms18121Id = "18.12.1";
 
     public static SsmsReleaseDefinition Ssms22 { get; } = new(
@@ -48,7 +49,14 @@ public static class SsmsReleaseCatalog
         "SSMS 18.12.1",
         "https://download.microsoft.com/download/8/a/8/8a8073d2-2e00-472b-9a18-88361d105915/SSMS-Setup-ENU.exe",
         18,
-        "兼容 SQL Server 2008 / 2012");
+        "适用于旧版 Windows；兼容 SQL Server 2008—2019");
+
+    public static SsmsReleaseDefinition Ssms2021 { get; } = new(
+        Ssms2021Id,
+        "SSMS 20.2.1",
+        "https://go.microsoft.com/fwlink/?linkid=2313753",
+        20,
+        "适用于 Windows 10 / Server 2016 及 SQL Server 2014—2022");
 
     public static SsmsReleaseRecommendation ResolveForInstalledSqlServer()
     {
@@ -58,7 +66,25 @@ public static class SsmsReleaseCatalog
 
     public static SsmsReleaseRecommendation ResolveForInstalledSqlServer(SqlServerInstallationInfo? sqlServer)
     {
-        return new(ResolveForSqlServerMajor(sqlServer?.MajorVersion), sqlServer);
+        return new(ResolveForPlatform(sqlServer?.MajorVersion, SqlServerOsCompatibility.CurrentFamily), sqlServer);
+    }
+
+    internal static SsmsReleaseDefinition ResolveForPlatform(int? sqlServerMajor, WindowsSqlCompatibilityFamily family)
+    {
+        if (sqlServerMajor is 10 or 11) return Ssms18121;
+        // Engine compatibility alone does not make the management client
+        // installable on the local Windows host. SSMS 21+ uses a newer shell.
+        return family switch
+        {
+            WindowsSqlCompatibilityFamily.Windows11 or
+            WindowsSqlCompatibilityFamily.WindowsServer2019 or
+            WindowsSqlCompatibilityFamily.WindowsServer2022 or
+            WindowsSqlCompatibilityFamily.WindowsServer2025 or
+            WindowsSqlCompatibilityFamily.Unknown => Ssms22,
+            WindowsSqlCompatibilityFamily.Windows10 or
+            WindowsSqlCompatibilityFamily.WindowsServer2016 => Ssms2021,
+            _ => Ssms18121
+        };
     }
 
     public static SsmsReleaseDefinition ResolveForSqlServerMajor(int? majorVersion)

@@ -93,6 +93,14 @@ foreach ($name in @($files | Sort-Object @{ Expression = { $_ -ieq 'MCPanel.exe'
 foreach ($name in $layout.preservedTopLevelNames) { $generated += '  PreservedNames.Add(' + (Pascal $name) + ');' }
 foreach ($key in $layout.preservedAppSettingKeys) { $generated += '  PreservedKeys.Add(' + (Pascal $key) + ');' }
 $generated += 'end;'
+# Native repair and managed online updates consume the same migration catalog.
+$generated += @('function NormalizeEnvironmentDownloadUrl(Key, Value: String): String;', 'begin', '  Result := Value;')
+$urlMigrations = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'Installer\download-url-migrations.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+foreach ($migration in $urlMigrations) {
+    $generated += '  if (CompareText(Key, ' + (Pascal $migration.Key) + ') = 0) and (CompareText(Trim(Value), ' + (Pascal $migration.PreviousUrl) + ') = 0) then Result := ' + (Pascal $migration.CurrentUrl) + ';'
+}
+$generated += 'end;'
+
 [IO.File]::WriteAllLines((Join-Path $work 'Layout.iss'), $generated, [Text.UTF8Encoding]::new($true))
 
 if (!$CompilerPath) {
