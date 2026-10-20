@@ -20,7 +20,7 @@
             <Grid>
                 <Grid.ColumnDefinitions><ColumnDefinition Width="58"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                 <Border Style="{StaticResource PanelModalIconBadge}">
-                    <TextBlock x:Name="IconText" Text="&#xE8D7;" FontFamily="Segoe MDL2 Assets" FontSize="21"
+                    <local:PanelIcon x:Name="IconText" Text="&#xE8D7;" FontSize="21"
                                Foreground="{DynamicResource DialogPrimaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Border>
                 <StackPanel Grid.Column="1" Margin="12,1,16,0" VerticalAlignment="Center">

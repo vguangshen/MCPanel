@@ -111,7 +111,7 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <Border Style="{StaticResource PanelModalIconBadge}">
-                    <TextBlock Text="&#xE968;" FontFamily="Segoe MDL2 Assets" FontSize="21"
+                    <local:PanelIcon Text="&#xE968;" FontSize="21"
                                Foreground="{DynamicResource DialogPrimaryBrush}"
                                HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Border>

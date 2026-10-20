@@ -25,8 +25,7 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <Border Style="{StaticResource PanelModalIconBadge}">
-                    <TextBlock x:Name="IconText"
-                               FontFamily="Segoe MDL2 Assets"
+                    <local:PanelIcon x:Name="IconText"
                                FontSize="22"
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center" />

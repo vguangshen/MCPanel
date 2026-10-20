@@ -86,6 +86,12 @@ UI tests use an explicit initialization option and a temporary queue data root t
 render the real window without starting installers, runtime synchronization, or
 startup registration. The public window constructor retains normal startup behavior.
 
+Application icons use local WPF vector paths in `Controls/PanelIcon.cs`, including
+navigation, title-bar controls, dialogs and queue actions. They render without an
+installed icon font or network access, including on Windows Server 2012. Size and
+theme colors are inherited from the existing controls; ordinary text and numeric
+download badges keep their normal UI font.
+
 The Account API page polls the authenticated `/health/live` endpoint without
 opening database connections. Use its database check button to run the existing
 `/health` diagnostic; results show their check time and expire after one minute.

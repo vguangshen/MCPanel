@@ -1,6 +1,7 @@
 <UserControl x:Class="MCPanel.AccountApiPage"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:MCPanel"
              FontFamily="Segoe UI, Microsoft YaHei UI"
              Focusable="True"
              KeyboardNavigation.TabNavigation="Local">
@@ -124,7 +125,7 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <Border Width="36" Height="36" CornerRadius="7" Background="{DynamicResource TonalBrush}" VerticalAlignment="Center">
-                    <TextBlock Text="&#xE8D4;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{DynamicResource TonalTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <local:PanelIcon Text="&#xE8D4;" FontSize="18" Foreground="{DynamicResource TonalTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Border>
                 <StackPanel Grid.Column="1" Margin="12,0,16,0" VerticalAlignment="Center">
                     <TextBlock Text="账号管理 API" Style="{DynamicResource SectionTitle}" FontSize="18" />

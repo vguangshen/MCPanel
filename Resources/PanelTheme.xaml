@@ -6,6 +6,11 @@
         <ResourceDictionary Source="PanelScrollbars.xaml" />
     </ResourceDictionary.MergedDictionaries>
 
+    <DataTemplate x:Key="PanelIconTemplate">
+        <local:PanelIcon Text="{Binding}" />
+    </DataTemplate>
+    <local:PanelIconTemplateSelector x:Key="PanelIconSelector" IconTemplate="{StaticResource PanelIconTemplate}" />
+
     <local:BoolToBrushConverter x:Key="BoolToBrush" TrueBrush="#188038" FalseBrush="#D93025" />
     <local:BoolToTextConverter x:Key="BoolToText" TrueText="运行中" FalseText="未运行" />
     <local:PercentToArcPointConverter x:Key="PercentToArcPoint" />
@@ -69,12 +74,12 @@
     </Style>
 
     <Style x:Key="TitleBarButton" TargetType="Button">
+        <Setter Property="ContentTemplateSelector" Value="{StaticResource PanelIconSelector}" />
         <Setter Property="Width" Value="44" />
         <Setter Property="Height" Value="40" />
         <Setter Property="Foreground" Value="White" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderBrush" Value="Transparent" />
-        <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
         <Setter Property="FontSize" Value="15" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
@@ -111,7 +116,7 @@
                                 <ColumnDefinition Width="34" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="{TemplateBinding Tag}" FontFamily="Segoe MDL2 Assets" FontSize="21" VerticalAlignment="Center" HorizontalAlignment="Center" />
+                            <local:PanelIcon Text="{TemplateBinding Tag}" FontSize="21" VerticalAlignment="Center" HorizontalAlignment="Center" />
                             <TextBlock Grid.Column="1" Text="{TemplateBinding Content}" VerticalAlignment="Center" Margin="12,0,0,0" TextTrimming="CharacterEllipsis" />
                         </Grid>
                     </Border>
@@ -277,6 +282,7 @@
     </Style>
 
     <Style x:Key="PrimaryButton" TargetType="Button">
+        <Setter Property="ContentTemplateSelector" Value="{StaticResource PanelIconSelector}" />
         <Setter Property="MinWidth" Value="82" />
         <Setter Property="Height" Value="36" />
         <Setter Property="Padding" Value="16,0" />
@@ -347,7 +353,6 @@
         <Setter Property="VerticalAlignment" Value="Center" />
         <Setter Property="Margin" Value="10,0,0,0" />
         <Setter Property="Padding" Value="0" />
-        <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
         <Setter Property="FontSize" Value="18" />
         <Setter Property="Template">
             <Setter.Value>
@@ -392,7 +397,6 @@
         <Setter Property="Padding" Value="0" />
         <Setter Property="BorderBrush" Value="Transparent" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
         <Setter Property="FontSize" Value="15" />
         <Setter Property="Template">
             <Setter.Value>
@@ -526,6 +530,7 @@
     </Style>
 
     <Style x:Key="WebsiteActionButton" TargetType="Button">
+        <Setter Property="ContentTemplateSelector" Value="{StaticResource PanelIconSelector}" />
         <Setter Property="Height" Value="34" />
         <Setter Property="MinWidth" Value="88" />
         <Setter Property="Padding" Value="14,0" />
@@ -635,6 +640,7 @@
     </Style>
 
     <Style x:Key="PathIconButton" TargetType="Button">
+        <Setter Property="ContentTemplateSelector" Value="{StaticResource PanelIconSelector}" />
         <Setter Property="Width" Value="24" />
         <Setter Property="Height" Value="24" />
         <Setter Property="MinWidth" Value="0" />
@@ -643,7 +649,6 @@
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Foreground" Value="{DynamicResource TonalTextBrush}" />
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
         <Setter Property="FontSize" Value="14" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
@@ -740,8 +745,7 @@
                                                       VerticalAlignment="Center"
                                                       HorizontalAlignment="Left"
                                                       TextElement.Foreground="{DynamicResource TextBrush}" />
-                                    <TextBlock Text="&#xE70D;"
-                                               FontFamily="Segoe MDL2 Assets"
+                                    <local:PanelIcon Text="&#xE70D;"
                                                FontSize="11"
                                                Foreground="{DynamicResource MutedBrush}"
                                                HorizontalAlignment="Right"

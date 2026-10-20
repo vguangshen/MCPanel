@@ -144,7 +144,7 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <Border Width="42" Height="42" CornerRadius="8" Background="{DynamicResource TonalBrush}" VerticalAlignment="Top">
-                    <TextBlock Text="&#xE774;" FontFamily="Segoe MDL2 Assets" FontSize="21"
+                    <local:PanelIcon Text="&#xE774;" FontSize="21"
                                Foreground="{DynamicResource TonalTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Border>
                 <StackPanel Grid.Column="1" Margin="0,0,18,0">
@@ -270,23 +270,21 @@
                         Style="{DynamicResource WebsiteManageButton}"
                         Click="InstalledProductManageToggle_Click">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="&#xE713;"
-                                   FontFamily="Segoe MDL2 Assets"
+                        <local:PanelIcon Text="&#xE713;"
                                    FontSize="13"
                                    Margin="0,1,8,0"
                                    VerticalAlignment="Center" />
                         <TextBlock Text="管理" VerticalAlignment="Center" />
-                        <TextBlock Text="&#xE70D;"
-                                   FontFamily="Segoe MDL2 Assets"
+                        <local:PanelIcon Text="&#xE70D;"
                                    FontSize="10"
                                    Margin="10,1,0,0"
                                    VerticalAlignment="Center"
                                    RenderTransformOrigin="0.5,0.5">
-                            <TextBlock.RenderTransform>
+                            <local:PanelIcon.RenderTransform>
                                 <RotateTransform Angle="0" />
-                            </TextBlock.RenderTransform>
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
+                            </local:PanelIcon.RenderTransform>
+                            <local:PanelIcon.Style>
+                                <Style TargetType="local:PanelIcon">
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding IsManagementExpanded}" Value="True">
                                             <DataTrigger.EnterActions>
@@ -318,8 +316,8 @@
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
+                            </local:PanelIcon.Style>
+                        </local:PanelIcon>
                     </StackPanel>
                 </Button>
 
@@ -598,8 +596,7 @@
                             <ColumnDefinition Width="24" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Text="&#xE8B7;"
-                                   FontFamily="Segoe MDL2 Assets"
+                        <local:PanelIcon Text="&#xE8B7;"
                                    FontSize="14"
                                    Foreground="{DynamicResource TonalTextBrush}"
                                    VerticalAlignment="Center" />
@@ -934,7 +931,6 @@
                             <Button Width="28" Height="28" Margin="0,0,8,0"
                                     MinWidth="0" Padding="0"
                                     Style="{DynamicResource EnvironmentTonalButton}"
-                                    FontFamily="Segoe MDL2 Assets"
                                     FontSize="13"
                                     Content="&#xE7AD;"
                                     ToolTip="查看管理信息"
@@ -1036,7 +1032,6 @@
                                 Width="32" Height="32"
                                 MinWidth="0" Padding="0" Margin="0"
                                 Style="{DynamicResource EnvironmentTonalButton}"
-                                FontFamily="Segoe MDL2 Assets"
                                 FontSize="13"
                                 Content="&#xE7AD;"
                                 ToolTip="返回管理"
@@ -1078,7 +1073,6 @@
                                                 MinWidth="0" Padding="0" Margin="0"
                                                 VerticalAlignment="Center"
                                                 Style="{DynamicResource EnvironmentTonalButton}"
-                                                FontFamily="Segoe MDL2 Assets"
                                                 FontSize="12"
                                                 Content="&#xE70F;"
                                                 ToolTip="{Binding EditToolTip}"
@@ -1089,7 +1083,6 @@
                                                 MinWidth="0" Padding="0" Margin="0"
                                                 VerticalAlignment="Center"
                                                 Style="{DynamicResource EnvironmentTonalButton}"
-                                                FontFamily="Segoe MDL2 Assets"
                                                 FontSize="12"
                                                 Content="&#xE8C8;"
                                                 ToolTip="复制"
@@ -1129,8 +1122,7 @@
                         </StackPanel>
                         <Button HorizontalAlignment="Right" VerticalAlignment="Top"
                                 Width="32" Height="32" MinWidth="0" Padding="0" Margin="0"
-                                Style="{DynamicResource EnvironmentTonalButton}"
-                                FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                Style="{DynamicResource EnvironmentTonalButton}" FontSize="13"
                                 Content="&#xE7AD;" ToolTip="返回管理"
                                 Click="EnvironmentCardFlip_Click" />
                     </Grid>
@@ -1164,8 +1156,7 @@
                                                      ToolTip="产品独立端口（9000-10000）" />
                                             <Button Grid.Column="2" Width="28" Height="28" MinWidth="0"
                                                     Padding="0" Margin="4,0,0,0" VerticalAlignment="Center"
-                                                    Style="{DynamicResource EnvironmentPrimaryButton}"
-                                                    FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                                    Style="{DynamicResource EnvironmentPrimaryButton}" FontSize="12"
                                                     Content="&#xE74E;" ToolTip="保存端口"
                                                     IsEnabled="{Binding CanSave}"
                                                     Click="TomcatPortSave_Click" />

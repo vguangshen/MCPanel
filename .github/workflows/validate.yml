@@ -88,3 +88,11 @@ jobs:
           name: native-installer-preview
           path: ${{ runner.temp }}/MCPanelInstallerPreview/installer.png
           if-no-files-found: ignore
+
+      - name: Upload vector icon previews
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: vector-icon-previews
+          path: artifacts/icons
+          if-no-files-found: ignore

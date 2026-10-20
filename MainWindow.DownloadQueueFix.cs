@@ -30,8 +30,8 @@ public partial class MainWindow
             return;
         }
 
-        // ProductToolbarIconButton intentionally uses Segoe MDL2 Assets for
-        // icon-only buttons. Keep the nested numeric badge on the normal UI font.
+        // The vector icon is independent of fonts; keep the nested numeric
+        // badge on the normal UI font.
         DownloadQueueButton.FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI");
 
         if (VisualTreeHelper.GetParent(DownloadQueueButton) is not Grid host)
