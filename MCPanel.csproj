@@ -13,9 +13,9 @@
     <NoWarn>$(NoWarn);SYSLIB0039</NoWarn>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
-    <Version>1.3.62</Version>
-    <FileVersion>1.3.62.0</FileVersion>
-    <AssemblyVersion>1.3.62.0</AssemblyVersion>
+    <Version>1.3.63</Version>
+    <FileVersion>1.3.63.0</FileVersion>
+    <AssemblyVersion>1.3.63.0</AssemblyVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -23,6 +23,7 @@
     <PackageReference Include="System.Text.Json" Version="10.0.9" />
     <PackageReference Include="MySqlConnector" Version="2.3.7" />
     <Reference Include="System.Net.Http" />
+    <Reference Include="Microsoft.CSharp" />
     <Reference Include="System.Configuration" />
     <Reference Include="System.Web" />
     <Reference Include="System.Web.Extensions" />
@@ -53,6 +54,10 @@
     <None Update="deployment-layout.json" CopyToOutputDirectory="PreserveNewest" />
     <None Update="Repair-Update.ps1" CopyToOutputDirectory="PreserveNewest" />
     <None Update="Restore-Update.ps1" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Uninstall-MCPanel.ps1" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Installer\RuntimeCleanup.ps1" CopyToOutputDirectory="PreserveNewest" TargetPath="InstallerAssets\RuntimeCleanup.ps1" />
+    <Content Include="Assets\AppIcon\mcpanel-logo.png" CopyToOutputDirectory="PreserveNewest" TargetPath="InstallerAssets\Brand.png" />
+    <EmbeddedResource Include="Installer\RuntimeCleanup.ps1" LogicalName="MCPanel.RuntimeCleanup.ps1" />
   </ItemGroup>
 
 </Project>

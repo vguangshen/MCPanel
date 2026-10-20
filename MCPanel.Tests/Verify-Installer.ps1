@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)][string]$InstallerFile,
     [Parameter(Mandatory = $true)][string]$PackageFile
 )
@@ -29,6 +29,29 @@ function Invoke-Setup([string]$Directory, [string]$Package = $PackageFile, [stri
         throw ('Expected the installer to stop without modifying the application: ' + $Directory)
     }
     return $exitCode
+}
+
+function Invoke-RegisteredUninstall([string]$Directory, [bool]$ExpectSuccess = $true) {
+    $registration = $null
+    foreach ($id in @('{4877D128-D808-4B6B-B4CB-D4D0476F5275}_is1', 'MCPanel.Setup.IntegrationTest_is1')) {
+        $key = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\' + $id
+        $entry = Get-ItemProperty -LiteralPath $key -ErrorAction SilentlyContinue
+        if ($entry -and $entry.InstallLocation.TrimEnd('\') -ieq $Directory.TrimEnd('\')) { $registration = $entry; break }
+    }
+    if (!$registration -or $registration.MCPanelUninstallProtocol -ne 2 -or $registration.UninstallString -notmatch '^"([^"]+)"\s+(.+)$') {
+        throw 'Windows Settings is not registered to the complete MCPanel uninstaller.'
+    }
+    $info = [Diagnostics.ProcessStartInfo]::new()
+    $info.FileName = $Matches[1]; $info.Arguments = $Matches[2] + ' -Silent'
+    $info.WorkingDirectory = [IO.Path]::GetTempPath(); $info.UseShellExecute = $false
+    $process = [Diagnostics.Process]::Start($info)
+    try {
+        if (!$process.WaitForExit(120000)) { $process.Kill(); throw 'Registered uninstall timed out.' }
+        if (($process.ExitCode -eq 0) -ne $ExpectSuccess) { throw ('Unexpected complete uninstall exit code: ' + $process.ExitCode) }
+    } finally { $process.Dispose() }
+    if ($ExpectSuccess -and ((Test-Path -LiteralPath $Directory) -or (Test-Path -LiteralPath $key))) {
+        throw 'Complete uninstall left its installation directory or Windows Settings entry.'
+    }
 }
 
 try {
@@ -95,22 +118,36 @@ try {
     $null = Invoke-Setup ([IO.Path]::GetPathRoot($root)) -ExpectedExitCode 1
     Write-Host 'Passed: invalid package hashes and drive-root targets are rejected.'
 
-    # Ownership is untrusted local metadata; it must never turn uninstall into
-    # deletion of settings, operational data or files outside the installation.
-    [IO.File]::AppendAllText((Join-Path $install 'Maintenance\program-files.lst'), "StoreData\keep.txt`r`nStoreData.\keep.txt`r`nStoreData \keep.txt`r`n..\outside.txt`r`nMCPanel.exe.config`r`nMCPanel.exe.config.`r`n")
-    [IO.File]::WriteAllText((Join-Path $root 'outside.txt'), 'keep outside installation')
-    $null = Invoke-Setup $install -Exe $uninstall
-    if (Test-Path -LiteralPath $executable) { throw 'Uninstaller left the main program installed.' }
-    if (!(Test-Path -LiteralPath $config) -or !(Test-Path -LiteralPath (Join-Path $root 'outside.txt'))) { throw 'Uninstaller removed configuration or outside data.' }
-    foreach ($name in @('StoreData', 'web', 'MySQL', 'Nginx', 'Diagnostics')) {
-        if ([IO.File]::ReadAllText((Join-Path $install ($name + '\keep.txt'))) -ne $name) { throw ('Uninstaller removed operational data: ' + $name) }
-    }
-    Write-Host 'Passed: uninstall removes only owned program files and preserves configuration, business data and outside files.'
+    & (Join-Path $PSScriptRoot 'Verify-InstallerUI.ps1') -UninstallRoot $install
+    # Upgrade the legacy ARP entry through the exact headless startup migration.
+    $registrationKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{4877D128-D808-4B6B-B4CB-D4D0476F5275}_is1'
+    Set-ItemProperty -LiteralPath $registrationKey -Name UninstallString -Value ('"' + $uninstall + '"')
+    $migration = Start-Process -FilePath $executable -ArgumentList '--register-uninstaller' -PassThru -Wait
+    if ($migration.ExitCode -ne 0 -or (Get-ItemProperty -LiteralPath $registrationKey).UninstallString -notlike '*Uninstall-MCPanel.ps1*') { throw 'Legacy online update did not migrate the uninstall entry.' }
+    $migration.Dispose()
+    Write-Host 'Passed: existing installations migrate their old native uninstall entry after an online update.'
+
+    $outside = Join-Path $root 'outside'
+    [IO.Directory]::CreateDirectory($outside) | Out-Null
+    [IO.File]::WriteAllText((Join-Path $outside 'keep.txt'), 'outside data')
+    $link = Join-Path $install 'web\external-link'
+    & cmd.exe /d /c ('mklink /J "' + $link + '" "' + $outside + '"') | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to create outside-directory junction fixture.' }
+    $readOnly = Join-Path $install 'Nginx\keep.txt'
+    [IO.File]::SetAttributes($readOnly, [IO.FileAttributes]::ReadOnly)
+    $handle = [IO.File]::Open((Join-Path $install 'StoreData\keep.txt'), [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    try { Invoke-RegisteredUninstall $install $false } finally { $handle.Dispose() }
+    if (!(Test-Path -LiteralPath $executable) -or !(Test-Path -LiteralPath (Join-Path $install 'Uninstall-MCPanel.ps1')) -or !(Test-Path -LiteralPath $registrationKey)) { throw 'A blocked uninstall removed the application or retry entry.' }
+    Write-Host 'Passed: a locked data file blocks uninstall before removing the application, and preserves a usable retry entry.'
+    Invoke-RegisteredUninstall $install
+    if ([IO.File]::ReadAllText((Join-Path $outside 'keep.txt')) -ne 'outside data') { throw 'Complete uninstall followed a junction outside the installation.' }
+    Write-Host 'Passed: Windows Settings uninstall removes the complete installation directory, readonly data and registration, while preserving junction targets outside it.'
 
     & (Join-Path $PSScriptRoot 'Verify-InstallerPrerequisites.ps1') -PackageFile $PackageFile -CaseRoot $root
     & (Join-Path $PSScriptRoot 'Verify-InstallerUI.ps1') -InstallerFile $InstallerFile -InstallDirectory (Join-Path $root 'preview')
 } finally {
     if (Test-Path -LiteralPath $root) {
+        Get-ChildItem -LiteralPath $root -Directory -Recurse -Force | Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint } | ForEach-Object { [IO.Directory]::Delete($_.FullName, $false) }
         Get-ChildItem -LiteralPath $root -File -Recurse -Force | ForEach-Object { $_.IsReadOnly = $false }
         Remove-Item -LiteralPath $root -Recurse -Force
     }

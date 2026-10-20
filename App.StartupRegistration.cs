@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 
 namespace MCPanel;
 
@@ -36,6 +36,8 @@ public partial class App
 
         return arguments.Any(argument =>
             string.Equals(argument, "--wait-update-plan", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(argument, "--apply-update", StringComparison.OrdinalIgnoreCase));
+            string.Equals(argument, "--apply-update", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(argument, InstallerRegistration.RegisterArgument, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(argument, InstallationCleanupWorker.Argument, StringComparison.OrdinalIgnoreCase));
     }
 }

@@ -1,4 +1,4 @@
-param([string]$PackageFile, [string]$CaseRoot)
+﻿param([string]$PackageFile, [string]$CaseRoot)
 
 $ErrorActionPreference = 'Stop'
 $project = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -82,7 +82,7 @@ try {
     if (($calls -join ',') -ne 'dotnet,vc') { throw 'Missing prerequisites were not installed in the expected order.' }
     if (!(Test-Path -LiteralPath (Join-Path $install 'MCPanel.exe'))) { throw 'Downloaded payload was not installed.' }
     Write-Host 'Passed: native HTTP download, checksum validation, missing .NET/VC++ installation order and application deployment.'
-    $null = Invoke-Setup $install -Exe (Join-Path $install 'Maintenance\unins000.exe')
+    Invoke-RegisteredUninstall $install
 
     $env:MCPANEL_SETUP_TEST_STATE = Join-Path $CaseRoot 'failure-state'
     $env:MCPANEL_SETUP_TEST_RUNTIME_EXIT = '1603'
@@ -105,7 +105,7 @@ try {
     $exitCode = Invoke-Setup $reboot -Package '' -Exe $testSetup -ExpectedExitCode 1 -ExtraArguments '/RESTARTEXITCODE=3010'
     if ($exitCode -ne 3010 -or !(Test-Path -LiteralPath (Join-Path $reboot 'MCPanel.exe'))) { throw 'Restart requirement was not propagated while honoring /NORESTART.' }
     Write-Host 'Passed: a prerequisite restart request installs the payload, reports 3010 and honors /NORESTART.'
-    $null = Invoke-Setup $reboot -Exe (Join-Path $reboot 'Maintenance\unins000.exe')
+    Invoke-RegisteredUninstall $reboot
 
     $env:MCPANEL_SETUP_TEST_RUNTIME_EXIT = '0'
     $late = Join-Path $CaseRoot 'late-failure'

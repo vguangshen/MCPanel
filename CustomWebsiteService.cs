@@ -49,6 +49,8 @@ public sealed class CustomWebsiteService
         return ReadAll(throwOnError: false);
     }
 
+    internal IReadOnlyList<CustomWebsiteDefinition> LoadAllForUninstall() => ReadAll(throwOnError: true);
+
     private static IReadOnlyList<CustomWebsiteDefinition> ReadAll(bool throwOnError)
     {
         try

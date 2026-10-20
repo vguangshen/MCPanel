@@ -52,6 +52,29 @@ public partial class App : Application
     {
         try
         {
+            if (e.Args.Contains(InstallerRegistration.RegisterArgument, StringComparer.OrdinalIgnoreCase))
+            {
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                InstallerRegistration.Refresh(ComponentPaths.ApplicationRoot.TrimEnd('\\'));
+                Shutdown(0);
+                return;
+            }
+            if (e.Args.Contains(InstallationCleanupWorker.Argument, StringComparer.OrdinalIgnoreCase))
+            {
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                Shutdown(await InstallationCleanupWorker.RunAsync(e.Args));
+                return;
+            }
+            if (!IsNonInteractiveLaunch(e.Args))
+            {
+                try
+                {
+                    using var uninstall = Mutex.OpenExisting("Local\\MCPanel.Uninstall.v2");
+                    Shutdown();
+                    return;
+                }
+                catch (WaitHandleCannotBeOpenedException) { }
+            }
             ComponentStorageMigration.MigrateLegacyData();
 
             if (NginxWindowsServiceHost.IsServiceRequest(e.Args))
@@ -156,6 +179,8 @@ public partial class App : Application
             }
 
             InitializeActivationListener();
+            try { await InstallerRegistration.EnsureCurrentAsync(); }
+            catch (Exception error) { WriteLifecycleError("更新完整卸载入口失败", error); }
             TryNormalizeStartupRegistration();
             try
             {
@@ -211,6 +236,7 @@ public partial class App : Application
         catch (Exception ex)
         {
             WriteLifecycleError("MCPanel 启动失败", ex);
+            if (!Dispatcher.HasShutdownStarted && IsNonInteractiveLaunch(e.Args)) { Shutdown(1); return; }
             if (!Dispatcher.HasShutdownStarted)
             {
                 MessageBox.Show(
