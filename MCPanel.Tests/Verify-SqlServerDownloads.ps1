@@ -11,15 +11,28 @@ if ($PSVersionTable.PSEdition -eq 'Core') {
 
 $root = Join-Path ([IO.Path]::GetTempPath()) ('MCPanelSqlMedia-' + [Guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($root) | Out-Null
-$assembly = [Reflection.Assembly]::LoadFrom((Join-Path $ApplicationDirectory 'MCPanel.exe'))
-$installerType = $assembly.GetType('MCPanel.EnvironmentInstaller', $true)
-$downloadMethod = $installerType.GetMethod('DownloadCoreAsync', [Reflection.BindingFlags]'Instance,NonPublic')
-$progressType = $assembly.GetType('MCPanel.InstallProgress', $true)
-$actionType = [Action``1].MakeGenericType($progressType)
-$parameter = [Linq.Expressions.Expression]::Parameter($progressType, 'progress')
-# A compiled no-op delegate works on the downloader's background continuation,
-# where PowerShell script-block delegates do not have a runspace.
-$progress = [Linq.Expressions.Expression]::Lambda($actionType, [Linq.Expressions.Expression]::Empty(), [Linq.Expressions.ParameterExpression[]]@($parameter)).Compile()
+$appExe = Join-Path $ApplicationDirectory 'MCPanel.exe'
+[void][Reflection.Assembly]::LoadFrom($appExe)
+# Keep reflection arguments and background callbacks in managed code. Windows
+# PowerShell wraps cmdlet strings in PSObject when constructing object arrays,
+# and script-block callbacks have no runspace on HttpClient continuations.
+Add-Type -ReferencedAssemblies @($appExe, 'System.Net.Http.dll', 'System.Core.dll') -TypeDefinition @'
+using System;
+using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
+public static class MCPanelSqlDownloadProbe {
+    public static string Download(string url, string directory, string file, int major) {
+        using (var installer = new MCPanel.EnvironmentInstaller()) {
+            var method = typeof(MCPanel.EnvironmentInstaller).GetMethod("DownloadCoreAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+            var task = (Task<string>)method.Invoke(installer, new object[] {
+                url, directory, file, new Action<MCPanel.InstallProgress>(p => {}), 0d, 100d, CancellationToken.None, (int?)major
+            });
+            return task.GetAwaiter().GetResult();
+        }
+    }
+}
+'@
 [xml]$config = Get-Content -LiteralPath (Join-Path $ApplicationDirectory 'MCPanel.exe.config') -Raw -Encoding UTF8
 
 function Assert-MicrosoftInstaller([string]$File, [int]$Major) {
@@ -38,11 +51,7 @@ try {
     )) {
         $url = [string]($config.configuration.appSettings.add | Where-Object key -eq $release.Key).value
         if (!$url) { throw "Missing shipped SQL Server URL: $($release.Key)" }
-        $installer = [Activator]::CreateInstance($installerType)
-        try {
-            $task = $downloadMethod.Invoke($installer, [object[]]@($url, $root, $release.File, $progress, [double]0, [double]100, [Threading.CancellationToken]::None, [int]$release.Major))
-            $bootstrapper = $task.GetAwaiter().GetResult()
-        } finally { $installer.Dispose() }
+        $bootstrapper = [MCPanelSqlDownloadProbe]::Download($url, $root, $release.File, $release.Major)
         Assert-MicrosoftInstaller $bootstrapper $release.Major
 
         # The reported Windows Server 2012 failure uses 2017. Verify its second
