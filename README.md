@@ -15,18 +15,22 @@ Close the panel from its system-tray menu before installing over an existing cop
 If component services hold the program open, stop those services before retrying.
 Repair/upgrade retains database and website data and merges original configuration,
 including recovery from a missing executable and an existing rollback snapshot.
-Uninstall removes owned panel files while retaining configuration and operational
-data; registered component services that depend on the panel must be handled
-before uninstalling it. In-app updates preserve the uninstaller and refresh its
-file-ownership manifest. The portable ZIP remains available as a separate asset.
+Windows Settings opens MCPanel's complete uninstaller. Its confirmation lists
+the managed components, databases, websites, configuration and caches that will
+be removed. Back up data before confirming complete uninstall. It stops/removes
+owned services, cleans owned startup entries/shortcuts/firewall rules, and removes
+the installation directory. Locked files or unsuccessful official component
+uninstallations stop cleanup and retain a usable retry entry. In-app updates and
+installer repair preserve operational data and configuration. The portable ZIP
+remains available as a separate asset.
 
 Build an installer for an existing version-matched release ZIP:
 
 ```powershell
-.\Build-OnlineInstaller.ps1 -PackageFile 'C:\MCPanel-1.3.62.zip'
+.\Build-OnlineInstaller.ps1 -PackageFile 'C:\MCPanel-1.3.64.zip'
 ```
 
-Pass `-PackageUrl 'https://downloads.example.com/MCPanel-1.3.62.zip'` to use your
+Pass `-PackageUrl 'https://downloads.example.com/MCPanel-1.3.64.zip'` to use your
 own HTTPS download site; serve the exact same ZIP. The generated native EXE pins
 that version and checksum. Its stable release asset name supports the download
 link above without changing website code for each release. `Installer/dependencies.json`
@@ -34,7 +38,7 @@ is the pinned source for runtime and compiler metadata. Chinese translation is
 vendored from the official Inno Setup 6.7.3 tag with its attribution.
 
 For offline administrative deployment, place the matching official ZIP on the
-computer and run `MCPanel-Setup.exe /PACKAGEFILE="C:\MCPanel-1.3.62.zip"`.
+computer and run `MCPanel-Setup.exe /PACKAGEFILE="C:\MCPanel-1.3.64.zip"`.
 Missing Microsoft runtime packages still require network access. Silent deployment
 supports standard Inno options such as `/VERYSILENT /NORESTART /DIR="D:\MCPanel"`.
 
@@ -199,13 +203,15 @@ atomic executable replacement; rollback never deletes untouched dependencies.
 
 Versions 1.3.58 through 1.3.60 run the updater from the installed version. For an
 installation whose executable/configuration is already missing, download
-`Restore-Update.ps1` from the 1.3.61 release and run it in administrator PowerShell:
+[Restore-Update.ps1](https://github.com/vguangshen/MCPanel/releases/latest/download/Restore-Update.ps1)
+from the latest public release and run it in administrator PowerShell:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\Downloads\Restore-Update.ps1" -InstallDirectory "D:\MCPanel"
 ```
 
-It downloads the pinned 1.3.61 package and verifies its SHA-256, restores the
+It reads the latest public release manifest, downloads that exact version's
+package, checks the manifest and sidecar SHA-256, and restores the
 program, and preserves original settings from the installation or rollback
 snapshot. Database/website data and rollback copies are retained. It never runs
 the old online updater or stops component services. Close the interactive panel
@@ -213,4 +219,4 @@ from its tray menu first. If a changed program file is locked, recovery reports
 the exact path before modifying installed files. Add `-WhatIf` for a preview.
 
 For offline recovery, place the official ZIP and its matching `.zip.sha256`
-sidecar together and add `-PackageFile 'C:\Downloads\MCPanel-1.3.61.zip'`.
+sidecar together and add `-PackageFile 'C:\Downloads\MCPanel-1.3.64.zip'`.
