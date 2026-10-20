@@ -192,6 +192,10 @@ public sealed partial class ReliabilityTests
     }
     private static byte[] RenderIconPixels(Visual visual)
     {
+        // Match the UI frame: changing an icon invalidates its drawing, then
+        // WPF arranges and redraws it before the next frame is captured.
+        if (visual is UIElement element) element.UpdateLayout();
+        visual.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
         var bitmap = new RenderTargetBitmap(24, 24, 96, 96, PixelFormats.Pbgra32);
         bitmap.Render(visual);
         return IconPixels(bitmap);
