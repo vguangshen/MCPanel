@@ -293,7 +293,8 @@ public sealed partial class ReliabilityTests
         StringAssert.Contains(serviceAction, "--init-file=$initFile");
         StringAssert.Contains(serviceAction, "SET PASSWORD FOR 'root'@'localhost' = PASSWORD");
         // The same executed maintenance shutdown cases cover this script.
-        StringAssert.Contains(serviceAction, "$mysqlRoots | Where-Object");
+        // Starting the service must preserve client/backup processes; this is
+        // executed in MySqlServiceStartDoesNotInterruptClientsOrBackups.
         StringAssert.Contains(serviceAction, "Name -in @('mysqld.exe', 'mysqld-itmc.exe')");
         Assert.IsFalse(serviceAction.Contains("$mysqlSearchRoots |", StringComparison.Ordinal));
         Assert.IsFalse(serviceAction.Contains("--skip-grant-tables", StringComparison.OrdinalIgnoreCase));

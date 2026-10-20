@@ -240,6 +240,41 @@ public sealed partial class ReliabilityTests
     }
 
     [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task MySqlServiceStartDoesNotInterruptClientsOrBackups(bool alreadyRunning)
+    {
+        var root = CreateTemporaryDirectory();
+        try
+        {
+            var source = Path.Combine(root, "start-mysql.ps1");
+            File.WriteAllText(source, EnvironmentRuntimeService.BuildMySqlServiceActionScript("start", "test.log", "test.result"), new UTF8Encoding(true));
+            var script = $$"""
+                $ErrorActionPreference = 'Stop'
+                $tokens=$null; $errors=$null
+                $ast = [Management.Automation.Language.Parser]::ParseFile('{{PsTestPath(source)}}', [ref]$tokens, [ref]$errors)
+                if ($errors.Count) { throw ($errors | Out-String) }
+                $function = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Start-MySqlService' }, $true)
+                . ([scriptblock]::Create($function.Extent.Text))
+                $script:started = 0
+                function Get-MySqlPaths { return [pscustomobject]@{ Root = 'owned-runtime' } }
+                function Get-Service { return [pscustomobject]@{ Status = '{{(alreadyRunning ? "Running" : "Stopped")}}' } }
+                function Stop-StoreDataMySqlClients { throw 'Client cleanup must not run during service startup.' }
+                function Stop-Process { throw 'Starting MySQL must not terminate a client or backup.' }
+                function sc.exe {
+                    if ($args[0] -ne 'config') { throw 'Unexpected native service action.' }
+                }
+                function Start-Service { $script:started++ }
+                function Wait-ServiceState { return $script:started -eq 1 }
+                $result = @(Start-MySqlService)
+                if ($result[-1].Root -ne 'owned-runtime' -or $script:started -ne {{(alreadyRunning ? 0 : 1)}}) { throw 'Wrong service startup result.' }
+                """;
+            AssertPowerShellSuccess(await RunUninstallScriptTestAsync(root, script));
+        }
+        finally { DeleteTemporaryTree(root); }
+    }
+
+    [DataTestMethod]
     [DataRow(false, false)]
     [DataRow(true, false)]
     [DataRow(false, true)]
