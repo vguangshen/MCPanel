@@ -88,6 +88,7 @@ public sealed partial class ReliabilityTests
         if (!ProcessRunner.IsAdministrator()) Assert.Inconclusive("This ACL integration test needs an administrator token.");
         var root = CreateTemporaryDirectory();
         var denied = Path.Combine(root, "component", "ajp_temp");
+        var link = Path.Combine(denied, "linked-cache");
         DirectorySecurity? original = null;
         try
         {
@@ -97,7 +98,7 @@ public sealed partial class ReliabilityTests
             File.WriteAllText(Path.Combine(sibling, "keep.txt"), "other component");
             var siblingAcl = Directory.GetAccessControl(sibling).GetSecurityDescriptorSddlForm(AccessControlSections.Access);
             var linked = ProcessRunner.RunSynchronously("cmd.exe",
-                $"/d /c mklink /J {Compat.QuoteCommandLineArgument(Path.Combine(denied, "linked-cache"))} {Compat.QuoteCommandLineArgument(sibling)}",
+                $"/d /c mklink /J {Compat.QuoteCommandLineArgument(link)} {Compat.QuoteCommandLineArgument(sibling)}",
                 root, captureOutput: true, timeout: TimeSpan.FromSeconds(10));
             Assert.AreEqual(0, linked.ExitCode, linked.StandardOutput + linked.StandardError);
             original = Directory.GetAccessControl(denied);
@@ -122,6 +123,7 @@ public sealed partial class ReliabilityTests
                     AccessControlSections.Access);
                 Directory.SetAccessControl(denied, restored);
             }
+            if (Directory.Exists(link)) Directory.Delete(link, recursive: false);
             DeleteRuntimeUninstallTestTree(root);
         }
     }
@@ -187,6 +189,36 @@ public sealed partial class ReliabilityTests
             Assert.IsFalse(File.Exists(events));
         }
         finally { DeleteRuntimeUninstallTestTree(work); }
+    }
+
+    [TestMethod]
+    public async Task RuntimeUninstallProcessProbeFindsOnlyProcessesInsideRequestedRoot()
+    {
+        var work = CreateTemporaryDirectory();
+        using var process = Process.Start(new ProcessStartInfo
+        {
+            FileName = Path.Combine(Environment.SystemDirectory, "cmd.exe"),
+            Arguments = "/d /c set /p MCPanelUninstallProbe=",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardInput = true
+        });
+        Assert.IsNotNull(process);
+        try
+        {
+            AssertPowerShellSuccess(await RunRuntimeCleanupTestAsync(work, $$"""
+                $matching = @(Get-ComponentProcesses '{{PsTestPath(Environment.SystemDirectory)}}' @('cmd.exe') | Where-Object { $_.ProcessId -eq {{process!.Id}} })
+                if ($matching.Count -ne 1) { throw 'The framework WMI probe did not find the known process.' }
+                $outside = @(Get-ComponentProcesses '{{PsTestPath(work)}}' @('cmd.exe') | Where-Object { $_.ProcessId -eq {{process.Id}} })
+                if ($outside.Count -ne 0) { throw 'The process probe escaped the requested root.' }
+                """));
+        }
+        finally
+        {
+            process!.StandardInput.Close();
+            if (!process.WaitForExit(5000)) process.Kill();
+            DeleteRuntimeUninstallTestTree(work);
+        }
     }
 
     [TestMethod]

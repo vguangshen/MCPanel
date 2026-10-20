@@ -152,6 +152,7 @@ public sealed partial class EnvironmentRuntimeService
     // recursive Remove-Item and recursive ACL changes, particularly at junctions.
     internal const string RuntimeUninstallFunctions = """
         Add-Type -AssemblyName System.ServiceProcess
+        Add-Type -AssemblyName System.Management
         function Get-ComponentService($name) {
             # PowerShell can silently return null for a failing .NET property
             # getter. Native exit codes distinguish absent from inaccessible.
@@ -242,8 +243,26 @@ public sealed partial class EnvironmentRuntimeService
         function Get-ComponentProcesses($root, $names) {
             $filter = ($names | ForEach-Object { "Name='$_'" }) -join ' OR '
             # Failure to enumerate must not be treated as proof that it stopped.
-            Get-CimInstance Win32_Process -Filter $filter -ErrorAction Stop | Where-Object {
-                $_.ExecutablePath -and (Test-PathUnderRoot $_.ExecutablePath $root)
+            # Use the framework WMI API, without depending on a PowerShell
+            # module chosen from an inherited PowerShell 7 PSModulePath.
+            $searcher = New-Object System.Management.ManagementObjectSearcher('SELECT ProcessId, ExecutablePath FROM Win32_Process WHERE ' + $filter)
+            $searcher.Scope.Options.EnablePrivileges = $true
+            $processes = $null
+            try {
+                $processes = $searcher.Get()
+                foreach ($process in $processes) {
+                    try {
+                        $executable = $process['ExecutablePath']
+                        if ($executable -and (Test-PathUnderRoot $executable $root)) {
+                            [pscustomobject]@{ ProcessId = $process['ProcessId']; ExecutablePath = $executable }
+                        }
+                    }
+                    finally { $process.Dispose() }
+                }
+            }
+            finally {
+                if ($null -ne $processes) { $processes.Dispose() }
+                $searcher.Dispose()
             }
         }
 
@@ -271,7 +290,9 @@ public sealed partial class EnvironmentRuntimeService
             & takeown.exe /F $path /A | Write-Output
             if ($LASTEXITCODE -ne 0) { throw ('无法取得组件文件权限：' + $path) }
             $global:LASTEXITCODE = 0
-            $acl = Get-Acl -LiteralPath $path -ErrorAction Stop
+            $isDirectory = (([IO.File]::GetAttributes($path) -band [IO.FileAttributes]::Directory) -ne 0)
+            if ($isDirectory) { $acl = [IO.Directory]::GetAccessControl($path) }
+            else { $acl = [IO.File]::GetAccessControl($path) }
             # Preserve existing inheritable allow rules for child entries.
             $acl.SetAccessRuleProtection($true, $true)
             foreach ($rule in @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))) {
@@ -284,7 +305,8 @@ public sealed partial class EnvironmentRuntimeService
             }
             # Only the failing entry receives a replacement ACL, never its
             # descendants, siblings, shared roots or a junction's target.
-            Set-Acl -LiteralPath $path -AclObject $acl -ErrorAction Stop
+            if ($isDirectory) { [IO.Directory]::SetAccessControl($path, $acl) }
+            else { [IO.File]::SetAccessControl($path, $acl) }
         }
 
         function Remove-ComponentEntry($path, $isRoot) {
