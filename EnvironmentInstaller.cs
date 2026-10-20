@@ -612,13 +612,22 @@ public sealed partial class EnvironmentInstaller : IDisposable
             Action<string, string>? moveDirectory = null)
         {
             moveDirectory ??= Directory.Move;
+            var stagedPrefix = Path.GetFullPath(stagedRoot).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            if ((Path.GetFullPath(rollbackBaseRoot).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar)
+                .StartsWith(stagedPrefix, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("MySQL 回滚目录不能位于待启用的运行目录中。");
             var rollbackDirectory = Path.Combine(rollbackBaseRoot, ".mysql-rollback");
             Directory.CreateDirectory(rollbackDirectory);
             var backupRoot = Path.Combine(rollbackDirectory, $"mysql.{Guid.NewGuid():N}");
 
             if (Directory.Exists(targetRoot))
             {
-                moveDirectory(targetRoot, backupRoot);
+                try { moveDirectory(targetRoot, backupRoot); }
+                catch
+                {
+                    if (!Directory.Exists(backupRoot)) DeleteDirectoryBestEffort(stagingContainer);
+                    throw;
+                }
             }
 
             var dataTransferred = false;

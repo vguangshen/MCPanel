@@ -39,11 +39,12 @@ public sealed partial class EnvironmentInstaller
         try
         {
             Directory.CreateDirectory(stagingContainer);
+            var extractionRoot = Path.Combine(stagingContainer, "payload");
             progress(InstallingProgress(65, $"正在暂存并校验 {release.DisplayName} 安装包...", 0));
-            await ExtractZipAsync(archive, stagingContainer, cancellationToken);
-            var stagedMySqlExe = Directory.GetFiles(stagingContainer, "mysql.exe", SearchOption.AllDirectories)
+            await ExtractZipAsync(archive, extractionRoot, cancellationToken);
+            var stagedMySqlExe = Directory.GetFiles(extractionRoot, "mysql.exe", SearchOption.AllDirectories)
                 .FirstOrDefault(path => path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase));
-            var stagedMysqldExe = Directory.GetFiles(stagingContainer, "mysqld*.exe", SearchOption.AllDirectories)
+            var stagedMysqldExe = Directory.GetFiles(extractionRoot, "mysqld*.exe", SearchOption.AllDirectories)
                 .FirstOrDefault(path => Path.GetFileName(path).Equals("mysqld.exe", StringComparison.OrdinalIgnoreCase) || Path.GetFileName(path).Equals("mysqld-itmc.exe", StringComparison.OrdinalIgnoreCase));
             if (stagedMySqlExe is null || stagedMysqldExe is null)
             {
@@ -84,7 +85,6 @@ public sealed partial class EnvironmentInstaller
                 await RunElevatedPowerShellAsync(script, progress, 48, 95, cancellationToken, requireExistingAdministrator: true);
                 MySqlCredentialStore.Save(credentials);
                 runtimeTransaction.Complete();
-                progress(InstallingProgress(100, $"{release.DisplayName} 已安装到 {mysqlRoot}。连接信息：127.0.0.1:{credentials.Port}，账号 root。"));
             }
             catch (Exception error)
             {
@@ -99,6 +99,7 @@ public sealed partial class EnvironmentInstaller
                 runtimeTransaction.Rollback();
                 throw;
             }
+            progress(InstallingProgress(100, $"{release.DisplayName} 已安装到 {mysqlRoot}。连接信息：127.0.0.1:{credentials.Port}，账号 root。"));
         }
         finally
         {
@@ -318,16 +319,20 @@ public sealed partial class EnvironmentInstaller
                 return $code -eq 0
             }
 
-            function Stop-TemporaryMySqlProcess($process) {
+            function Stop-TemporaryMySqlProcess($process, $seconds = 90) {
                 if (!$process -or $process.HasExited) { return }
-                Invoke-NativeQuiet $mysql @('-h127.0.0.1', '-P{{mysqlPort}}', '-uroot', "-p$rootPassword", '-e', 'SHUTDOWN;') | Out-Null
-                for ($i = 0; $i -lt 30; $i++) {
+                # mysqladmin shutdown also supports 5.6, whose SQL grammar
+                # does not yet accept the SHUTDOWN statement.
+                $mysqlAdmin = Join-Path ([IO.Path]::GetDirectoryName($mysql)) 'mysqladmin.exe'
+                if (-not (Test-Path -LiteralPath $mysqlAdmin)) { throw '缺少 mysqladmin.exe，无法安全停止数据库维护进程。' }
+                Invoke-NativeQuiet $mysqlAdmin @('--connect-timeout=10', '--shutdown-timeout=90', '-h127.0.0.1', '-P{{mysqlPort}}', '-uroot', "-p$rootPassword", 'shutdown') | Out-Null
+                $deadline = [DateTime]::UtcNow.AddSeconds($seconds)
+                while ([DateTime]::UtcNow -lt $deadline) {
                     if ($process.HasExited) { return }
-                    Start-Sleep -Milliseconds 500
+                    Start-Sleep -Milliseconds 250
                 }
                 if (-not $process.HasExited) {
-                    Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-                    Start-Sleep -Seconds 2
+                    throw 'MySQL 维护进程未能正常关闭，已保留数据库文件，请正常停止后重试。'
                 }
             }
 
@@ -364,8 +369,8 @@ public sealed partial class EnvironmentInstaller
                 }
                 catch { $failure = $_.Exception.Message }
                 finally {
-                    Stop-TemporaryMySqlProcess $proc
-                    Remove-Item -LiteralPath $initFile -Force -ErrorAction SilentlyContinue
+                    try { Stop-TemporaryMySqlProcess $proc }
+                    finally { Remove-Item -LiteralPath $initFile -Force -ErrorAction SilentlyContinue }
                 }
 
                 if (!$updated) {

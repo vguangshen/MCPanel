@@ -1,5 +1,15 @@
 $ErrorActionPreference = 'Stop'
 
+function Get-MCPanelSqlCertificates {
+    # Do not depend on Cert: or an inherited PowerShell module search path.
+    $store = New-Object Security.Cryptography.X509Certificates.X509Store('My', 'LocalMachine')
+    try {
+        $store.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadOnly)
+        return $store.Certificates
+    }
+    finally { $store.Close() }
+}
+
 function New-MCPanelSqlCertificate {
     # certreq's self-signed RequestType=Cert is documented for Server 2012.
     # The older New-SelfSignedCertificate lacks the provider/key-spec options
@@ -36,8 +46,8 @@ ValidityPeriodUnits=5
         if ($LASTEXITCODE -ne 0) { throw ('创建 SQL Server 本机证书失败，certreq 退出码：' + $LASTEXITCODE) }
         $public = New-Object Security.Cryptography.X509Certificates.X509Certificate2($cerPath)
         try { $thumbprint = $public.Thumbprint } finally { $public.Reset() }
-        $certificate = Get-Item -LiteralPath ('Cert:\LocalMachine\My\' + $thumbprint) -ErrorAction Stop
-        if (-not $certificate.HasPrivateKey -or -not $certificate.PrivateKey -or
+        $certificate = Get-MCPanelSqlCertificates | Where-Object { $_.Thumbprint -eq $thumbprint } | Select-Object -First 1
+        if (-not $certificate -or -not $certificate.HasPrivateKey -or -not $certificate.PrivateKey -or
             $certificate.PrivateKey.CspKeyContainerInfo.KeyNumber -ne 'Exchange') {
             throw '本机证书没有 SQL Server 所需的 RSA KeyExchange 私钥。'
         }
@@ -97,14 +107,14 @@ try {
     $reg = "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\$instance\MSSQLServer\SuperSocketNetLib"
     $current = ((Get-ItemProperty -LiteralPath $reg -ErrorAction Stop).Certificate + '').Trim()
     if ($current) {
-        $configured = Get-Item -LiteralPath ('Cert:\LocalMachine\My\' + $current) -ErrorAction SilentlyContinue
+        $configured = Get-MCPanelSqlCertificates | Where-Object { $_.Thumbprint -eq $current } | Select-Object -First 1
         if (-not $configured -or $configured.FriendlyName -ne 'MCPanel SQL Server Local Certificate') {
             Write-Output 'SQL Server 已配置管理员指定的证书，保持原配置。'
             exit 0
         }
     }
     $sid = Get-MCPanelSqlServiceSid
-    $cert = Get-ChildItem Cert:\LocalMachine\My | Where-Object {
+    $cert = Get-MCPanelSqlCertificates | Where-Object {
         $_.Subject -eq 'CN=localhost' -and $_.FriendlyName -eq 'MCPanel SQL Server Local Certificate' -and
         $_.NotBefore -le (Get-Date) -and $_.NotAfter -gt (Get-Date).AddDays(30) -and
         $_.HasPrivateKey -and $_.PrivateKey -and $_.PrivateKey.CspKeyContainerInfo.KeyNumber -eq 'Exchange'
@@ -120,7 +130,7 @@ try {
     $store = New-Object Security.Cryptography.X509Certificates.X509Store('Root', 'LocalMachine')
     try {
         $store.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
-        $public = New-Object Security.Cryptography.X509Certificates.X509Certificate2(,$cert.RawData)
+        $public = New-Object -TypeName Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList (,$cert.RawData)
         try { $store.Add($public) } finally { $public.Reset() }
     }
     finally { $store.Close() }

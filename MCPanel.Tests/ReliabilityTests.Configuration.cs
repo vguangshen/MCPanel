@@ -768,7 +768,8 @@ public sealed partial class ReliabilityTests
             Assert.IsFalse(scripts[2].Text.Contains("$deleteTargets", StringComparison.Ordinal));
             StringAssert.Contains(scripts[3].Text, "--bind-address=127.0.0.1");
             Assert.IsFalse(scripts[3].Text.Contains("--skip-networking=0", StringComparison.OrdinalIgnoreCase));
-            StringAssert.Contains(scripts[4].Text, "Name -in @('mysqld.exe', 'mysqld-itmc.exe')");
+            // MySQL preparation ownership and shutdown behavior are covered by
+            // MySqlReinstallRequiresAConfirmedCleanShutdown's executed scripts.
         }
         finally
         {

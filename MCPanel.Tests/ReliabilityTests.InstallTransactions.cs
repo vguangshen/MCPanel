@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -166,6 +167,22 @@ public sealed partial class ReliabilityTests
         finally { DeleteTemporaryTree(root); }
     }
 
+    [TestMethod]
+    public void MySqlRejectsBackupInsideThePayloadBeforeMovingAnExistingDatabase()
+    {
+        var root = CreateTemporaryDirectory();
+        try
+        {
+            var live = Directory.CreateDirectory(Path.Combine(root, "MySQL")).FullName;
+            File.WriteAllText(Path.Combine(live, "keep.ibd"), "database");
+            var staging = Directory.CreateDirectory(Path.Combine(root, "staging")).FullName;
+            Assert.ThrowsException<InvalidOperationException>(() => EnvironmentInstaller.MySqlRuntimeTransaction.Commit(
+                staging, staging, live, Path.Combine(staging, "rollback")));
+            Assert.AreEqual("database", File.ReadAllText(Path.Combine(live, "keep.ibd")));
+        }
+        finally { DeleteTemporaryTree(root); }
+    }
+
     [DataTestMethod]
     [DataRow("success")]
     [DataRow("prefix-sibling")]
@@ -212,6 +229,45 @@ public sealed partial class ReliabilityTests
             var expected = scenario == "prefix-sibling" ? Array.Empty<string>() :
                 scenario is "stop-failure" or "process-alive" ? new[] { "stop" } : new[] { "stop", "remove" };
             CollectionAssert.AreEqual(expected, calls);
+        }
+        finally { DeleteTemporaryTree(root); }
+    }
+
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task MySqlMaintenanceUsesLegacyCompatibleShutdownAndNeverForceKills(bool remainsRunning)
+    {
+        var root = CreateTemporaryDirectory();
+        try
+        {
+            var mysql = Path.Combine(root, "mysql.exe");
+            File.WriteAllText(Path.Combine(root, "mysqladmin.exe"), "mock administrative client");
+            var source = Path.Combine(root, "install.ps1");
+            File.WriteAllText(source, EnvironmentInstaller.BuildMySqlScript(root, Path.Combine(root, "mysqld.exe"), mysql, "test-only"), new UTF8Encoding(true));
+            var script = $$"""
+                $ErrorActionPreference = 'Stop'
+                $tokens=$null; $errors=$null
+                $ast = [Management.Automation.Language.Parser]::ParseFile('{{PsTestPath(source)}}', [ref]$tokens, [ref]$errors)
+                if ($errors.Count) { throw ($errors | Out-String) }
+                $function = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Stop-TemporaryMySqlProcess' }, $true)
+                . ([scriptblock]::Create($function.Extent.Text))
+                $mysql = '{{PsTestPath(mysql)}}'; $rootPassword = 'test-only'
+                $script:process = [pscustomobject]@{ HasExited = $false; Id = 123 }
+                $script:called = $false
+                function Stop-Process { throw 'A database must not be force-killed.' }
+                function Invoke-NativeQuiet($file, [string[]]$arguments) {
+                    if ([IO.Path]::GetFileName($file) -ne 'mysqladmin.exe' -or $arguments[-1] -ne 'shutdown') { throw 'Wrong shutdown client/command.' }
+                    $script:called = $true
+                    $script:process.HasExited = ${{(!remainsRunning).ToString().ToLowerInvariant()}}
+                    return 0
+                }
+                $failed = $false
+                try { Stop-TemporaryMySqlProcess $script:process 0 } catch { $failed = $true }
+                if (-not $script:called -or $failed -ne ${{remainsRunning.ToString().ToLowerInvariant()}}) { throw 'Unsafe maintenance shutdown result.' }
+                """;
+            var result = await RunUninstallScriptTestAsync(root, script);
+            Assert.AreEqual(0, result.ExitCode, result.CombinedOutput);
         }
         finally { DeleteTemporaryTree(root); }
     }
