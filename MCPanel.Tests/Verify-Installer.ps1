@@ -139,12 +139,62 @@ try {
     try { Invoke-RegisteredUninstall $install $false } finally { $handle.Dispose() }
     if (!(Test-Path -LiteralPath $executable) -or !(Test-Path -LiteralPath (Join-Path $install 'Uninstall-MCPanel.ps1')) -or !(Test-Path -LiteralPath $registrationKey)) { throw 'A blocked uninstall removed the application or retry entry.' }
     Write-Host 'Passed: a locked data file blocks uninstall before removing the application, and preserves a usable retry entry.'
-    Invoke-RegisteredUninstall $install
+    # Exercise a running service whose executable is locked until SCM stops it.
+    $serviceName = 'MCPanelFullUninstallTest' + [Guid]::NewGuid().ToString('N')
+    $serviceRoot = Join-Path $install 'Runtime\UninstallFixture'
+    [IO.Directory]::CreateDirectory($serviceRoot) | Out-Null
+    $serviceSource = Join-Path $root 'UninstallService.cs'
+    [IO.File]::WriteAllText($serviceSource, @'
+using System.ServiceProcess;
+class Fixture : ServiceBase {
+    Fixture(string name) { ServiceName = name; }
+    protected override void OnStart(string[] arguments) { }
+    protected override void OnStop() { }
+    static void Main(string[] arguments) { Run(new Fixture(arguments[0])); }
+}
+'@)
+    $serviceExe = Join-Path $serviceRoot 'MCPanel.UninstallServiceFixture.exe'
+    & (Join-Path $env:WINDIR 'Microsoft.NET\Framework\v4.0.30319\csc.exe') /nologo /target:winexe /reference:System.ServiceProcess.dll ('/out:' + $serviceExe) $serviceSource
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to compile running service uninstall fixture.' }
+    & sc.exe create $serviceName binPath= ('"' + $serviceExe + '" ' + $serviceName) start= demand | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to register running service uninstall fixture.' }
+    & sc.exe start $serviceName | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to start running service uninstall fixture.' }
+    $run = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Software\Microsoft\Windows\CurrentVersion\Run')
+    try { $run.SetValue('MCPanel', '"' + $executable + '" --tray') } finally { $run.Dispose() }
+    $firewall = New-Object -ComObject HNetCfg.FwPolicy2
+    $ruleName = 'MCPanel Uninstall Fixture ' + [Guid]::NewGuid().ToString('N')
+    $rule = New-Object -ComObject HNetCfg.FWRule
+    $rule.Name = $ruleName; $rule.ApplicationName = $serviceExe; $rule.Direction = 1; $rule.Action = 1; $rule.Enabled = $false
+    $firewall.Rules.Add($rule)
+    [void][Runtime.InteropServices.Marshal]::ReleaseComObject($rule)
+    try {
+        Invoke-RegisteredUninstall $install
+        & sc.exe query $serviceName | Out-Null
+        if ($LASTEXITCODE -ne 1060) { throw 'Complete uninstall left a managed service registered.' }
+        $global:LASTEXITCODE = 0
+        $run = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\Microsoft\Windows\CurrentVersion\Run')
+        try { if ($run -and $run.GetValue('MCPanel')) { throw 'Complete uninstall left its startup entry.' } } finally { if ($run) { $run.Dispose() } }
+        if (@($firewall.Rules | Where-Object Name -eq $ruleName).Count -gt 0) { throw 'Complete uninstall left its program firewall rule.' }
+        foreach ($shortcut in @((Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'MCPanel\MCPanel.lnk'), (Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'MCPanel.lnk'))) {
+            if (Test-Path -LiteralPath $shortcut) { throw ('Complete uninstall left its shortcut: ' + $shortcut) }
+        }
+    } finally {
+        & sc.exe stop $serviceName 2>&1 | Out-Null
+        & sc.exe delete $serviceName 2>&1 | Out-Null
+        $global:LASTEXITCODE = 0
+        try { $firewall.Rules.Remove($ruleName) } catch { }
+        [void][Runtime.InteropServices.Marshal]::ReleaseComObject($firewall)
+    }
     if ([IO.File]::ReadAllText((Join-Path $outside 'keep.txt')) -ne 'outside data') { throw 'Complete uninstall followed a junction outside the installation.' }
     Write-Host 'Passed: Windows Settings uninstall removes the complete installation directory, readonly data and registration, while preserving junction targets outside it.'
 
     & (Join-Path $PSScriptRoot 'Verify-InstallerPrerequisites.ps1') -PackageFile $PackageFile -CaseRoot $root
     & (Join-Path $PSScriptRoot 'Verify-InstallerUI.ps1') -InstallerFile $InstallerFile -InstallDirectory (Join-Path $root 'preview')
+    $guiInstall = Join-Path $root 'uninstall-ui-completion'
+    $null = Invoke-Setup $guiInstall
+    & (Join-Path $PSScriptRoot 'Verify-InstallerUI.ps1') -UninstallRoot $guiInstall -CompleteUninstall
+    if (Test-Path -LiteralPath $guiInstall) { throw 'The interactive uninstall button left the installation directory.' }
 } finally {
     if (Test-Path -LiteralPath $root) {
         Get-ChildItem -LiteralPath $root -Directory -Recurse -Force | Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint } | ForEach-Object { [IO.Directory]::Delete($_.FullName, $false) }
