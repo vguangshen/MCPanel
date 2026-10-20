@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)][string]$PackageFile,
     [string]$OutputDirectory = (Join-Path $PSScriptRoot 'artifacts\installer'),
     [string]$PackageUrl,
@@ -58,6 +58,8 @@ try {
         throw 'The package executable does not match MCPanel.csproj.'
     }
 } finally { $archive.Dispose() }
+
+& (Join-Path $PSScriptRoot 'Installer\Build-BrandArtwork.ps1') -OutputDirectory $work
 
 # Only metadata is compiled into the bootstrapper, never the application ZIP or
 # Microsoft redistributables. Its immutable package hash binds each release.

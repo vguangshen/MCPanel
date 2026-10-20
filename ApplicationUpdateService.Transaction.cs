@@ -6,6 +6,8 @@ public sealed partial class ApplicationUpdateService
 {
     internal static void ApplyTransaction(ApplicationUpdatePlan plan)
     {
+        if (InstallerRegistration.IsUninstallInProgress())
+            throw new InvalidOperationException("MCPanel 正在完整卸载，已取消更新。请等待卸载完成后重新安装。");
         ValidateTransactionPlan(plan);
         var updatesRoot = ComponentPaths.GetUpdatesRoot(plan.InstallDirectory);
         Directory.CreateDirectory(updatesRoot);

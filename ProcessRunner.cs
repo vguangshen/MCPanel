@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
 using System.Security.Principal;
 using System.Text;
@@ -77,7 +77,7 @@ internal static class ProcessRunner
             captureOutput);
     }
 
-    private static string NativeWindowsPowerShellPath() =>
+    internal static string NativeWindowsPowerShellPath() =>
         ResolveWindowsPowerShellPath(
             Environment.GetFolderPath(Environment.SpecialFolder.Windows),
             Environment.Is64BitOperatingSystem,

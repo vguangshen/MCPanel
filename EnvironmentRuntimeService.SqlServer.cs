@@ -44,7 +44,7 @@ public sealed partial class EnvironmentRuntimeService
         var legacyDataRoot = EscapePowerShellPath(Path.Combine(ComponentPaths.LegacyRuntimeRoot, "MSSQL"));
         var escapedLogFileName = EscapePowerShellPath(logFileName);
         return $$"""
-            $ErrorActionPreference = 'Continue'
+            $ErrorActionPreference = 'Stop'
             $ProgressPreference = 'SilentlyContinue'
             $storeDataRoot = '{{storeDataRoot}}'
             $componentRoot = '{{componentRoot}}'
@@ -82,12 +82,13 @@ public sealed partial class EnvironmentRuntimeService
                 }
             }
 
+            {{RuntimeUninstallFunctions}}
+
             function Remove-Tree($path) {
                 if ([string]::IsNullOrWhiteSpace($path) -or !(Test-Path $path)) { return }
                 Write-Output ('Removing ' + $path)
-                takeown.exe /F $path /R /D Y | Out-Null
-                icacls.exe $path /grant '*S-1-5-32-544:F' /T /C | Out-Null
-                Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
+                Assert-NoComponentLink $path
+                Remove-ComponentDirectory $path
             }
 
             Invoke-Step '停止 MCPanel SQL Server 默认实例服务' {
@@ -99,6 +100,15 @@ public sealed partial class EnvironmentRuntimeService
             Invoke-Step '调用官方安装器卸载 SQL Server 默认实例' {
                 $instanceNames = @('MSSQLSERVER')
                 $setupCandidates = @()
+                $instanceKey = 'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL'
+                $instance = Get-ItemProperty -LiteralPath $instanceKey -ErrorAction SilentlyContinue
+                $instanceId = if ($instance) { [string]$instance.MSSQLSERVER } else { '' }
+                if ($instanceId -match '^MSSQL(\d+)\.') {
+                    $bootstrap = Join-Path $env:ProgramFiles ('Microsoft SQL Server\' + ([int]$Matches[1] * 10) + '\Setup Bootstrap')
+                    if (Test-Path -LiteralPath $bootstrap) {
+                        $setupCandidates += Get-ChildItem -LiteralPath $bootstrap -Filter setup.exe -Recurse -ErrorAction SilentlyContinue
+                    }
+                }
                 foreach ($root in @(
                     (Join-Path $workRoot 'SqlServer2012ExpressMedia'),
                     (Join-Path $workRoot 'SqlServer2025ExpressMedia'),
@@ -122,9 +132,20 @@ public sealed partial class EnvironmentRuntimeService
                             Write-Output ('Running setup uninstall: ' + $setupPath + ' instance=' + $instance)
                             $args = '/ACTION=Uninstall /FEATURES=SQLENGINE /INSTANCENAME=' + $instance + ' /Q'
                             $process = Start-Process -FilePath $setupPath -ArgumentList $args -Wait -PassThru -WindowStyle Hidden -ErrorAction SilentlyContinue
-                            if ($process) { Write-Output ('setup exit code: ' + $process.ExitCode) }
+                            if ($process) { Write-Output ('setup exit code: ' + $process.ExitCode); $process.Dispose() }
+                            $remaining = Get-ItemProperty -LiteralPath $instanceKey -ErrorAction SilentlyContinue
+                            if (!$remaining -or !$remaining.MSSQLSERVER) { break }
                         }
                     }
+            }
+
+            # Removing a service manually is not proof of an MSI uninstall.
+            # Do not remove data or the retry media while official setup still owns it.
+            $registeredInstance = Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL' -ErrorAction SilentlyContinue
+            if ($registeredInstance -and $registeredInstance.MSSQLSERVER) {
+                Write-Output 'FATAL: SQL Server 官方卸载未完成。默认实例仍有安装注册，请检查 setup 日志、修复安装介质或重启后重试。程序与数据尚未删除。'
+                Stop-Transcript | Out-Null
+                exit 1
             }
 
             Invoke-Step '保留共享 SQL Server 客户端组件' {

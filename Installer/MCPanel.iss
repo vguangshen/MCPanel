@@ -1,4 +1,4 @@
-#ifndef GeneratedDirectory
+﻿#ifndef GeneratedDirectory
   #error Build with Build-OnlineInstaller.ps1.
 #endif
 #include GeneratedDirectory + "\Header.iss"
@@ -53,6 +53,7 @@ SetupLogging=yes
 Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
 
 [Files]
+Source: "{#GeneratedDirectory}\Brand.bmp"; Flags: dontcopy
 Source: "installer.marker"; DestDir: "{app}\Maintenance"; Flags: ignoreversion uninsneveruninstall
 
 [Icons]
@@ -66,17 +67,17 @@ Filename: "{app}\MCPanel.exe"; Description: "启动 MCPanel"; Flags: postinstall
 SelectDirLabel3=选择 MCPanel 的安装目录，然后点击“安装”。已有安装会保留原配置和业务数据。
 SelectDirDesc=选择安装位置
 SelectDirBrowseLabel=安装目录：
-ButtonInstall=安装(&I)
+ButtonInstall=开始安装 MCPanel
 FinishedHeadingLabel=MCPanel 安装完成
-FinishedLabelNoIcons=MCPanel 已安装到所选目录。数据库、站点和已有配置均予以保留。
-FinishedLabel=MCPanel 已安装到所选目录。数据库、站点和已有配置均予以保留。
-ConfirmUninstall=确定卸载 MCPanel 面板程序吗？%n%n数据库、站点、运行组件和配置将保留。
+FinishedLabelNoIcons=MCPanel 已安装到所选目录。现在可以打开部署工作台，管理环境、站点与服务。
+FinishedLabel=MCPanel 已安装到所选目录。现在可以打开部署工作台，管理环境、站点与服务。
+ConfirmUninstall=确定完整卸载 MCPanel 吗？%n%n将删除安装目录中的配置、数据库、站点、组件和缓存。请先备份业务数据。
 
 [Code]
 var
   ProgramFiles, PreservedNames, PreservedKeys: TStringList;
   DownloadPage: TDownloadWizardPage;
-  DependencyStatus: TNewStaticText;
+  DependencyStatus, BrandHeading, BrandSubheading, BrandSteps: TNewStaticText;
   DesktopShortcut: TNewCheckBox;
   RuntimeRestartRequired, ProgramDeployed: Boolean;
   PayloadRoot, TransactionRoot: String;
@@ -95,6 +96,7 @@ function ReplaceFileW(Destination, Source: String; Backup, Flags, Exclude, Reser
 #include GeneratedDirectory + "\Layout.iss"
 #include "Deployment.iss"
 #include "Prerequisites.iss"
+#include "Branding.iss"
 
 function WantDesktopShortcut: Boolean;
 begin
@@ -112,53 +114,38 @@ begin
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
+var Key, Command: String;
 begin
+  if CurStep = ssDone then begin
+#ifdef InstallerTestBuild
+    Key := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\MCPanel.Setup.IntegrationTest_is1';
+#else
+    Key := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{4877D128-D808-4B6B-B4CB-D4D0476F5275}_is1';
+#endif
+    Command := '"' + ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe') + '" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + ExpandConstant('{app}\Uninstall-MCPanel.ps1') + '" -InstallRoot "' + ExpandConstant('{app}') + '"';
+    if not RegWriteStringValue(HKLM64, Key, 'UninstallString', Command) or
+      not RegWriteStringValue(HKLM64, Key, 'QuietUninstallString', Command + ' -Silent') or
+      not RegWriteDWordValue(HKLM64, Key, 'MCPanelUninstallProtocol', 2) then
+      RaiseException('完整卸载入口注册失败，请重新运行安装器修复。');
+  end;
   if (CurStep = ssPostInstall) and (TransactionRoot <> '') then
     if not DelTree(TransactionRoot, True, True, True) then Log('Installer transaction cleanup will be retried manually: ' + TransactionRoot);
 end;
 
 procedure InitializeWizard;
-var Note: TNewStaticText;
 begin
   ProgramFiles := TStringList.Create;
   PreservedNames := TStringList.Create;
   PreservedKeys := TStringList.Create;
   LoadDeploymentLists;
-  DownloadPage := CreateDownloadPage('正在下载安装', '正在获取经过校验的程序和必备运行库，请保持网络连接。', nil);
+  DownloadPage := CreateDownloadPage('正在准备部署工作台', '正在获取并校验程序和必备运行库。', nil);
   DownloadPage.ShowBaseNameInsteadOfUrl := True;
-  WizardForm.DiskSpaceLabel.Visible := False;
-  DependencyStatus := TNewStaticText.Create(WizardForm);
-  DependencyStatus.Parent := WizardForm.SelectDirPage;
-  DependencyStatus.Left := WizardForm.DirEdit.Left;
-  DependencyStatus.Top := WizardForm.DirEdit.Top + WizardForm.DirEdit.Height + ScaleY(24);
-  DependencyStatus.Width := WizardForm.SelectDirPage.Width - DependencyStatus.Left;
-  DependencyStatus.Height := ScaleY(74);
-  DependencyStatus.AutoSize := False;
-  DependencyStatus.Caption := '安装前自动检查' + #13#10 + #13#10 +
-    '.NET Framework：' + DependencyText(DotNetAvailable) + #13#10 +
-    'VC++ 2010 SP1 x64：' + DependencyText(VisualCppAvailable);
-  DesktopShortcut := TNewCheckBox.Create(WizardForm);
-  DesktopShortcut.Parent := WizardForm.SelectDirPage;
-  DesktopShortcut.Left := DependencyStatus.Left;
-  DesktopShortcut.Top := DependencyStatus.Top + DependencyStatus.Height + ScaleY(12);
-  DesktopShortcut.Width := DependencyStatus.Width;
-  DesktopShortcut.Height := ScaleY(22);
-  DesktopShortcut.Caption := '创建桌面快捷方式';
-  DesktopShortcut.Checked := True;
-  Note := TNewStaticText.Create(WizardForm);
-  Note.Parent := WizardForm.SelectDirPage;
-  Note.Left := DependencyStatus.Left;
-  Note.Top := DesktopShortcut.Top + DesktopShortcut.Height + ScaleY(12);
-  Note.Width := DependencyStatus.Width;
-  Note.Height := ScaleY(34);
-  Note.AutoSize := False;
-  Note.WordWrap := True;
-  Note.Caption := '缺少的运行库会从微软官方下载并安装。已有数据库、站点和运行组件将保留。';
+  InitializeBranding;
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
 begin
-  if CurPageID = wpSelectDir then WizardForm.NextButton.Caption := '安装(&I)';
+  UpdateBrandPage(CurPageID);
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
@@ -180,6 +167,7 @@ begin
   if ProgramDeployed then exit;
   Phase := '检查安装目录';
   try
+    if CheckForMutexes('Local\MCPanel.Uninstall.v2') then RaiseException('MCPanel 正在完整卸载，请等待卸载完成后重新安装。');
     ValidateInstallDirectory(ExpandConstant('{app}'));
     if CheckForMutexes('Local\MCPanel.MainWindow.v1') then
       RaiseException('请从托盘菜单完全退出 MCPanel，再重新点击安装。');
@@ -229,22 +217,12 @@ begin
 end;
 
 function InitializeUninstall: Boolean;
+var Code: Integer; Arguments: String;
 begin
-  ProgramFiles := TStringList.Create;
-  PreservedNames := TStringList.Create;
-  PreservedKeys := TStringList.Create;
-  LoadDeploymentLists;
+  { Old maintenance executables delegate to the same branded complete uninstaller. }
   Result := False;
-  try
-    if CheckForMutexes('Local\MCPanel.MainWindow.v1') then
-      RaiseException('请先从托盘菜单完全退出 MCPanel，再卸载面板程序。');
-    CheckHostedServiceRegistration;
-    CheckUninstallFiles;
-    Result := True;
-  except SuppressibleMsgBox(GetExceptionMessage, mbError, MB_OK, IDOK); end;
-end;
-
-procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
-begin
-  if CurUninstallStep = usUninstall then RemoveOwnedProgramFiles;
+  Arguments := '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + ExpandConstant('{app}\Uninstall-MCPanel.ps1') + '" -InstallRoot "' + ExpandConstant('{app}') + '"';
+  if UninstallSilent then Arguments := Arguments + ' -Silent';
+  if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Arguments, ExpandConstant('{tmp}'), SW_HIDE, ewNoWait, Code) then
+    SuppressibleMsgBox('无法启动完整卸载工作台，请使用新版安装器修复。', mbError, MB_OK, IDOK);
 end;
