@@ -142,10 +142,17 @@ public sealed partial class ReliabilityTests
 
     private static ItemsControl ShowInstalledEnvironmentCards(MainWindow window, double width)
     {
-        window.Width = width;
-        window.Height = 640d;
         window.Show();
         PumpEnvironmentCardUi(window);
+        // SourceInitialized fits the initial window to the monitor; apply the test
+        // viewport afterwards so every data row exercises its requested layout.
+        window.Width = width;
+        window.Height = 640d;
+        PumpEnvironmentCardUi(window);
+        Assert.AreEqual(width, window.ActualWidth, 1d);
+        Assert.AreEqual(640d, window.ActualHeight, 1d);
+        Assert.AreEqual(width == 600d ? 1 : width == 760d ? 2 : 3,
+            ((MainViewModel)window.DataContext).EnvironmentColumnCount);
         foreach (var item in ((MainViewModel)window.DataContext).EnvironmentItems) item.IsInstalled = true;
         FindVisualChildren<RadioButton>(window).Single(button => Equals(button.CommandParameter, "Environment")).IsChecked = true;
         PumpEnvironmentCardUi(window);
