@@ -60,10 +60,8 @@ public sealed partial class ReliabilityTests
                         "The last port must remain reachable within the card's scroll viewport.");
                 }
 
-                window.Width = width == 1280d ? 600d : 1280d;
-                PumpEnvironmentCardUi(window);
-                window.Width = width;
-                PumpEnvironmentCardUi(window);
+                SetEnvironmentCardViewport(window, width == 1280d ? 600d : 1280d);
+                SetEnvironmentCardViewport(window, width);
                 AssertEnvironmentCardBounds(before, CaptureEnvironmentCardBounds(items));
             }
             finally { window.Close(); }
@@ -146,6 +144,18 @@ public sealed partial class ReliabilityTests
         PumpEnvironmentCardUi(window);
         // SourceInitialized fits the initial window to the monitor; apply the test
         // viewport afterwards so every data row exercises its requested layout.
+        SetEnvironmentCardViewport(window, width);
+        foreach (var item in ((MainViewModel)window.DataContext).EnvironmentItems) item.IsInstalled = true;
+        FindVisualChildren<RadioButton>(window).Single(button => Equals(button.CommandParameter, "Environment")).IsChecked = true;
+        PumpEnvironmentCardUi(window);
+        return (ItemsControl)window.FindName("EnvironmentItemsControl");
+    }
+
+    private static void SetEnvironmentCardViewport(MainWindow window, double width)
+    {
+        // CI can have a 1024-pixel desktop. An explicit minimum lets the test
+        // exercise a real wider viewport instead of the OS tracking-size cap.
+        window.MinWidth = width;
         window.Width = width;
         window.Height = 640d;
         PumpEnvironmentCardUi(window);
@@ -153,10 +163,6 @@ public sealed partial class ReliabilityTests
         Assert.AreEqual(640d, window.ActualHeight, 1d);
         Assert.AreEqual(width == 600d ? 1 : width == 760d ? 2 : 3,
             ((MainViewModel)window.DataContext).EnvironmentColumnCount);
-        foreach (var item in ((MainViewModel)window.DataContext).EnvironmentItems) item.IsInstalled = true;
-        FindVisualChildren<RadioButton>(window).Single(button => Equals(button.CommandParameter, "Environment")).IsChecked = true;
-        PumpEnvironmentCardUi(window);
-        return (ItemsControl)window.FindName("EnvironmentItemsControl");
     }
 
     private static Border[] EnvironmentCardBorders(DependencyObject items) =>
