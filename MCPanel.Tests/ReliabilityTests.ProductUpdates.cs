@@ -126,6 +126,21 @@ public sealed partial class ReliabilityTests
     }
 
     [TestMethod]
+    public void SupplierSvnFailureDiagnosticsIncludeInnerCauseAndErrorCode()
+    {
+        var failure = new InvalidOperationException(
+            "REPORT request failed",
+            new IOException("HTTP 503: upstream connection reset"));
+        var details = SvnProductTransferService.DescribeSvnFailure(failure);
+
+        StringAssert.Contains(details, "InvalidOperationException");
+        StringAssert.Contains(details, "REPORT request failed");
+        StringAssert.Contains(details, "IOException");
+        StringAssert.Contains(details, "HTTP 503");
+        StringAssert.Contains(details, "HRESULT 0x");
+    }
+
+    [TestMethod]
     public void SupplierSvnResumesAnExistingIncompleteWorkingCopy()
     {
         var root = CreateTemporaryDirectory();
