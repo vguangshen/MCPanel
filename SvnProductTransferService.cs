@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using System.IO;
+using System.Text.RegularExpressions;
 using System.Windows.Interop;
 using SharpSvn;
 using SharpSvn.UI;
@@ -8,6 +10,8 @@ namespace MCPanel;
 
 internal sealed class SvnProductTransferService
 {
+    private const int MaxSvnTransferAttempts = 3;
+
     private const string UserName = "_update_server";
     private const string Password = "_update086405849";
 
@@ -45,7 +49,7 @@ internal sealed class SvnProductTransferService
             {
                 try
                 {
-                    return Sync(repositoryUri, installedDirectory, progress, status, cancellationToken, pauseController, ownerWindow);
+                    return SyncWithRetries(repositoryUri, installedDirectory, progress, status, cancellationToken, pauseController, ownerWindow);
                 }
                 catch (SvnOperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
                 {
@@ -53,6 +57,93 @@ internal sealed class SvnProductTransferService
                 }
             },
             cancellationToken);
+    }
+
+    private static string SyncWithRetries(
+        Uri repositoryUri,
+        string installedDirectory,
+        Action<ProductDownloadProgress>? progress,
+        Action<string>? status,
+        CancellationToken cancellationToken,
+        DownloadPauseController? pauseController,
+        WinFormsWindow? ownerWindow)
+    {
+        var failures = new List<string>();
+        for (var attempt = 1; attempt <= MaxSvnTransferAttempts; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            pauseController?.WaitIfPaused(cancellationToken);
+
+            try
+            {
+                // Sync detects the existing .svn working copy on every attempt.
+                // An interrupted checkout can resume using SVN Update.
+                return Sync(repositoryUri, installedDirectory, progress, status, cancellationToken, pauseController, ownerWindow);
+            }
+            catch (SvnException exception) when (cancellationToken.IsCancellationRequested)
+            {
+                throw new OperationCanceledException("产品 SVN 下载已取消。", exception, cancellationToken);
+            }
+            catch (SvnException exception)
+            {
+                var detail = DescribeSvnFailure(exception);
+                failures.Add($"第 {attempt} 次：{detail}");
+
+                if (attempt < MaxSvnTransferAttempts && IsRetryableSvnFailure(exception))
+                {
+                    status?.Invoke($"SVN 传输失败（{attempt}/{MaxSvnTransferAttempts}）：{detail}。保留已下载文件，准备重试...");
+                    // Cancellation interrupts retry backoff without another polling loop.
+                    if (cancellationToken.WaitHandle.WaitOne(TimeSpan.FromSeconds(attempt * 2)))
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                    }
+
+                    continue;
+                }
+
+                // Exclude embedded user info, queries and fragments from log URLs.
+                var safeUri = new UriBuilder(repositoryUri)
+                {
+                    UserName = string.Empty,
+                    Password = string.Empty,
+                    Query = string.Empty,
+                    Fragment = string.Empty
+                }.Uri;
+                throw new InvalidOperationException(
+                    $"供应商 SVN 同步失败（仓库：{safeUri}；尝试 {attempt}/{MaxSvnTransferAttempts} 次）。" +
+                    $"失败详情：{string.Join("；", failures)}",
+                    exception);
+            }
+        }
+
+        throw new InvalidOperationException("供应商 SVN 同步重试结束，但未得到结果。");
+    }
+
+    internal static string DescribeSvnFailure(Exception exception)
+    {
+        var details = new List<string>();
+        for (Exception? current = exception; current is not null && details.Count < 8; current = current.InnerException)
+        {
+            var message = current.Message.Replace('\r', ' ').Replace('\n', ' ').Trim();
+            details.Add($"{current.GetType().Name} (HRESULT 0x{current.HResult:X8}): {message}");
+        }
+
+        return string.Join(" -> ", details);
+    }
+
+    private static bool IsRetryableSvnFailure(SvnException exception)
+    {
+        if (exception is not SvnRepositoryIOException)
+        {
+            return false;
+        }
+
+        // Repository I/O errors may wrap permanent authorization/HTTP failures.
+        var detail = DescribeSvnFailure(exception);
+        return !Regex.IsMatch(
+            detail,
+            @"\b(?:401|403|404|407|410)\b|authentication failed|authorization failed|access denied|certificate|not trusted|repository not found",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     }
 
     private static string Sync(
