@@ -65,23 +65,8 @@ internal static class TomcatRuntimeProbe
             return false;
         }
 
-        var active = GetActiveTcpPorts();
+        var active = SystemProbe.GetActiveTcpPorts();
         return expected.All(active.Contains);
-    }
-
-    private static HashSet<int> GetActiveTcpPorts()
-    {
-        try
-        {
-            return IPGlobalProperties.GetIPGlobalProperties()
-                .GetActiveTcpListeners()
-                .Select(endpoint => endpoint.Port)
-                .ToHashSet();
-        }
-        catch
-        {
-            return new HashSet<int>();
-        }
     }
 
 }

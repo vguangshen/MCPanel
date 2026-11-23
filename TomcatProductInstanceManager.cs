@@ -500,7 +500,7 @@ public sealed class TomcatProductInstanceManager
     {
         var instanceName = Path.GetFileName(instanceRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
         var port = ProductDeploymentService.LoadTomcatDeploymentInfos()
-            .FirstOrDefault(info => SafeName(info.ProductId).Equals(instanceName, StringComparison.OrdinalIgnoreCase))?
+            .FirstOrDefault(info => PathUtil.SafeProductName(info.ProductId).Equals(instanceName, StringComparison.OrdinalIgnoreCase))?
             .Port;
         return port is > 0 and <= 65535 ? port : null;
     }
@@ -586,7 +586,7 @@ public sealed class TomcatProductInstanceManager
         }
 
         var candidate = 10000 + (productPort % 40000);
-        var active = GetActiveTcpPorts();
+        var active = SystemProbe.GetActiveTcpPorts();
         while (candidate == productPort || active.Contains(candidate))
         {
             candidate++;
@@ -615,7 +615,7 @@ public sealed class TomcatProductInstanceManager
         // supplier scripts overwrite CATALINA_BASE and accidentally load shared config.
         var startInfo = BuildTomcatJavaStartInfo(tomcatHome, catalinaBase, redirectOutput: false);
         using var launcher = Process.Start(startInfo)
-            ?? throw new InvalidOperationException($"无法打开 {SafeName(productId)} 的 Tomcat 单应用启动窗口。");
+            ?? throw new InvalidOperationException($"无法打开 {PathUtil.SafeProductName(productId)} 的 Tomcat 单应用启动窗口。");
 
         await Task.Delay(300, cancellationToken);
         if (launcher.HasExited)
@@ -899,7 +899,7 @@ public sealed class TomcatProductInstanceManager
             useInstanceLocalErrorFile: true);
         var startInfo = BuildTomcatJavaStartInfo(tomcatHome, instanceRoot, redirectOutput: false);
         return Process.Start(startInfo)
-            ?? throw new InvalidOperationException($"无法打开 {SafeName(productId)} 的 Tomcat Catalina 窗口。");
+            ?? throw new InvalidOperationException($"无法打开 {PathUtil.SafeProductName(productId)} 的 Tomcat Catalina 窗口。");
     }
 
     private static async Task<bool> IsJavaProcessForBaseAsync(string catalinaBase, CancellationToken cancellationToken)
@@ -1247,7 +1247,7 @@ public sealed class TomcatProductInstanceManager
             var logs = ComponentPaths.LogsRoot;
             RollingLogWriter.Append(
                 Path.Combine(logs, "tomcat-operations.log"),
-                $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} [{SafeName(productId)}] {message}{Environment.NewLine}",
+                $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} [{PathUtil.SafeProductName(productId)}] {message}{Environment.NewLine}",
                 new UTF8Encoding(false));
         }
         catch
@@ -1275,22 +1275,7 @@ public sealed class TomcatProductInstanceManager
             : $"Tomcat 产品端口 {port} 未在规定时间内停止。" );
     }
 
-    private static bool IsTcpPortListening(int port) => GetActiveTcpPorts().Contains(port);
-
-    private static HashSet<int> GetActiveTcpPorts()
-    {
-        try
-        {
-            return IPGlobalProperties.GetIPGlobalProperties()
-                .GetActiveTcpListeners()
-                .Select(endpoint => endpoint.Port)
-                .ToHashSet();
-        }
-        catch
-        {
-            return [];
-        }
-    }
+    private static bool IsTcpPortListening(int port) => SystemProbe.GetActiveTcpPorts().Contains(port);
 
     private static string ReadRecentTomcatLog(string instanceRoot)
     {
@@ -1432,18 +1417,11 @@ public sealed class TomcatProductInstanceManager
         Directory.Delete(path, recursive: true);
     }
 
-    private static string SafeName(string value)
-    {
-        var chars = value.Select(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_' or '.' ? ch : '_').ToArray();
-        var safe = new string(chars).Trim('_');
-        return string.IsNullOrWhiteSpace(safe) ? "product" : safe;
-    }
-
     private static string GetInstanceRoot(string productId) =>
-        Path.Combine(InstancesRoot, SafeName(productId));
+        Path.Combine(InstancesRoot, PathUtil.SafeProductName(productId));
 
     private static string GetLegacyInstanceRoot(string productId) =>
-        Path.Combine(ComponentPaths.LegacyRuntimeRoot, "TomcatInstances", SafeName(productId));
+        Path.Combine(ComponentPaths.LegacyRuntimeRoot, "TomcatInstances", PathUtil.SafeProductName(productId));
 
     private static string InstancesRoot =>
         Path.Combine(ComponentPaths.RuntimeRoot, "TomcatProductRuns");

@@ -49,14 +49,7 @@ internal static class ProductInstallPathResolver
                fullPath.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 
-    public static string SafeName(string value)
-    {
-        var safe = new string((value ?? string.Empty)
-            .Select(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_' or '.' ? ch : '_')
-            .ToArray())
-            .Trim('_');
-        return safe.Length == 0 ? "product" : safe;
-    }
+    public static string SafeName(string value) => PathUtil.SafeProductName(value);
 
     private static string? ExistingLegacyRoot(string key)
     {

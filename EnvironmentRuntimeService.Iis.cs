@@ -48,18 +48,18 @@ public sealed partial class EnvironmentRuntimeService
             var restartRequired = exitCode == 3010;
             if (restartRequired)
             {
-                TryDeleteFile(IisUninstalledMarker);
+                PathUtil.TryDeleteFile(IisUninstalledMarker);
                 WriteIisUninstallContinuationMarker();
                 return IisUninstallContinuationMessage;
             }
 
-            TryDeleteFile(IisPendingUninstallMarker);
+            PathUtil.TryDeleteFile(IisPendingUninstallMarker);
             WriteIisUninstalledMarker();
             return "IIS 已卸载，相关 Windows 组件已禁用。";
         }
         finally
         {
-            TryDeleteFile(script);
+            PathUtil.TryDeleteFile(script);
             RollingLogWriter.EnsureCapacity(log);
             PruneGeneratedLogs(workDirectory, "uninstall-iis-*.log*", log);
         }
@@ -85,8 +85,8 @@ public sealed partial class EnvironmentRuntimeService
 
     internal static string BuildIisUninstallScript(string logFileName = "uninstall-iis.log", bool isContinuation = false)
     {
-        var storeDataRoot = EscapePowerShellPath(StoreDataRoot);
-        var escapedLogFileName = EscapePowerShellPath(logFileName);
+        var storeDataRoot = PathUtil.EscapePowerShellLiteral(StoreDataRoot);
+        var escapedLogFileName = PathUtil.EscapePowerShellLiteral(logFileName);
         var features = new[]
         {
             "IIS-ODBCLogging",

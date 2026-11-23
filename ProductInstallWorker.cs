@@ -465,7 +465,7 @@ internal static class ProductInstallWorker
 
     private static async Task<int> RunQueueAsync(string queueRoot, string stopPath, string heartbeatPath)
     {
-        if (!IsAdministrator())
+        if (!ProcessRunner.IsAdministrator())
         {
             WriteQueueError(queueRoot, "管理员产品安装进程未获得管理员权限。请重新点击安装并允许 UAC 授权。");
             return 3;
@@ -501,9 +501,9 @@ internal static class ProductInstallWorker
                     if (envelope is null ||
                         string.IsNullOrWhiteSpace(envelope.QueueId) ||
                         envelope.Request is null ||
-                        !IsPathInside(queueRoot, envelope.ProgressPath) ||
-                        !IsPathInside(queueRoot, envelope.CancelPath) ||
-                        !IsPathInside(queueRoot, envelope.PausePath))
+                        !PathUtil.IsPathInside(queueRoot, envelope.ProgressPath) ||
+                        !PathUtil.IsPathInside(queueRoot, envelope.CancelPath) ||
+                        !PathUtil.IsPathInside(queueRoot, envelope.PausePath))
                     {
                         throw new InvalidDataException("产品安装队列请求无效。");
                     }
@@ -694,9 +694,9 @@ internal static class ProductInstallWorker
             stopPath = Path.GetFullPath(args[index + 2]);
             heartbeatPath = Path.GetFullPath(args[index + 3]);
             return Directory.Exists(queueRoot) &&
-                   IsPathInside(workRoot, queueRoot) &&
-                   IsPathInside(queueRoot, stopPath) &&
-                   IsPathInside(queueRoot, heartbeatPath) &&
+                   PathUtil.IsPathInside(workRoot, queueRoot) &&
+                   PathUtil.IsPathInside(queueRoot, stopPath) &&
+                   PathUtil.IsPathInside(queueRoot, heartbeatPath) &&
                    File.Exists(heartbeatPath);
         }
         catch
@@ -711,15 +711,6 @@ internal static class ProductInstallWorker
     private static string GetWorkRoot() =>
         Path.GetFullPath(ComponentPaths.WorkRoot)
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-    private static bool IsPathInside(string root, string path)
-    {
-        var normalizedRoot = Path.GetFullPath(root)
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) +
-            Path.DirectorySeparatorChar;
-        var normalizedPath = Path.GetFullPath(path);
-        return normalizedPath.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase);
-    }
 
     private static bool IsHeartbeatStale(string heartbeatPath)
     {
@@ -770,12 +761,6 @@ internal static class ProductInstallWorker
             stage: InstallProgressStage.Installing,
             stagePercent: 0,
             logPath: logPath);
-    }
-
-    private static bool IsAdministrator()
-    {
-        using var identity = WindowsIdentity.GetCurrent();
-        return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
     }
 
     private static bool IsTomcatProduct(ProductItem product) =>

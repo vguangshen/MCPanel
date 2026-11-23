@@ -720,20 +720,6 @@ public sealed class McPanelStoreClient : IDisposable
         _downloadClient.Dispose();
     }
 
-    private static void TryDeleteFile(string path)
-    {
-        try
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-        catch
-        {
-        }
-    }
-
     private static void TryDeleteDirectory(string path)
     {
         try

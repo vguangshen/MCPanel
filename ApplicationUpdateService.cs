@@ -686,7 +686,7 @@ internal void LaunchUpdater(
             }
 
             if (authorization.PlanSubmitted ||
-                !PathsEqual(authorization.InstallDirectory, installDirectory) ||
+                !PathUtil.PathsEqual(authorization.InstallDirectory, installDirectory) ||
                 authorization.ParentProcessId != plan.ParentProcessId ||
                 !Directory.Exists(authorization.HelperRoot))
             {
@@ -770,7 +770,7 @@ internal void LaunchUpdater(
         var validatedPlanFile = ValidatePlanFileLocation(planFile, requireExistingFile: false);
         var helperRoot = Path.GetDirectoryName(validatedPlanFile)!;
         var validatedCancelFile = Path.GetFullPath(cancelFile);
-        if (!PathsEqual(Path.GetDirectoryName(validatedCancelFile) ?? string.Empty, helperRoot) ||
+        if (!PathUtil.PathsEqual(Path.GetDirectoryName(validatedCancelFile) ?? string.Empty, helperRoot) ||
             !string.Equals(Path.GetFileName(validatedCancelFile), "cancel.flag", StringComparison.OrdinalIgnoreCase))
         {
             return 2;
@@ -835,7 +835,7 @@ internal void LaunchUpdater(
                 ?? throw new InvalidDataException("更新计划无效。");
             ValidateApplyPlan(plan);
             if (!string.IsNullOrWhiteSpace(expectedInstallDirectory) &&
-                !PathsEqual(plan.InstallDirectory, expectedInstallDirectory!))
+                !PathUtil.PathsEqual(plan.InstallDirectory, expectedInstallDirectory!))
             {
                 throw new InvalidDataException("管理员更新授权与当前 MCPanel 安装目录不一致。");
             }
@@ -858,7 +858,7 @@ internal void LaunchUpdater(
             var previousStagingRoot = plan.StagingRoot;
             var hardeningWarning = TryHardenInstallDirectory(plan);
             StageVerifiedPayload(plan, expectedHash);
-            if (!PathsEqual(previousStagingRoot, plan.StagingRoot))
+            if (!PathUtil.PathsEqual(previousStagingRoot, plan.StagingRoot))
             {
                 TryDeleteDirectory(previousStagingRoot);
             }
@@ -1023,7 +1023,7 @@ internal void LaunchUpdater(
         var installRoot = NormalizeDirectoryPath(plan.InstallDirectory, "安装目录");
         var installDriveRoot = Path.GetPathRoot(installRoot);
         if (string.IsNullOrWhiteSpace(installDriveRoot) ||
-            PathsEqual(installRoot, installDriveRoot))
+            PathUtil.PathsEqual(installRoot, installDriveRoot))
         {
             throw new InvalidDataException("更新计划不能把磁盘根目录作为安装目录。");
         }
@@ -1041,14 +1041,14 @@ internal void LaunchUpdater(
             "更新暂存父目录");
         var stagingParentInfo = Directory.GetParent(stagingRoot);
         if (stagingParentInfo is null ||
-            !PathsEqual(stagingParentInfo.FullName, stagingParent) ||
+            !PathUtil.PathsEqual(stagingParentInfo.FullName, stagingParent) ||
             !Guid.TryParseExact(Path.GetFileName(stagingRoot), "N", out _))
         {
             throw new InvalidDataException("更新暂存根目录不属于当前 MCPanel 安装目录。");
         }
 
-        if (!IsPathInside(stagingRoot, payloadRoot) ||
-            PathsEqual(installRoot, payloadRoot) ||
+        if (!PathUtil.IsPathInside(stagingRoot, payloadRoot) ||
+            PathUtil.PathsEqual(installRoot, payloadRoot) ||
             !Directory.Exists(payloadRoot) ||
             !File.Exists(Path.Combine(payloadRoot, "MCPanel.exe")) ||
             !File.Exists(Path.Combine(payloadRoot, "MCPanel.exe.config")))
@@ -1067,7 +1067,7 @@ internal void LaunchUpdater(
     {
         ValidateTransactionPlan(plan);
         var helperRoot = NormalizeDirectoryPath(AppContext.BaseDirectory, "更新器目录");
-        if (PathsEqual(helperRoot, plan.InstallDirectory) || plan.ParentProcessId <= 0)
+        if (PathUtil.PathsEqual(helperRoot, plan.InstallDirectory) || plan.ParentProcessId <= 0)
         {
             throw new InvalidDataException("独立更新器计划无效。");
         }
@@ -1084,7 +1084,7 @@ internal void LaunchUpdater(
 
         var packageFile = Path.GetFullPath(plan.PackageFile);
         var downloadRoot = Path.Combine(ComponentPaths.GetUpdatesRoot(plan.InstallDirectory), "Downloads");
-        if (!IsPathInside(downloadRoot, packageFile) ||
+        if (!PathUtil.IsPathInside(downloadRoot, packageFile) ||
             !packageFile.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidDataException("在线更新包不属于当前 MCPanel 下载目录。");
@@ -1112,9 +1112,9 @@ internal void LaunchUpdater(
         var helperParent = Directory.GetParent(helperRoot);
         if (!string.Equals(Path.GetFileName(fullPlanFile), "update-plan.json", StringComparison.OrdinalIgnoreCase) ||
             string.IsNullOrWhiteSpace(planParent) ||
-            !PathsEqual(planParent, helperRoot) ||
+            !PathUtil.PathsEqual(planParent, helperRoot) ||
             helperParent is null ||
-            !PathsEqual(helperParent.FullName, updaterRoot) ||
+            !PathUtil.PathsEqual(helperParent.FullName, updaterRoot) ||
             !Guid.TryParseExact(Path.GetFileName(helperRoot), "N", out _) ||
             (requireExistingFile && !File.Exists(fullPlanFile)))
         {
@@ -1257,7 +1257,7 @@ internal void LaunchUpdater(
     {
         var normalizedParent = NormalizeDirectoryPath(stagingParent, "更新暂存父目录");
         var current = NormalizeDirectoryPath(payloadDirectory, "更新暂存目录");
-        while (IsPathInside(normalizedParent, current))
+        while (PathUtil.IsPathInside(normalizedParent, current))
         {
             var parent = Directory.GetParent(current);
             if (parent is null)
@@ -1265,7 +1265,7 @@ internal void LaunchUpdater(
                 break;
             }
 
-            if (PathsEqual(parent.FullName, normalizedParent) &&
+            if (PathUtil.PathsEqual(parent.FullName, normalizedParent) &&
                 Guid.TryParseExact(Path.GetFileName(current), "N", out _))
             {
                 return current;
@@ -1291,35 +1291,6 @@ internal void LaunchUpdater(
             : fullPath;
     }
 
-    private static bool PathsEqual(string first, string second)
-    {
-        try
-        {
-            return string.Equals(
-                NormalizeDirectoryPath(first, "路径"),
-                NormalizeDirectoryPath(second, "路径"),
-                StringComparison.OrdinalIgnoreCase);
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private static bool IsPathInside(string root, string path)
-    {
-        try
-        {
-            var normalizedRoot = NormalizeDirectoryPath(root, "根目录") + Path.DirectorySeparatorChar;
-            var normalizedPath = Path.GetFullPath(path);
-            return normalizedPath.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase);
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
     private static void CleanupUpdaterDirectories()
     {
         try
@@ -1337,7 +1308,7 @@ internal void LaunchUpdater(
             foreach (var directory in Directory.EnumerateDirectories(updaterRoot))
             {
                 if (!Guid.TryParseExact(Path.GetFileName(directory), "N", out _) ||
-                    PathsEqual(directory, currentRoot))
+                    PathUtil.PathsEqual(directory, currentRoot))
                 {
                     continue;
                 }

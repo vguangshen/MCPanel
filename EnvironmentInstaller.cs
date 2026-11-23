@@ -133,7 +133,7 @@ public sealed partial class EnvironmentInstaller : IDisposable
             return target;
         }
 
-        TryDeleteFile(target);
+        PathUtil.TryDeleteFile(target);
 
         using var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -534,21 +534,6 @@ public sealed partial class EnvironmentInstaller : IDisposable
         return root;
     }
 
-    private static void TryDeleteFile(string path)
-    {
-        try
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-        catch
-        {
-            // Best effort cleanup for local state markers.
-        }
-    }
-
     private static string? FindDirectory(string root, string name)
     {
         return Directory.Exists(Path.Combine(root, name))
@@ -600,7 +585,6 @@ public sealed partial class EnvironmentInstaller : IDisposable
         }
     }
 
-    private static string EscapePowerShellPath(string path) => path.Replace("'", "''");
     private static string IisPendingUninstallMarker => Path.Combine(GetStoreDataRoot(), "RuntimeState", "iis-pending-uninstall-restart.flag");
     private static string IisUninstalledMarker => Path.Combine(GetStoreDataRoot(), "RuntimeState", "iis-uninstalled.flag");
 

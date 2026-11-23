@@ -473,7 +473,7 @@ public static class NginxRuntimeManager
     public static bool AreConfiguredPortsListening(string nginxRoot, out IReadOnlyList<int> configuredPorts, out IReadOnlyList<int> missingPorts)
     {
         configuredPorts = ReadConfiguredListenPorts(nginxRoot);
-        var activePorts = GetActiveTcpPorts();
+        var activePorts = SystemProbe.GetActiveTcpPorts();
         missingPorts = configuredPorts.Where(port => !activePorts.Contains(port)).ToArray();
         return configuredPorts.Count > 0 && missingPorts.Count == 0;
     }
@@ -862,21 +862,6 @@ public static class NginxRuntimeManager
         foreach (var file in files)
         {
             yield return file;
-        }
-    }
-
-    private static HashSet<int> GetActiveTcpPorts()
-    {
-        try
-        {
-            return IPGlobalProperties.GetIPGlobalProperties()
-                .GetActiveTcpListeners()
-                .Select(endpoint => endpoint.Port)
-                .ToHashSet();
-        }
-        catch
-        {
-            return [];
         }
     }
 

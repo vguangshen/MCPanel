@@ -527,7 +527,7 @@ internal sealed class ProductInstallQueueService : IDisposable
         }
 
         var previousRoot = Path.Combine(_queueWorkRoot, previousSessionId);
-        if (!IsPathInside(_queueWorkRoot, previousRoot))
+        if (!PathUtil.IsPathInside(_queueWorkRoot, previousRoot))
         {
             return;
         }
@@ -707,7 +707,7 @@ internal sealed class ProductInstallQueueService : IDisposable
         }
 
         var persistedPath = path!;
-        return IsPathInside(_queueWorkRoot, persistedPath) &&
+        return PathUtil.IsPathInside(_queueWorkRoot, persistedPath) &&
                ProductInstallWorker.TryReadProgress(persistedPath, out var progress)
             ? progress
             : null;
@@ -727,7 +727,7 @@ internal sealed class ProductInstallQueueService : IDisposable
             var progressPath = Path.GetFullPath(persisted.ProgressPath);
             var sessionRoot = Path.GetDirectoryName(progressPath);
             if (string.IsNullOrWhiteSpace(sessionRoot) ||
-                !IsPathInside(_queueWorkRoot, sessionRoot))
+                !PathUtil.IsPathInside(_queueWorkRoot, sessionRoot))
             {
                 return;
             }
@@ -917,22 +917,6 @@ internal sealed class ProductInstallQueueService : IDisposable
         state is ProductInstallQueueStatus.Completed or
             ProductInstallQueueStatus.Failed or
             ProductInstallQueueStatus.Cancelled;
-
-    private static bool IsPathInside(string root, string path)
-    {
-        try
-        {
-            var normalizedRoot = Path.GetFullPath(root)
-                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) +
-                Path.DirectorySeparatorChar;
-            var normalizedPath = Path.GetFullPath(path);
-            return normalizedPath.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase);
-        }
-        catch
-        {
-            return false;
-        }
-    }
 
     private void ThrowIfDisposed()
     {

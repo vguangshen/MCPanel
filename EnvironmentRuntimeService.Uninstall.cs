@@ -21,7 +21,7 @@ public sealed partial class EnvironmentRuntimeService
         }
         finally
         {
-            TryDeleteFile(script);
+            PathUtil.TryDeleteFile(script);
             RollingLogWriter.EnsureCapacity(log);
             PruneGeneratedLogs(ComponentPaths.WorkRoot, $"uninstall-{component}-*.log*", log);
             ElevatedActionLock.Release();
@@ -29,7 +29,7 @@ public sealed partial class EnvironmentRuntimeService
     }
 
     private static string PowerShellPaths(IEnumerable<string> paths) => string.Join(", ", paths
-        .Distinct(StringComparer.OrdinalIgnoreCase).Select(path => $"'{EscapePowerShellPath(path)}'"));
+        .Distinct(StringComparer.OrdinalIgnoreCase).Select(path => $"'{PathUtil.EscapePowerShellLiteral(path)}'"));
 
     private static string BuildRuntimeUninstallScript(string body, string logFileName) =>
         BuildElevatedPowerShellScript(RuntimeUninstallFunctions + Environment.NewLine + body,
@@ -46,13 +46,13 @@ public sealed partial class EnvironmentRuntimeService
         var imagePath = NginxWindowsServiceManager.BuildServiceImagePath(
             Path.Combine(ComponentPaths.ApplicationRoot, "MCPanel.exe"), nginxRoot);
         return BuildRuntimeUninstallScript($$"""
-            $targetRoot = Assert-ComponentRoot '{{EscapePowerShellPath(nginxRoot)}}' @({{PowerShellPaths(ComponentPaths.NginxSearchRoots)}}) @({{PowerShellPaths(ProtectedUninstallRoots)}})
+            $targetRoot = Assert-ComponentRoot '{{PathUtil.EscapePowerShellLiteral(nginxRoot)}}' @({{PowerShellPaths(ComponentPaths.NginxSearchRoots)}}) @({{PowerShellPaths(ProtectedUninstallRoots)}})
             $nginxExe = Join-Path $targetRoot 'nginx.exe'
             if (-not (Test-Path -LiteralPath $nginxExe)) { throw ('未找到组件 nginx.exe：' + $targetRoot) }
             $service = Get-ComponentService 'nginx'
             if ($service) {
                 $serviceExe = Get-ServiceExecutable $service.ImagePath
-                $panelWrapper = $service.ImagePath.Trim().Equals('{{EscapePowerShellPath(imagePath)}}', [StringComparison]::OrdinalIgnoreCase)
+                $panelWrapper = $service.ImagePath.Trim().Equals('{{PathUtil.EscapePowerShellLiteral(imagePath)}}', [StringComparison]::OrdinalIgnoreCase)
                 $legacyWrapper = (Test-PathUnderRoot $serviceExe $targetRoot) -and ([IO.Path]::GetFileName($serviceExe) -eq 'nginx-server.exe')
                 if (-not $panelWrapper -and -not $legacyWrapper) {
                     throw '检测到非当前 MCPanel 组件的 nginx 服务，已停止卸载以保护现有服务。'
@@ -92,7 +92,7 @@ public sealed partial class EnvironmentRuntimeService
         BuildRuntimeUninstallScript($$"""
             $mysqlInstallationRoots = @({{PowerShellPaths(ComponentPaths.MySqlInstallationRoots)}})
             $protectedRoots = @({{PowerShellPaths(ProtectedUninstallRoots)}})
-            $targetRoot = '{{EscapePowerShellPath(mysqlRoot ?? string.Empty)}}'
+            $targetRoot = '{{PathUtil.EscapePowerShellLiteral(mysqlRoot ?? string.Empty)}}'
             $service = Get-ComponentService 'MySQL80'
             if ($service) {
                 $serviceExe = Get-ServiceExecutable $service.ImagePath

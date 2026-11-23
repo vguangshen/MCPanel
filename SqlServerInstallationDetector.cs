@@ -73,7 +73,7 @@ internal static class SqlServerInstallationDetector
         var result = new List<SqlServerInstallationInfo>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var view in RegistryViews())
+        foreach (var view in SystemProbe.RegistryViewsWithDefault())
         {
             try
             {
@@ -171,22 +171,4 @@ internal static class SqlServerInstallationDetector
     private static string ReadValue(RegistryKey key, string name) =>
         Convert.ToString(key.GetValue(name), CultureInfo.InvariantCulture)?.Trim() ?? string.Empty;
 
-    private static IEnumerable<RegistryView> RegistryViews()
-    {
-        var seen = new HashSet<RegistryView>();
-        if (Environment.Is64BitOperatingSystem && seen.Add(RegistryView.Registry64))
-        {
-            yield return RegistryView.Registry64;
-        }
-
-        if (seen.Add(RegistryView.Registry32))
-        {
-            yield return RegistryView.Registry32;
-        }
-
-        if (seen.Add(RegistryView.Default))
-        {
-            yield return RegistryView.Default;
-        }
-    }
 }

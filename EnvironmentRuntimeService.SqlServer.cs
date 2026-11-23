@@ -30,7 +30,7 @@ public sealed partial class EnvironmentRuntimeService
         }
         finally
         {
-            TryDeleteFile(script);
+            PathUtil.TryDeleteFile(script);
             RollingLogWriter.EnsureCapacity(log);
             PruneGeneratedLogs(workDirectory, "uninstall-sqlserver-*.log*", log);
         }
@@ -38,11 +38,11 @@ public sealed partial class EnvironmentRuntimeService
 
     internal static string BuildSqlServerUninstallScript(string logFileName = "uninstall-sqlserver.log")
     {
-        var storeDataRoot = EscapePowerShellPath(StoreDataRoot);
-        var componentRoot = EscapePowerShellPath(ComponentPaths.SqlServerRoot);
-        var migratedDataRoot = EscapePowerShellPath(Path.Combine(ComponentPaths.RuntimeRoot, "MSSQL"));
-        var legacyDataRoot = EscapePowerShellPath(Path.Combine(ComponentPaths.LegacyRuntimeRoot, "MSSQL"));
-        var escapedLogFileName = EscapePowerShellPath(logFileName);
+        var storeDataRoot = PathUtil.EscapePowerShellLiteral(StoreDataRoot);
+        var componentRoot = PathUtil.EscapePowerShellLiteral(ComponentPaths.SqlServerRoot);
+        var migratedDataRoot = PathUtil.EscapePowerShellLiteral(Path.Combine(ComponentPaths.RuntimeRoot, "MSSQL"));
+        var legacyDataRoot = PathUtil.EscapePowerShellLiteral(Path.Combine(ComponentPaths.LegacyRuntimeRoot, "MSSQL"));
+        var escapedLogFileName = PathUtil.EscapePowerShellLiteral(logFileName);
         return $$"""
             $ErrorActionPreference = 'Stop'
             $ProgressPreference = 'SilentlyContinue'
@@ -229,7 +229,7 @@ public sealed partial class EnvironmentRuntimeService
                 : string.Empty;
             if (serviceStatus == RuntimeStatusKind.Running &&
                 configuredPort is > 0 and <= 65535 &&
-                !GetActiveTcpPorts().Contains(configuredPort.Value))
+                !SystemProbe.GetActiveTcpPorts().Contains(configuredPort.Value))
             {
                 return WithConnection(Installed(
                     RuntimeStatusKind.Stopped,
@@ -286,8 +286,8 @@ public sealed partial class EnvironmentRuntimeService
         }
         finally
         {
-            TryDeleteFile(script);
-            TryDeleteFile(result);
+            PathUtil.TryDeleteFile(script);
+            PathUtil.TryDeleteFile(result);
             RollingLogWriter.EnsureCapacity(log);
             PruneGeneratedLogs(workDirectory, "sqlserver-service-action-*.log*", log);
         }
@@ -298,17 +298,17 @@ public sealed partial class EnvironmentRuntimeService
         string logFileName,
         string resultFileName)
     {
-        var storeDataRoot = EscapePowerShellPath(StoreDataRoot);
+        var storeDataRoot = PathUtil.EscapePowerShellLiteral(StoreDataRoot);
         var credentials = SqlServerCredentialStore.Load();
         return $$"""
             $ErrorActionPreference = 'Continue'
             $ProgressPreference = 'SilentlyContinue'
             {{WindowsFirewallScript.Functions}}
-            $action = '{{EscapePowerShellPath(action)}}'
+            $action = '{{PathUtil.EscapePowerShellLiteral(action)}}'
             $workRoot = Join-Path '{{storeDataRoot}}' 'Work'
             if (!(Test-Path $workRoot)) { New-Item -ItemType Directory -Path $workRoot -Force | Out-Null }
-            $log = Join-Path $workRoot '{{EscapePowerShellPath(logFileName)}}'
-            $resultFile = Join-Path $workRoot '{{EscapePowerShellPath(resultFileName)}}'
+            $log = Join-Path $workRoot '{{PathUtil.EscapePowerShellLiteral(logFileName)}}'
+            $resultFile = Join-Path $workRoot '{{PathUtil.EscapePowerShellLiteral(resultFileName)}}'
             Remove-Item -LiteralPath $resultFile -Force -ErrorAction SilentlyContinue
             Start-Transcript -Path $log -Append | Out-Null
 

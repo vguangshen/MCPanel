@@ -444,21 +444,6 @@ public sealed partial class EnvironmentRuntimeService
         }
     }
 
-    private static HashSet<int> GetActiveTcpPorts()
-    {
-        try
-        {
-            return System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties()
-                .GetActiveTcpListeners()
-                .Select(endpoint => endpoint.Port)
-                .ToHashSet();
-        }
-        catch
-        {
-            return [];
-        }
-    }
-
     private static string? FindServiceExecutableDirectory(string serviceName)
     {
         using var key = Registry.LocalMachine.OpenSubKey($@"SYSTEM\CurrentControlSet\Services\{serviceName}");
@@ -570,7 +555,7 @@ public sealed partial class EnvironmentRuntimeService
         }
         finally
         {
-            TryDeleteFile(script);
+            PathUtil.TryDeleteFile(script);
             RollingLogWriter.EnsureCapacity(log);
             PruneGeneratedLogs(workDirectory, "environment-action-*.log*", log);
             ElevatedActionLock.Release();
@@ -588,7 +573,7 @@ public sealed partial class EnvironmentRuntimeService
                 .ToArray();
             foreach (var log in logs)
             {
-                TryDeleteFile(log);
+                PathUtil.TryDeleteFile(log);
             }
         }
         catch
@@ -601,7 +586,7 @@ public sealed partial class EnvironmentRuntimeService
         $$"""
             $ErrorActionPreference = 'Stop'
             $ProgressPreference = 'SilentlyContinue'
-            $log = '{{EscapePowerShellPath(logPath)}}'
+            $log = '{{PathUtil.EscapePowerShellLiteral(logPath)}}'
             try {
                 Start-Transcript -Path $log | Out-Null
                 $global:LASTEXITCODE = 0
@@ -708,21 +693,6 @@ public sealed partial class EnvironmentRuntimeService
         }
     }
 
-    private static void TryDeleteFile(string path)
-    {
-        try
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-        catch
-        {
-            // Best effort cleanup for local state markers.
-        }
-    }
-
     private static string ReadTextFileBestEffort(string path)
     {
         try
@@ -769,7 +739,6 @@ public sealed partial class EnvironmentRuntimeService
         _ => kind.ToString()
     };
 
-    private static string EscapePowerShellPath(string path) => path.Replace("'", "''");
     private static string StoreDataRoot => ComponentPaths.StoreDataRoot;
     private static string IisPendingUninstallMarker => Path.Combine(ComponentPaths.RuntimeStateRoot, "iis-pending-uninstall-restart.flag");
     private static string IisUninstalledMarker => Path.Combine(ComponentPaths.RuntimeStateRoot, "iis-uninstalled.flag");

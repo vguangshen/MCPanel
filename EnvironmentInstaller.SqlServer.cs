@@ -121,9 +121,9 @@ public sealed partial class EnvironmentInstaller
             $ErrorActionPreference='Continue'
             $ProgressPreference='SilentlyContinue'
             {{WindowsFirewallScript.Functions}}
-            $installer='{{EscapePowerShellPath(installer)}}'
-            $dataRoot='{{EscapePowerShellPath(dataRoot)}}'
-            $saPassword='{{EscapePowerShellPath(saPassword)}}'
+            $installer='{{PathUtil.EscapePowerShellLiteral(installer)}}'
+            $dataRoot='{{PathUtil.EscapePowerShellLiteral(dataRoot)}}'
+            $saPassword='{{PathUtil.EscapePowerShellLiteral(saPassword)}}'
             $log=Join-Path (Split-Path $installer) '{{logFileName}}'
             Start-Transcript -Path $log -Append | Out-Null
 
@@ -345,17 +345,17 @@ public sealed partial class EnvironmentInstaller
             $ErrorActionPreference='Continue'
             $ProgressPreference='SilentlyContinue'
             {{WindowsFirewallScript.Functions}}
-            $bootstrapper='{{EscapePowerShellPath(bootstrapper)}}'
-            $mediaRoot='{{EscapePowerShellPath(mediaRoot)}}'
-            $extractRoot='{{EscapePowerShellPath(extractRoot)}}'
-            $setupExe='{{EscapePowerShellPath(setupExe)}}'
-            $dataRoot='{{EscapePowerShellPath(dataRoot)}}'
-            $saPassword='{{EscapePowerShellPath(saPassword)}}'
+            $bootstrapper='{{PathUtil.EscapePowerShellLiteral(bootstrapper)}}'
+            $mediaRoot='{{PathUtil.EscapePowerShellLiteral(mediaRoot)}}'
+            $extractRoot='{{PathUtil.EscapePowerShellLiteral(extractRoot)}}'
+            $setupExe='{{PathUtil.EscapePowerShellLiteral(setupExe)}}'
+            $dataRoot='{{PathUtil.EscapePowerShellLiteral(dataRoot)}}'
+            $saPassword='{{PathUtil.EscapePowerShellLiteral(saPassword)}}'
             $defaultInstanceId='{{defaultInstanceId}}'
             $displayName='{{displayName}}'
             $mediaPackageSearchPattern='{{plan.MediaPackageSearchPattern}}'
             $mediaType='{{plan.MediaType}}'
-            $restartMarker='{{EscapePowerShellPath(restartMarker)}}'
+            $restartMarker='{{PathUtil.EscapePowerShellLiteral(restartMarker)}}'
             $script:mountedIsoPath=$null
             $log=Join-Path (Split-Path $bootstrapper) '{{logFileName}}'
             Remove-Item -LiteralPath $log -Force -ErrorAction SilentlyContinue
@@ -396,7 +396,7 @@ public sealed partial class EnvironmentInstaller
             }
 
             function Write-SetupSummary {
-                $bootstrapLogRoot = Join-Path $env:ProgramFiles '{{EscapePowerShellPath(bootstrapLogDirectory)}}'
+                $bootstrapLogRoot = Join-Path $env:ProgramFiles '{{PathUtil.EscapePowerShellLiteral(bootstrapLogDirectory)}}'
                 $summary = Get-ChildItem $bootstrapLogRoot -Filter Summary.txt -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
                 if ($summary) {
                     Write-Output ''

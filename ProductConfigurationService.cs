@@ -217,7 +217,7 @@ internal static class ProductConfigurationService
         var files = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var deployment in ProductDeploymentService.LoadTomcatDeploymentInfos())
         {
-            var productRoot = Path.Combine(ComponentPaths.WebRoot, SafeName(deployment.ProductId));
+            var productRoot = Path.Combine(ComponentPaths.WebRoot, PathUtil.SafeProductName(deployment.ProductId));
             var file = FindNamedFile(productRoot, "systemConfig.yml");
             if (file is null)
             {
@@ -385,14 +385,6 @@ internal static class ProductConfigurationService
         }
 
         return value ?? string.Empty;
-    }
-
-    private static string SafeName(string value)
-    {
-        var safe = new string((value ?? string.Empty)
-            .Select(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_' or '.' ? ch : '_')
-            .ToArray()).Trim('_');
-        return safe.Length == 0 ? "product" : safe;
     }
 
     private sealed class Utf8StringWriter : StringWriter

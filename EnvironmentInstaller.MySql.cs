@@ -129,15 +129,15 @@ public sealed partial class EnvironmentInstaller
     private static string BuildMySqlInstallStopScript(IEnumerable<string> roots, string logName, bool allowLegacy = false)
     {
         var allowedRoots = string.Join(", ", roots.Distinct(StringComparer.OrdinalIgnoreCase)
-            .Select(root => $"'{EscapePowerShellPath(root)}'"));
+            .Select(root => $"'{PathUtil.EscapePowerShellLiteral(root)}'"));
         var legacyParents = allowLegacy ? string.Join(", ", new[] { ComponentPaths.RuntimeRoot, ComponentPaths.LegacyRuntimeRoot }
-            .Select(root => $"'{EscapePowerShellPath(root)}'")) : string.Empty;
+            .Select(root => $"'{PathUtil.EscapePowerShellLiteral(root)}'")) : string.Empty;
         return $$"""
             $ErrorActionPreference = 'Stop'
             {{EnvironmentRuntimeService.RuntimeUninstallFunctions}}
             $mysqlRoots = @({{allowedRoots}})
             $legacyParents = @({{legacyParents}})
-            $log = '{{EscapePowerShellPath(Path.Combine(GetTempDirectory(), logName))}}'
+            $log = '{{PathUtil.EscapePowerShellLiteral(Path.Combine(GetTempDirectory(), logName))}}'
             [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($log)) | Out-Null
             Start-Transcript -Path $log -Append | Out-Null
             try {
@@ -192,20 +192,20 @@ public sealed partial class EnvironmentInstaller
         var initFile = Path.Combine(data, "mysql-itmc-init.sql");
         var workRoot = GetTempDirectory();
         var log = Path.Combine(workRoot, "install-mysql.log");
-        var escapedPassword = EscapePowerShellPath(rootPassword);
+        var escapedPassword = PathUtil.EscapePowerShellLiteral(rootPassword);
         var mysqlPort = port is >= 1 and <= 65535 ? port : MySqlCredentialStore.DefaultPort;
         return $$"""
             $ErrorActionPreference='Continue'
             $ProgressPreference='SilentlyContinue'
-            $root='{{EscapePowerShellPath(mysqlRoot)}}'
-            $data='{{EscapePowerShellPath(data)}}'
-            $mysqld='{{EscapePowerShellPath(mysqldExe)}}'
-            $mysql='{{EscapePowerShellPath(mysqlExe)}}'
+            $root='{{PathUtil.EscapePowerShellLiteral(mysqlRoot)}}'
+            $data='{{PathUtil.EscapePowerShellLiteral(data)}}'
+            $mysqld='{{PathUtil.EscapePowerShellLiteral(mysqldExe)}}'
+            $mysql='{{PathUtil.EscapePowerShellLiteral(mysqlExe)}}'
             $rootPassword='{{escapedPassword}}'
-            $myIni='{{EscapePowerShellPath(myIni)}}'
-            $errorLog='{{EscapePowerShellPath(errorLog)}}'
-            $initFile='{{EscapePowerShellPath(initFile)}}'
-            $log='{{EscapePowerShellPath(log)}}'
+            $myIni='{{PathUtil.EscapePowerShellLiteral(myIni)}}'
+            $errorLog='{{PathUtil.EscapePowerShellLiteral(errorLog)}}'
+            $initFile='{{PathUtil.EscapePowerShellLiteral(initFile)}}'
+            $log='{{PathUtil.EscapePowerShellLiteral(log)}}'
             $registeredService = $false
             $serviceWasPresent = [bool](Get-Service -Name 'MySQL80' -ErrorAction SilentlyContinue)
             Start-Transcript -Path $log -Append | Out-Null

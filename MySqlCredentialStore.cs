@@ -42,7 +42,7 @@ public static class MySqlCredentialStore
                     continue;
                 }
 
-                if (!PathsEqual(file, CredentialFile) || !wasProtected)
+                if (!PathUtil.PathsEqual(file, CredentialFile) || !wasProtected)
                 {
                     Save(normalized);
                 }
@@ -123,9 +123,6 @@ public static class MySqlCredentialStore
             yield return Path.Combine(parent, "StoreData", "RuntimeState", "mysql-default.json");
         }
     }
-
-    private static bool PathsEqual(string left, string right) =>
-        Path.GetFullPath(left).Equals(Path.GetFullPath(right), StringComparison.OrdinalIgnoreCase);
 
     private static MySqlDefaultCredentials WithConfiguredPort(MySqlDefaultCredentials credentials)
     {

@@ -293,7 +293,7 @@ internal sealed class ProductWebsiteService
             throw new FileNotFoundException("SSL 私钥文件不存在。", keySource);
         }
 
-        var directory = Path.Combine(nginxRoot, "conf", "mcpanel-ssl", SafeName(productId));
+        var directory = Path.Combine(nginxRoot, "conf", "mcpanel-ssl", PathUtil.SafeProductName(productId));
         Directory.CreateDirectory(directory);
         var certificateTarget = Path.Combine(directory, $"certificate-{FileHash(certificateSource)}.pem");
         var keyTarget = Path.Combine(directory, $"private-key-{FileHash(keySource)}.pem");
@@ -323,7 +323,7 @@ internal sealed class ProductWebsiteService
     {
         try
         {
-            var directory = Path.Combine(nginxRoot, "conf", "mcpanel-ssl", SafeName(productId));
+            var directory = Path.Combine(nginxRoot, "conf", "mcpanel-ssl", PathUtil.SafeProductName(productId));
             if (Directory.Exists(directory))
             {
                 foreach (var file in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories))
@@ -363,7 +363,7 @@ internal sealed class ProductWebsiteService
         foreach (var root in roots)
         {
             DeleteManagedCertificates(root, productId);
-            var remaining = Path.Combine(root, "conf", "mcpanel-ssl", SafeName(productId));
+            var remaining = Path.Combine(root, "conf", "mcpanel-ssl", PathUtil.SafeProductName(productId));
             if (Directory.Exists(remaining))
             {
                 throw new IOException($"无法删除产品 {productId} 的 Nginx 证书目录：{remaining}");
@@ -375,7 +375,7 @@ internal sealed class ProductWebsiteService
     {
         try
         {
-            var directory = Path.Combine(nginxRoot, "conf", "mcpanel-ssl", SafeName(productId));
+            var directory = Path.Combine(nginxRoot, "conf", "mcpanel-ssl", PathUtil.SafeProductName(productId));
             if (!Directory.Exists(directory)) return;
             var keep = activeFiles.Select(Path.GetFullPath).ToHashSet(StringComparer.OrdinalIgnoreCase);
             foreach (var file in Directory.EnumerateFiles(directory, "*", SearchOption.TopDirectoryOnly))
@@ -391,13 +391,6 @@ internal sealed class ProductWebsiteService
 
     private static string? FindNginxExe() => new ComponentLocator().FindNginxExecutable();
 
-    private static string ManagedId(string productId) => $"product-domain:{SafeName(productId)}";
+    private static string ManagedId(string productId) => $"product-domain:{PathUtil.SafeProductName(productId)}";
 
-    private static string SafeName(string value)
-    {
-        var safe = new string((value ?? string.Empty)
-            .Select(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_' or '.' ? ch : '_')
-            .ToArray()).Trim('_');
-        return safe.Length == 0 ? "product" : safe;
-    }
 }

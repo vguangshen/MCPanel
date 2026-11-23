@@ -25,8 +25,8 @@ public sealed partial class EnvironmentInstaller
 
     private async Task InstallIisAsync(EnvironmentDownloadSettings downloads, Action<InstallProgress> progress, CancellationToken cancellationToken, bool repairOnly = false)
     {
-        TryDeleteFile(IisPendingUninstallMarker);
-        TryDeleteFile(IisUninstalledMarker);
+        PathUtil.TryDeleteFile(IisPendingUninstallMarker);
+        PathUtil.TryDeleteFile(IisUninstalledMarker);
         var temp = GetTempDirectory();
         var rewriteMsi = Path.Combine(GetPackageDirectory(), "URLRewrite.msi");
         // A configuration-only repair needs no network connection when URL Rewrite
@@ -49,11 +49,11 @@ public sealed partial class EnvironmentInstaller
         AtomicFile.WriteAllText(repairMarker, "IIS 配置尚未完成，请执行修复配置。", Encoding.UTF8);
         progress(InstallingProgress(35, repairOnly ? "正在修复 IIS 配置..." : "正在启用 IIS 组件...", 8));
         await RunElevatedPowerShellAsync(script, progress, 10, 95, cancellationToken, requireExistingAdministrator: true);
-        TryDeleteFile(repairMarker);
+        PathUtil.TryDeleteFile(repairMarker);
         EnvironmentRuntimeService.InvalidateIisModuleProbe();
-        TryDeleteFile(IisInstallRestartMarkerPath);
-        TryDeleteFile(IisPendingUninstallMarker);
-        TryDeleteFile(IisUninstalledMarker);
+        PathUtil.TryDeleteFile(IisInstallRestartMarkerPath);
+        PathUtil.TryDeleteFile(IisPendingUninstallMarker);
+        PathUtil.TryDeleteFile(IisUninstalledMarker);
         progress(InstallingProgress(100, "IIS 安装和基础配置完成。"));
     }
 
@@ -92,8 +92,8 @@ public sealed partial class EnvironmentInstaller
         var restartMarker = IisInstallRestartMarkerPath;
         var sb = new StringBuilder();
         sb.AppendLine("$ErrorActionPreference='Stop'");
-        sb.AppendLine($"$log='{EscapePowerShellPath(log)}'");
-        sb.AppendLine($"$restartMarker='{EscapePowerShellPath(restartMarker)}'");
+        sb.AppendLine($"$log='{PathUtil.EscapePowerShellLiteral(log)}'");
+        sb.AppendLine($"$restartMarker='{PathUtil.EscapePowerShellLiteral(restartMarker)}'");
         sb.AppendLine("$restartNeeded=$false");
         sb.AppendLine("Remove-Item -LiteralPath $restartMarker -Force -ErrorAction SilentlyContinue");
         sb.AppendLine("Remove-Item -LiteralPath $log -Force -ErrorAction SilentlyContinue");
@@ -154,7 +154,7 @@ public sealed partial class EnvironmentInstaller
         sb.AppendLine(@"  }");
         sb.AppendLine(@"  & $appcmd set config /section:asp /enableParentPaths:True");
         sb.AppendLine(@"  if ($LASTEXITCODE -ne 0) { throw ('无法启用 ASP ParentPaths；appcmd 退出码：' + $LASTEXITCODE) }");
-        var escapedRewriteMsi = EscapePowerShellPath(rewriteMsi);
+        var escapedRewriteMsi = PathUtil.EscapePowerShellLiteral(rewriteMsi);
         sb.AppendLine($"  $rewriteMsi = '{escapedRewriteMsi}'");
         sb.AppendLine("  $moduleOutput = (& $appcmd list modules 2>&1 | Out-String)");
         sb.AppendLine("  if ($LASTEXITCODE -ne 0) { throw '无法查询 IIS 已注册的模块。' }");

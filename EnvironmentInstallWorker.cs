@@ -30,7 +30,7 @@ internal static class EnvironmentInstallWorker
         var reporter = new ProgressReporter(progressPath);
         try
         {
-            if (!IsAdministrator())
+            if (!ProcessRunner.IsAdministrator())
             {
                 throw new InvalidOperationException("管理员安装进程未获得管理员权限。请重新点击安装并允许 UAC 授权。");
             }
@@ -538,12 +538,6 @@ END;";
             progressPath = string.Empty;
             return false;
         }
-    }
-
-    private static bool IsAdministrator()
-    {
-        using var identity = WindowsIdentity.GetCurrent();
-        return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
     }
 
     private sealed class ProgressReporter

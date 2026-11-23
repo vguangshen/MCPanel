@@ -411,7 +411,7 @@ internal static class DatabaseToolUninstaller
         }
 
         var iconCommand = ParseRegisteredCommand(displayIcon.TrimEnd(',', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'));
-        if (iconCommand is not null && PathsEqual(iconCommand.FileName, installation.ExecutablePath))
+        if (iconCommand is not null && PathUtil.PathsEqual(iconCommand.FileName, installation.ExecutablePath))
         {
             score += 80;
         }
@@ -464,18 +464,6 @@ internal static class DatabaseToolUninstaller
         var name = Path.GetFileName(fileName);
         return name.Equals("msiexec", StringComparison.OrdinalIgnoreCase) ||
                name.Equals("msiexec.exe", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool PathsEqual(string left, string right)
-    {
-        try
-        {
-            return string.Equals(Path.GetFullPath(left), Path.GetFullPath(right), StringComparison.OrdinalIgnoreCase);
-        }
-        catch
-        {
-            return false;
-        }
     }
 
     private static bool IsSameOrChildPath(string path, string root)

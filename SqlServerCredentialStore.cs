@@ -51,7 +51,7 @@ public static class SqlServerCredentialStore
         try
         {
             SqlServerInstalledConnection? fallback = null;
-            foreach (var view in RegistryViews())
+            foreach (var view in SystemProbe.RegistryViewsWithDefault())
             {
                 using var baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
                 using var instances = baseKey.OpenSubKey(@"SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL");
@@ -191,25 +191,6 @@ public static class SqlServerCredentialStore
             throw new InvalidDataException(
                 "SQL Server 本地凭据文件已损坏或无法读取。MCPanel 不会生成一套新的随机 sa 密码冒充现有凭据；请恢复凭据文件或重新配置连接信息。",
                 error);
-        }
-    }
-
-    private static IEnumerable<RegistryView> RegistryViews()
-    {
-        var seen = new HashSet<RegistryView>();
-        if (Environment.Is64BitOperatingSystem && seen.Add(RegistryView.Registry64))
-        {
-            yield return RegistryView.Registry64;
-        }
-
-        if (seen.Add(RegistryView.Registry32))
-        {
-            yield return RegistryView.Registry32;
-        }
-
-        if (seen.Add(RegistryView.Default))
-        {
-            yield return RegistryView.Default;
         }
     }
 

@@ -42,8 +42,8 @@ public sealed partial class ProductDeploymentService
                 DeleteFileIfExists(stateFile);
                 if (state is not null)
                 {
-                    DeleteDirectoryIfExists(Path.Combine(ComponentPaths.RuntimeRoot, "TomcatInstances", SafeName(state.ProductId)));
-                    DeleteDirectoryIfExists(Path.Combine(ComponentPaths.LegacyRuntimeRoot, "TomcatInstances", SafeName(state.ProductId)));
+                    DeleteDirectoryIfExists(Path.Combine(ComponentPaths.RuntimeRoot, "TomcatInstances", PathUtil.SafeProductName(state.ProductId)));
+                    DeleteDirectoryIfExists(Path.Combine(ComponentPaths.LegacyRuntimeRoot, "TomcatInstances", PathUtil.SafeProductName(state.ProductId)));
                 }
             }
             catch (Exception error)
@@ -329,9 +329,9 @@ public sealed partial class ProductDeploymentService
         var installRoot = ProductInstallPathResolver.ResolveProductRoot(product.InstallRoot);
         Directory.CreateDirectory(installRoot);
 
-        var safeName = SafeName(product.ProductId);
+        var safeName = PathUtil.SafeProductName(product.ProductId);
         var productRoot = Path.Combine(installRoot, safeName);
-        if (PathsEqual(packagePath, productRoot))
+        if (PathUtil.PathsEqual(packagePath, productRoot))
         {
             EnsureDirectoryContainsFiles(productRoot);
             var existingPreparedPath = NormalizeProductRoot(productRoot);
@@ -448,7 +448,7 @@ public sealed partial class ProductDeploymentService
     private async Task UninstallCoreAsync(ProductItem product,
         CancellationToken cancellationToken, IProgress<ProductUninstallProgress>? progress)
     {
-        var safeName = SafeName(product.ProductId);
+        var safeName = PathUtil.SafeProductName(product.ProductId);
         ReportUninstallProgress(progress, 0, "正在准备卸载，读取现有绑定和运行状态...");
         cancellationToken.ThrowIfCancellationRequested();
         var iisState = LoadIisDeploymentInfo(product.ProductId);
@@ -477,10 +477,10 @@ public sealed partial class ProductDeploymentService
             Directory.CreateDirectory(Path.GetDirectoryName(script)!);
             await FileCompat.WriteAllTextAsync(script, $$"""
                 $ErrorActionPreference='Stop'
-                $appcmd='{{EscapePowerShellPath(appcmd)}}'
+                $appcmd='{{PathUtil.EscapePowerShellLiteral(appcmd)}}'
                 $appName='MCPanel/{{safeName}}'
                 $siteName='MCPanel'
-                $siteRoot='{{EscapePowerShellPath(Path.Combine(ComponentPaths.RuntimeRoot, "IISRoot"))}}'
+                $siteRoot='{{PathUtil.EscapePowerShellLiteral(Path.Combine(ComponentPaths.RuntimeRoot, "IISRoot"))}}'
                 $poolName='{{safeName}}'
                 $appNames=@(& $appcmd list app /text:APP.NAME)
                 if ($appNames -contains $appName) {
@@ -664,7 +664,7 @@ public sealed partial class ProductDeploymentService
     public static IisProductDeploymentInfo? LoadIisDeploymentInfo(string productId)
     {
         ReconcileRuntimeDeploymentState();
-        var file = GetIisStateFile(SafeName(productId));
+        var file = GetIisStateFile(PathUtil.SafeProductName(productId));
         if (!File.Exists(file))
         {
             return null;
@@ -718,7 +718,7 @@ public sealed partial class ProductDeploymentService
     public static TomcatProductDeploymentInfo? LoadTomcatDeploymentInfo(string productId)
     {
         ReconcileRuntimeDeploymentState();
-        var safeName = SafeName(productId);
+        var safeName = PathUtil.SafeProductName(productId);
         var stateFile = GetTomcatStateFile(safeName);
         if (File.Exists(stateFile))
         {
@@ -776,13 +776,13 @@ public sealed partial class ProductDeploymentService
     private static TomcatProductDeploymentInfo ResolveTomcatRuntimeInfo(TomcatProductDeploymentInfo info)
     {
         var tomcatRoot = FindTomcatRoot();
-        var configured = tomcatRoot is null ? null : ReadTomcatProductService(tomcatRoot, SafeName(info.ProductId));
+        var configured = tomcatRoot is null ? null : ReadTomcatProductService(tomcatRoot, PathUtil.SafeProductName(info.ProductId));
         var instanceRoots = new[]
         {
-            Path.Combine(ComponentPaths.RuntimeRoot, "TomcatProductRuns", SafeName(info.ProductId)),
-            Path.Combine(ComponentPaths.LegacyRuntimeRoot, "TomcatProductRuns", SafeName(info.ProductId)),
-            Path.Combine(ComponentPaths.RuntimeRoot, "TomcatInstances", SafeName(info.ProductId)),
-            Path.Combine(ComponentPaths.LegacyRuntimeRoot, "TomcatInstances", SafeName(info.ProductId))
+            Path.Combine(ComponentPaths.RuntimeRoot, "TomcatProductRuns", PathUtil.SafeProductName(info.ProductId)),
+            Path.Combine(ComponentPaths.LegacyRuntimeRoot, "TomcatProductRuns", PathUtil.SafeProductName(info.ProductId)),
+            Path.Combine(ComponentPaths.RuntimeRoot, "TomcatInstances", PathUtil.SafeProductName(info.ProductId)),
+            Path.Combine(ComponentPaths.LegacyRuntimeRoot, "TomcatInstances", PathUtil.SafeProductName(info.ProductId))
         };
         var generatedPorts = instanceRoots
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -891,7 +891,7 @@ public sealed partial class ProductDeploymentService
                 service.Remove();
             }
 
-            var safeProductId = SafeName(current.ProductId);
+            var safeProductId = PathUtil.SafeProductName(current.ProductId);
             var updated = current with
             {
                 ProductId = safeProductId,
@@ -932,7 +932,7 @@ public sealed partial class ProductDeploymentService
 
         await RemoveStaleIisBindingAsync(product.ProductId, cancellationToken);
 
-        var contextName = SafeName(product.ProductId);
+        var contextName = PathUtil.SafeProductName(product.ProductId);
         var appRoot = Directory.Exists(preparedPath) ? preparedPath : Path.GetDirectoryName(preparedPath)!;
         if (!ProductInstallPathResolver.IsInsideProductRoot(appRoot, product))
         {
@@ -1024,7 +1024,7 @@ public sealed partial class ProductDeploymentService
     {
         var tomcatRoot = FindTomcatRoot()
             ?? throw new DirectoryNotFoundException("未找到 Tomcat 安装目录。");
-        var safeProductId = SafeName(deployment.ProductId);
+        var safeProductId = PathUtil.SafeProductName(deployment.ProductId);
         await TomcatConfigurationLock.WaitAsync(cancellationToken);
         EnterTomcatConfigurationMutex();
         try
@@ -1171,7 +1171,7 @@ public sealed partial class ProductDeploymentService
 
     private static async Task RemoveStaleIisBindingAsync(string productId, CancellationToken cancellationToken)
     {
-        var safeName = SafeName(productId);
+        var safeName = PathUtil.SafeProductName(productId);
         var stateFile = GetIisStateFile(safeName);
         if (!File.Exists(stateFile))
         {
@@ -1185,7 +1185,7 @@ public sealed partial class ProductDeploymentService
             Directory.CreateDirectory(Path.GetDirectoryName(script)!);
             await FileCompat.WriteAllTextAsync(script, $$"""
                 $ErrorActionPreference='Stop'
-                $appcmd='{{EscapePowerShellPath(appcmd)}}'
+                $appcmd='{{PathUtil.EscapePowerShellLiteral(appcmd)}}'
                 $appName='MCPanel/{{safeName}}'
                 $poolName='{{safeName}}'
                 $appNames=@(& $appcmd list app /text:APP.NAME)
@@ -1216,7 +1216,7 @@ public sealed partial class ProductDeploymentService
         }
 
         var sourceRoot = Directory.Exists(preparedPath) ? preparedPath : Path.GetDirectoryName(preparedPath)!;
-        var safeName = SafeName(product.ProductId);
+        var safeName = PathUtil.SafeProductName(product.ProductId);
         if (!ProductInstallPathResolver.IsInsideProductRoot(sourceRoot, product))
         {
             throw new InvalidOperationException($"IIS 产品目录必须位于产品安装根目录内：{sourceRoot}");
@@ -1267,14 +1267,14 @@ public sealed partial class ProductDeploymentService
     {
         return $$"""
             $ErrorActionPreference='Stop'
-            $appcmd='{{EscapePowerShellPath(appcmd)}}'
-            $siteName='{{EscapePowerShellPath(siteName)}}'
-            $siteRoot='{{EscapePowerShellPath(siteRoot)}}'
-            $appPath='{{EscapePowerShellPath(appPath)}}'
-            $appRoot='{{EscapePowerShellPath(appRoot)}}'
-            $poolName='{{EscapePowerShellPath(poolName)}}'
-            $managedRuntimeVersion='{{EscapePowerShellPath(managedRuntimeVersion)}}'
-            $managedPipelineMode='{{EscapePowerShellPath(managedPipelineMode)}}'
+            $appcmd='{{PathUtil.EscapePowerShellLiteral(appcmd)}}'
+            $siteName='{{PathUtil.EscapePowerShellLiteral(siteName)}}'
+            $siteRoot='{{PathUtil.EscapePowerShellLiteral(siteRoot)}}'
+            $appPath='{{PathUtil.EscapePowerShellLiteral(appPath)}}'
+            $appRoot='{{PathUtil.EscapePowerShellLiteral(appRoot)}}'
+            $poolName='{{PathUtil.EscapePowerShellLiteral(poolName)}}'
+            $managedRuntimeVersion='{{PathUtil.EscapePowerShellLiteral(managedRuntimeVersion)}}'
+            $managedPipelineMode='{{PathUtil.EscapePowerShellLiteral(managedPipelineMode)}}'
             $enable32Bit={{(enable32Bit ? "$true" : "$false")}}
             $port={{port}}
             $appName="$siteName$appPath"
@@ -1658,7 +1658,7 @@ public sealed partial class ProductDeploymentService
     {
         try
         {
-            if (!IsPathInside(packagePath, DownloadRoot))
+            if (!PathUtil.IsPathInside(DownloadRoot, packagePath))
             {
                 return;
             }
@@ -1902,26 +1902,6 @@ public sealed partial class ProductDeploymentService
     private static bool IsSafeTomcatAppBase(string value) =>
         value.IndexOfAny(['/', '\\']) < 0 &&
         System.Text.RegularExpressions.Regex.IsMatch(value, "^webapps[0-9]+$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
-    private static string SafeName(string value)
-    {
-        var chars = value.Select(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_' or '.' ? ch : '_').ToArray();
-        var safe = new string(chars).Trim('_');
-        return string.IsNullOrWhiteSpace(safe) ? "product" : safe;
-    }
-
-    private static string EscapePowerShellPath(string path) => path.Replace("'", "''");
-
-    private static bool PathsEqual(string left, string right) =>
-        Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar)
-            .Equals(Path.GetFullPath(right).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase);
-
-    private static bool IsPathInside(string path, string root)
-    {
-        var fullPath = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        var fullRoot = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        return fullPath.StartsWith(fullRoot, StringComparison.OrdinalIgnoreCase);
-    }
 
     private static string GetTomcatContextFile(string tomcatRoot, string safeName) =>
         Path.Combine(tomcatRoot, "conf", "Catalina", "localhost", $"{safeName}.xml");

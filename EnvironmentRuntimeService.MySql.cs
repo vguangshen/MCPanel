@@ -172,7 +172,7 @@ public sealed partial class EnvironmentRuntimeService
                 : string.Empty;
             if (serviceStatus == RuntimeStatusKind.Running &&
                 configuredPort is > 0 and <= 65535 &&
-                !GetActiveTcpPorts().Contains(configuredPort.Value))
+                !SystemProbe.GetActiveTcpPorts().Contains(configuredPort.Value))
             {
                 return WithConnection(new EnvironmentRuntimeState(
                     true,
@@ -242,8 +242,8 @@ public sealed partial class EnvironmentRuntimeService
         }
         finally
         {
-            TryDeleteFile(script);
-            TryDeleteFile(result);
+            PathUtil.TryDeleteFile(script);
+            PathUtil.TryDeleteFile(result);
             RollingLogWriter.EnsureCapacity(log);
             PruneGeneratedLogs(workDirectory, "mysql-service-action-*.log*", log);
         }
@@ -254,25 +254,25 @@ public sealed partial class EnvironmentRuntimeService
         string logFileName,
         string resultFileName)
     {
-        var storeDataRoot = EscapePowerShellPath(StoreDataRoot);
+        var storeDataRoot = PathUtil.EscapePowerShellLiteral(StoreDataRoot);
         var mysqlRootsLiteral = string.Join(", ", ComponentPaths.MySqlSearchRoots
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Select(root => $"'{EscapePowerShellPath(root)}'"));
+            .Select(root => $"'{PathUtil.EscapePowerShellLiteral(root)}'"));
         var credentials = LoadEffectiveMySqlCredentials();
-        var rootPassword = EscapePowerShellPath(credentials.Password);
+        var rootPassword = PathUtil.EscapePowerShellLiteral(credentials.Password);
         var port = credentials.Port;
         return $$"""
             $ErrorActionPreference = 'Continue'
             $ProgressPreference = 'SilentlyContinue'
-            $action = '{{EscapePowerShellPath(action)}}'
+            $action = '{{PathUtil.EscapePowerShellLiteral(action)}}'
             $storeDataRoot = '{{storeDataRoot}}'
             $rootPassword = '{{rootPassword}}'
             $port = {{port}}
             $mysqlRoots = @({{mysqlRootsLiteral}})
             $workRoot = Join-Path $storeDataRoot 'Work'
             if (!(Test-Path $workRoot)) { New-Item -ItemType Directory -Path $workRoot -Force | Out-Null }
-            $log = Join-Path $workRoot '{{EscapePowerShellPath(logFileName)}}'
-            $resultFile = Join-Path $workRoot '{{EscapePowerShellPath(resultFileName)}}'
+            $log = Join-Path $workRoot '{{PathUtil.EscapePowerShellLiteral(logFileName)}}'
+            $resultFile = Join-Path $workRoot '{{PathUtil.EscapePowerShellLiteral(resultFileName)}}'
             Remove-Item -LiteralPath $resultFile -Force -ErrorAction SilentlyContinue
             Start-Transcript -Path $log -Append | Out-Null
 

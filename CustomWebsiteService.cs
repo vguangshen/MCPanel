@@ -483,7 +483,7 @@ public sealed class CustomWebsiteService
         var transaction = new WebConfigTransaction();
         try
         {
-            if (existing is not null && !PathsEqual(existing.PhysicalPath, definition.PhysicalPath))
+            if (existing is not null && !PathUtil.PathsEqual(existing.PhysicalPath, definition.PhysicalPath))
             {
                 transaction.Capture(Path.Combine(existing.PhysicalPath, "web.config"));
                 RemoveManagedWebConfig(existing);
@@ -693,8 +693,6 @@ public sealed class CustomWebsiteService
     }
 
     private static string EscapePowerShell(string value) => (value ?? string.Empty).Replace("'", "''", StringComparison.Ordinal);
-    private static bool PathsEqual(string left, string right) => Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar)
-        .Equals(Path.GetFullPath(right).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase);
     private static void DeleteFile(string file) { try { if (File.Exists(file)) File.Delete(file); } catch { } }
 
     private sealed class WebConfigTransaction
