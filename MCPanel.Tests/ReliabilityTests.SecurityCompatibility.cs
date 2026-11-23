@@ -164,6 +164,78 @@ public sealed partial class ReliabilityTests
             "$PSVersionTable.PSVersion.Major -lt 3");
     }
 
+    [TestMethod]
+    public void InstallLogReaderDecodesLegacyCodePageAndBomTails()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "MCPanel.Tests", "log-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            const string message = "SQL Server 安装失败：找不到指定的实例";
+
+            // Legacy code-page log (GBK on Chinese Windows).
+            var legacy = Path.Combine(root, "legacy.log");
+            var legacyBytes = System.Text.Encoding.Default.GetBytes(message);
+            File.WriteAllBytes(legacy, legacyBytes);
+            // On a non-Chinese code page the CJK text round-trips as '?'.
+            Assert.AreEqual(System.Text.Encoding.Default.GetString(legacyBytes), EnvironmentInstaller.ReadTextBestEffort(legacy));
+
+            // UTF-16 log larger than the tail window, with an odd padding so
+            // the tail offset would land in the middle of a character.
+            var utf16 = Path.Combine(root, "utf16.log");
+            var body = new string('x', 2049) + Environment.NewLine + message;
+            File.WriteAllText(utf16, body, System.Text.Encoding.Unicode);
+            StringAssert.EndsWith(EnvironmentInstaller.ReadTextBestEffort(utf16, maximumBytes: 1001), message);
+
+            // UTF-8 with BOM, tail cut inside a multi-byte character.
+            var utf8 = Path.Combine(root, "utf8.log");
+            File.WriteAllText(utf8, new string('中', 1000) + message, new System.Text.UTF8Encoding(true));
+            var tail = EnvironmentInstaller.ReadTextBestEffort(utf8, maximumBytes: 1000);
+            StringAssert.EndsWith(tail, message);
+            Assert.IsFalse(tail.Contains('\uFFFD'), tail);
+        }
+        finally
+        {
+            DeleteTemporaryTree(root);
+        }
+    }
+
+    [TestMethod]
+    public void TomcatJavaArgumentsPinRedirectedOutputEncoding()
+    {
+        var arguments = TomcatProductInstanceManager.BuildTomcatJavaArguments(@"C:\Tomcat", @"C:\Tomcat\base", null);
+        StringAssert.Contains(arguments, "-Dstdout.encoding=UTF-8");
+        StringAssert.Contains(arguments, "-Dstderr.encoding=UTF-8");
+    }
+
+    [TestMethod]
+    public void SqlServerScriptsUseFirewallComApiAvailableOnWindows7()
+    {
+        var sourceRoot = FindRepositoryRoot();
+        foreach (var file in new[] { "EnvironmentInstaller.SqlServer.cs", "EnvironmentRuntimeService.SqlServer.cs" })
+        {
+            var text = File.ReadAllText(Path.Combine(sourceRoot, file));
+            Assert.IsFalse(text.Contains("NetFirewallRule"), $"{file} 仍在使用 Windows 8+ 才有的防火墙 cmdlet。");
+            StringAssert.Contains(text, "{{WindowsFirewallScript.Functions}}");
+        }
+
+        StringAssert.Contains(WindowsFirewallScript.Functions, "HNetCfg.FwPolicy2");
+    }
+
+    [TestMethod]
+    public void TreeKillStopsTheRootProcess()
+    {
+        using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = Path.Combine(Environment.SystemDirectory, "ping.exe"),
+            Arguments = "-n 60 127.0.0.1",
+            UseShellExecute = false,
+            CreateNoWindow = true
+        })!;
+        System.Diagnostics.LegacyProcessExtensions.Kill(process, entireProcessTree: true);
+        Assert.IsTrue(process.WaitForExit(5000), "Kill(entireProcessTree: true) 返回后进程必须已退出。");
+    }
+
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

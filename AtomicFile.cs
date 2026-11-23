@@ -20,7 +20,13 @@ internal static class AtomicFile
         {
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
             var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-            File.WriteAllBytes(temporary, contents);
+            // Flush to disk before the rename: otherwise a power loss right after
+            // File.Replace can leave an empty or truncated settings file.
+            using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                stream.Write(contents, 0, contents.Length);
+                stream.Flush(flushToDisk: true);
+            }
             try
             {
                 for (var attempt = 0; ; attempt++)
@@ -37,7 +43,10 @@ internal static class AtomicFile
                         }
                         break;
                     }
-                    catch (IOException) when (attempt < 5)
+                    // Antivirus and indexers briefly hold new files open, which
+                    // File.Replace reports as either exception type.
+                    catch (Exception error) when (
+                        attempt < 5 && (error is IOException || error is UnauthorizedAccessException))
                     {
                         Thread.Sleep(40 * (attempt + 1));
                     }

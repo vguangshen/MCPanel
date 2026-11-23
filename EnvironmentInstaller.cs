@@ -409,13 +409,41 @@ public sealed partial class EnvironmentInstaller : IDisposable
         }
     }
 
-    private static string ReadTextBestEffort(string path)
+    internal static string ReadTextBestEffort(string path, int maximumBytes = 512 * 1024)
     {
-        const int maximumBytes = 512 * 1024;
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        var offset = stream.Length > maximumBytes ? stream.Length - maximumBytes : 0;
+
+        // Detect the BOM from the real start of the file, even when only the
+        // tail is read below.
+        var head = new byte[3];
+        var headLength = stream.Read(head, 0, head.Length);
+        Encoding? bomEncoding = null;
+        var bomLength = 0;
+        if (headLength >= 3 && head[0] == 0xEF && head[1] == 0xBB && head[2] == 0xBF)
+        {
+            bomEncoding = Encoding.UTF8;
+            bomLength = 3;
+        }
+        else if (headLength >= 2 && head[0] == 0xFF && head[1] == 0xFE)
+        {
+            bomEncoding = Encoding.Unicode;
+            bomLength = 2;
+        }
+        else if (headLength >= 2 && head[0] == 0xFE && head[1] == 0xFF)
+        {
+            bomEncoding = Encoding.BigEndianUnicode;
+            bomLength = 2;
+        }
+
+        var offset = Math.Max(bomLength, stream.Length - maximumBytes);
+        if (bomLength == 2 && (offset - bomLength) % 2 != 0)
+        {
+            // Keep UTF-16 reads on a character boundary.
+            offset++;
+        }
+
         stream.Seek(offset, SeekOrigin.Begin);
-        var buffer = new byte[(int)Math.Min(maximumBytes, stream.Length - offset)];
+        var buffer = new byte[(int)Math.Max(0, stream.Length - offset)];
         var read = 0;
         while (read < buffer.Length)
         {
@@ -424,39 +452,28 @@ public sealed partial class EnvironmentInstaller : IDisposable
             read += chunk;
         }
 
-        var bytes = read == buffer.Length ? buffer : buffer.Take(read).ToArray();
-        if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
+        var start = 0;
+        if (offset > bomLength && bomEncoding is null or UTF8Encoding)
         {
-            return Encoding.UTF8.GetString(bytes);
+            // Skip a UTF-8 sequence cut in half by the tail offset.
+            while (start < read && start < 3 && (buffer[start] & 0xC0) == 0x80) start++;
         }
 
-        if (bytes.Length >= 2)
+        if (bomEncoding is not null)
         {
-            if (bytes[0] == 0xFF && bytes[1] == 0xFE)
-            {
-                return Encoding.Unicode.GetString(bytes);
-            }
-
-            if (bytes[0] == 0xFE && bytes[1] == 0xFF)
-            {
-                return Encoding.BigEndianUnicode.GetString(bytes);
-            }
+            return bomEncoding.GetString(buffer, start, read - start);
         }
 
-        var utf8 = Encoding.UTF8.GetString(bytes);
-        if (!LooksLikeMojibake(utf8))
-        {
-            return utf8;
-        }
-
+        // Strict UTF-8 fails on GBK and other legacy bytes (decoding them
+        // leniently only produced U+FFFD), so fall back to the system ANSI
+        // code page, which Windows installers use for their logs.
         try
         {
-            var ansi = Encoding.GetEncoding(CultureInfo.CurrentCulture.TextInfo.ANSICodePage).GetString(bytes);
-            return LooksLikeMojibake(ansi) ? utf8 : ansi;
+            return new UTF8Encoding(false, throwOnInvalidBytes: true).GetString(buffer, start, read - start);
         }
-        catch
+        catch (DecoderFallbackException)
         {
-            return utf8;
+            return Encoding.Default.GetString(buffer, 0, read);
         }
     }
 

@@ -689,6 +689,11 @@ public sealed class TomcatProductInstanceManager
         arguments.Add("-Djava.protocol.handler.pkgs=org.apache.catalina.webresources");
         arguments.Add("-Dignore.endorsed.dirs=");
         arguments.Add("-Dfile.encoding=UTF-8");
+        // Java 18+ no longer derives System.out/err encoding from file.encoding;
+        // redirected output would use the system code page (GBK) while MCPanel
+        // reads it as UTF-8. Older Java versions ignore these properties.
+        arguments.Add("-Dstdout.encoding=UTF-8");
+        arguments.Add("-Dstderr.encoding=UTF-8");
         arguments.Add("-classpath");
         arguments.Add(Compat.QuoteCommandLineArgument(classPath));
         arguments.Add(Compat.QuoteCommandLineArgument($"-Dcatalina.base={catalinaBase}"));
@@ -972,14 +977,21 @@ public sealed class TomcatProductInstanceManager
                 return [];
             }
 
-            var output = process.StandardOutput.ReadToEnd();
+            // Read both streams in the background: a blocking ReadToEnd() here
+            // would wait for netstat to exit, so the timeout below never applied,
+            // and an unread stderr pipe could fill up and stall netstat.
+            var outputTask = process.StandardOutput.ReadToEndAsync();
+            var errorTask = process.StandardError.ReadToEndAsync();
             if (!process.WaitForExit(5000))
             {
                 ProcessLifecycle.TryKill(process);
                 return [];
             }
 
-            return ParseNetstatListeningProcessIds(output, wantedPorts);
+            _ = errorTask;
+            return outputTask.Wait(1000)
+                ? ParseNetstatListeningProcessIds(outputTask.Result, wantedPorts)
+                : [];
         }
         catch
         {

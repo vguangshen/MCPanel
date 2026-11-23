@@ -286,23 +286,47 @@ namespace System.Diagnostics
                 return;
             }
 
+            // taskkill can start but still fail (access denied, timeout), so
+            // its exit code alone is not trusted: if the root process is still
+            // alive afterwards, kill it directly. Children may then survive,
+            // but the process the caller owns does not.
             try
             {
+                if (process.HasExited)
+                {
+                    return;
+                }
+
                 using var taskKill = Process.Start(new ProcessStartInfo
                 {
-                    FileName = "taskkill.exe",
+                    FileName = Path.Combine(Environment.SystemDirectory, "taskkill.exe"),
                     Arguments = $"/PID {process.Id} /T /F",
                     UseShellExecute = false,
                     CreateNoWindow = true
                 });
-                taskKill?.WaitForExit(5000);
+                if (taskKill is not null && !taskKill.WaitForExit(5000))
+                {
+                    try { taskKill.Kill(); } catch { }
+                }
+
+                process.WaitForExit(2000);
             }
             catch
+            {
+                // Fall through to the direct kill below.
+            }
+
+            try
             {
                 if (!process.HasExited)
                 {
                     process.Kill();
+                    process.WaitForExit(2000);
                 }
+            }
+            catch (InvalidOperationException)
+            {
+                // The process exited between the check and the kill.
             }
         }
     }

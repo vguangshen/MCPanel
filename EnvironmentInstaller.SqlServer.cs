@@ -120,6 +120,7 @@ public sealed partial class EnvironmentInstaller
         return $$"""
             $ErrorActionPreference='Continue'
             $ProgressPreference='SilentlyContinue'
+            {{WindowsFirewallScript.Functions}}
             $installer='{{EscapePowerShellPath(installer)}}'
             $dataRoot='{{EscapePowerShellPath(dataRoot)}}'
             $saPassword='{{EscapePowerShellPath(saPassword)}}'
@@ -286,7 +287,7 @@ public sealed partial class EnvironmentInstaller
                     Set-ItemProperty -Path $tcpKey -Name TcpDynamicPorts -Value '' -ErrorAction SilentlyContinue
                     Set-ItemProperty -Path $tcpKey -Name TcpPort -Value '1433' -ErrorAction SilentlyContinue
                 }
-                New-NetFirewallRule -DisplayName 'MCPanel SQL Server 1433' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 1433 -ErrorAction SilentlyContinue | Out-Null
+                Set-McPanelFirewallPort 'MCPanel SQL Server 1433' 'TCP' 1433
             }
 
             try {
@@ -343,6 +344,7 @@ public sealed partial class EnvironmentInstaller
         return $$"""
             $ErrorActionPreference='Continue'
             $ProgressPreference='SilentlyContinue'
+            {{WindowsFirewallScript.Functions}}
             $bootstrapper='{{EscapePowerShellPath(bootstrapper)}}'
             $mediaRoot='{{EscapePowerShellPath(mediaRoot)}}'
             $extractRoot='{{EscapePowerShellPath(extractRoot)}}'
@@ -579,8 +581,8 @@ public sealed partial class EnvironmentInstaller
 
                 & sc.exe config MSSQLSERVER start= auto | Out-Null
                 & sc.exe config SQLBrowser start= demand | Out-Null
-                New-NetFirewallRule -DisplayName 'MCPanel SQL Server 1433' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 1433 -ErrorAction SilentlyContinue | Out-Null
-                New-NetFirewallRule -DisplayName 'MCPanel SQL Browser 1434' -Direction Inbound -Action Allow -Protocol UDP -LocalPort 1434 -ErrorAction SilentlyContinue | Out-Null
+                Set-McPanelFirewallPort 'MCPanel SQL Server 1433' 'TCP' 1433
+                Set-McPanelFirewallPort 'MCPanel SQL Browser 1434' 'UDP' 1434
             }
 
             function Remove-PathSafe($path) {

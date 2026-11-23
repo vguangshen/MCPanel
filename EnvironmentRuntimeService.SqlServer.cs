@@ -46,6 +46,7 @@ public sealed partial class EnvironmentRuntimeService
         return $$"""
             $ErrorActionPreference = 'Stop'
             $ProgressPreference = 'SilentlyContinue'
+            {{WindowsFirewallScript.Functions}}
             $storeDataRoot = '{{storeDataRoot}}'
             $componentRoot = '{{componentRoot}}'
             $migratedDataRoot = '{{migratedDataRoot}}'
@@ -178,9 +179,8 @@ public sealed partial class EnvironmentRuntimeService
             }
 
             Invoke-Step '清理 MCPanel SQL Server 防火墙规则' {
-                Get-NetFirewallRule -ErrorAction SilentlyContinue |
-                    Where-Object { $_.DisplayName -like 'MCPanel SQL Server *' } |
-                    Remove-NetFirewallRule -ErrorAction SilentlyContinue
+                Remove-McPanelFirewallRules 'MCPanel SQL Server *'
+                Remove-McPanelFirewallRules 'MCPanel SQL Browser *'
             }
 
             $remainingServices = @(Get-Service -ErrorAction SilentlyContinue | Where-Object {
@@ -303,6 +303,7 @@ public sealed partial class EnvironmentRuntimeService
         return $$"""
             $ErrorActionPreference = 'Continue'
             $ProgressPreference = 'SilentlyContinue'
+            {{WindowsFirewallScript.Functions}}
             $action = '{{EscapePowerShellPath(action)}}'
             $workRoot = Join-Path '{{storeDataRoot}}' 'Work'
             if (!(Test-Path $workRoot)) { New-Item -ItemType Directory -Path $workRoot -Force | Out-Null }
@@ -373,7 +374,7 @@ public sealed partial class EnvironmentRuntimeService
                         Set-ItemProperty -Path $tcpKey -Name TcpPort -Value '1433' -ErrorAction SilentlyContinue
                     }
                 }
-                New-NetFirewallRule -DisplayName ('MCPanel SQL Server ' + $tcpPort) -Direction Inbound -Action Allow -Protocol TCP -LocalPort $tcpPort -ErrorAction SilentlyContinue | Out-Null
+                Set-McPanelFirewallPort ('MCPanel SQL Server ' + $tcpPort) 'TCP' $tcpPort
             }
 
             function Get-RecentSqlErrors {

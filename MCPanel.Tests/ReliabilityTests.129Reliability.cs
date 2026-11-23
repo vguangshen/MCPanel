@@ -12,7 +12,7 @@ public sealed partial class ReliabilityTests
 
         StringAssert.Contains(script, "@('MSSQLSERVER','SQLSERVERAGENT')");
         StringAssert.Contains(script, "保留 SQL Native Client、ODBC/OLE DB Driver");
-        StringAssert.Contains(script, "Where-Object { $_.DisplayName -like 'MCPanel SQL Server *' }");
+        StringAssert.Contains(script, "Remove-McPanelFirewallRules 'MCPanel SQL Server *'");
         Assert.IsTrue(script.IndexOf("$_.Name -like 'MSSQL$*'", System.StringComparison.Ordinal) < 0);
         Assert.IsTrue(script.IndexOf("$_.Name -like 'SQLAgent$*'", System.StringComparison.Ordinal) < 0);
         Assert.IsTrue(script.IndexOf("Microsoft ODBC Driver.*SQL", System.StringComparison.Ordinal) < 0);
