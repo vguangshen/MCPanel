@@ -41,19 +41,6 @@ public sealed partial class ReliabilityTests
 
     private static string ReadAccountApiPortEditingSource(string relativePath)
     {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null)
-        {
-            var candidate = Path.Combine(directory.FullName, relativePath);
-            if (File.Exists(Path.Combine(directory.FullName, "MCPanel.csproj")) && File.Exists(candidate))
-            {
-                return File.ReadAllText(candidate);
-            }
-
-            directory = directory.Parent;
-        }
-
-        Assert.Fail("Unable to locate repository source: " + relativePath);
-        return string.Empty;
+        return File.ReadAllText(RepositorySource.Resolve(relativePath));
     }
 }
