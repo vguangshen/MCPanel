@@ -54,10 +54,18 @@ function Invoke-Updater([string]$Runtime, $Case, [string]$OldLayout) {
     # Even the fixed helper must work with the layout shipped in 1.3.58.
     Copy-Item -LiteralPath $OldLayout -Destination (Join-Path $helper 'deployment-layout.json') -Force
     $planFile = Join-Path $helper 'update-plan.json'
+    # Current updaters re-verify the package against its pinned SHA-256 and
+    # extract it themselves, so ship the staged payload as a real package too.
+    # The 1.3.58 updater ignores these two extra plan fields.
+    $downloads = Join-Path $Case.Install 'StoreData\Updates\Downloads'
+    [IO.Directory]::CreateDirectory($downloads) | Out-Null
+    $package = Join-Path $downloads ([Guid]::NewGuid().ToString('N') + '.zip')
+    Compress-Archive -Path (Join-Path $Case.Payload '*') -DestinationPath $package
     $plan = @{
         InstallDirectory = $Case.Install; PayloadDirectory = $Case.Payload
         StagingRoot = $Case.Staging; TargetVersion = $version; MainExecutableName = 'MCPanel.exe'
-        ParentProcessId = [int]::MaxValue; DeletePackageFileAfterApply = $false; PackageFile = ''
+        ParentProcessId = [int]::MaxValue; DeletePackageFileAfterApply = $false; PackageFile = $package
+        PackageSha256 = (Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash
     }
     Write-Text $planFile ($plan | ConvertTo-Json)
     $start = [Diagnostics.ProcessStartInfo]::new()

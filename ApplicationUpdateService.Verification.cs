@@ -84,18 +84,13 @@ public sealed partial class ApplicationUpdateService
             try
             {
                 ExtractArchiveSafely(privatePackage, extractRoot, progress: null, CancellationToken.None);
+                // The hash match proves these are the exact bytes whose
+                // MCPanel.exe version the panel already checked while preparing.
                 var payload = ResolvePayloadRoot(extractRoot);
-                var executable = Path.Combine(payload, "MCPanel.exe");
-                if (!File.Exists(executable) || !File.Exists(Path.Combine(payload, "MCPanel.exe.config")))
+                if (!File.Exists(Path.Combine(payload, "MCPanel.exe")) ||
+                    !File.Exists(Path.Combine(payload, "MCPanel.exe.config")))
                 {
                     throw new InvalidDataException("更新包缺少 MCPanel.exe 或 MCPanel.exe.config，已拒绝应用。");
-                }
-
-                var fileVersion = FileVersionInfo.GetVersionInfo(executable).FileVersion ?? string.Empty;
-                if (!IsSameVersion(fileVersion, plan.TargetVersion))
-                {
-                    throw new InvalidDataException(
-                        $"更新包中的 MCPanel.exe 版本 {fileVersion} 与更新计划版本 {plan.TargetVersion} 不一致，已拒绝应用。");
                 }
 
                 plan.StagingRoot = stagingRoot;
@@ -112,23 +107,6 @@ public sealed partial class ApplicationUpdateService
         {
             TryDeleteDirectory(privateRoot);
         }
-    }
-
-    internal static bool IsSameVersion(string left, string right)
-    {
-        if (!Version.TryParse(NormalizeVersionText(left), out var first) ||
-            !Version.TryParse(NormalizeVersionText(right), out var second))
-        {
-            return false;
-        }
-
-        return Normalize(first).Equals(Normalize(second));
-
-        static Version Normalize(Version value) => new(
-            value.Major,
-            value.Minor,
-            Math.Max(0, value.Build),
-            Math.Max(0, value.Revision));
     }
 
     internal static string CopyAndComputeSha256(string source, string destination)
