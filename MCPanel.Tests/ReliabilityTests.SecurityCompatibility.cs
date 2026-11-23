@@ -219,6 +219,9 @@ public sealed partial class ReliabilityTests
             StringAssert.Contains(text, "{{WindowsFirewallScript.Functions}}");
         }
 
+        var modernInstallBody = File.ReadAllText(Path.Combine(sourceRoot, "Installer", "SqlServerModernInstall.ps1"));
+        Assert.IsFalse(modernInstallBody.Contains("NetFirewallRule"), "SqlServerModernInstall.ps1 仍在使用 Windows 8+ 才有的防火墙 cmdlet。");
+
         StringAssert.Contains(WindowsFirewallScript.Functions, "HNetCfg.FwPolicy2");
     }
 

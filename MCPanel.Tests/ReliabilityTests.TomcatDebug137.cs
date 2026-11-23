@@ -93,7 +93,7 @@ public partial class ReliabilityTests
             {
                 var text = File.ReadAllText(candidate);
                 var name = Path.GetFileName(candidate);
-                if (name is "EnvironmentRuntimeService.cs" or "EnvironmentInstaller.cs")
+                if (name is "EnvironmentRuntimeService.cs" or "EnvironmentInstaller.cs" or "ProductDeploymentService.cs")
                 {
                     var prefix = Path.GetFileNameWithoutExtension(candidate) + ".";
                     foreach (var partial in Directory.EnumerateFiles(directory.FullName, prefix + "*.cs").OrderBy(path => path, StringComparer.Ordinal))
