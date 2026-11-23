@@ -5,6 +5,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if ($PSVersionTable.PSVersion.Major -lt 3) {
+    throw 'This recovery script requires Windows PowerShell 3.0 or later. Install Windows Management Framework 5.1 (KB3191566) and retry.'
+}
 function Get-RecoveryRelease([string]$ManifestJson) {
     $manifest = $ManifestJson | ConvertFrom-Json
     $version = [string]$manifest.version
@@ -77,7 +80,8 @@ try {
     if (!$WhatIfPreference) {
         $updates = Join-Path $installRoot 'StoreData\Updates'
         [IO.Directory]::CreateDirectory($updates) | Out-Null
-        $transactionLock = [IO.FileStream]::new((Join-Path $updates 'apply-update.lock'),
+        # New-Object instead of ::new(), which needs PowerShell 5.0.
+        $transactionLock = New-Object IO.FileStream((Join-Path $updates 'apply-update.lock'),
             [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None, 1, [IO.FileOptions]::DeleteOnClose)
     }
     # A missing EXE can coexist with a partially copied default configuration.

@@ -295,7 +295,7 @@ public sealed partial class ReliabilityTests
         // The same executed maintenance shutdown cases cover this script.
         // Starting the service must preserve client/backup processes; this is
         // executed in MySqlServiceStartDoesNotInterruptClientsOrBackups.
-        StringAssert.Contains(serviceAction, "Name -in @('mysqld.exe', 'mysqld-itmc.exe')");
+        StringAssert.Contains(serviceAction, "@('mysqld.exe', 'mysqld-itmc.exe') -contains $_.Name");
         Assert.IsFalse(serviceAction.Contains("$mysqlSearchRoots |", StringComparison.Ordinal));
         Assert.IsFalse(serviceAction.Contains("--skip-grant-tables", StringComparison.OrdinalIgnoreCase));
     }

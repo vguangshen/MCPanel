@@ -32,6 +32,22 @@ begin
   finally EnableFsRedirection(PreviousRedirection); end;
 end;
 
+{ MCPanel's maintenance, uninstall and component scripts need Windows
+  PowerShell 3.0 or later. Windows 7 SP1 / Server 2008 R2 ship with 2.0 and
+  need WMF 5.1 (KB3191566). The 3\PowerShellEngine key exists only for 3.0+. }
+function PowerShellAvailable: Boolean;
+var Version: String;
+begin
+#ifdef InstallerTestBuild
+  if GetEnv('MCPANEL_SETUP_TEST_POWERSHELL') = 'missing' then begin
+    Result := False;
+    exit;
+  end;
+#endif
+  Result := RegQueryStringValue(HKLM64, 'SOFTWARE\Microsoft\PowerShell\3\PowerShellEngine', 'PowerShellVersion', Version) and
+    (Version <> '');
+end;
+
 function DependencyText(Available: Boolean): String;
 begin
   if Available then Result := '已满足要求'

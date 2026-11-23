@@ -32,10 +32,14 @@ public sealed class PreparedApplicationUpdate
     public string PackageFile { get; set; } = string.Empty;
     public string ReleaseNotes { get; set; } = string.Empty;
     public bool DeletePackageFileAfterApply { get; set; }
+    /// <summary>SHA-256 of <see cref="PackageFile"/> verified while preparing.</summary>
+    public string PackageSha256 { get; set; } = string.Empty;
 }
 
 internal sealed class ApplicationUpdateAuthorization
 {
+    /// <summary>Package hash fixed on the elevated helper's command line at UAC time.</summary>
+    public string PackageSha256 { get; init; } = string.Empty;
     public string HelperRoot { get; init; } = string.Empty;
     public string PlanFile { get; init; } = string.Empty;
     public string CancelFile { get; init; } = string.Empty;
@@ -91,6 +95,7 @@ internal sealed class ApplicationUpdatePlan
     public string StagingRoot { get; set; } = string.Empty;
     public string PackageFile { get; set; } = string.Empty;
     public bool DeletePackageFileAfterApply { get; set; }
+    public string PackageSha256 { get; set; } = string.Empty;
 }
 
 public sealed partial class ApplicationUpdateService
@@ -464,7 +469,8 @@ public sealed partial class ApplicationUpdateService
             progress,
             status,
             cancellationToken,
-            deletePackageFileAfterApply: true);
+            deletePackageFileAfterApply: true,
+            packageSha256: expectedHash);
     }
 
     private static async Task<FileStream> AcquirePackageFileLockAsync(
@@ -518,17 +524,19 @@ public sealed partial class ApplicationUpdateService
             throw new FileNotFoundException("请选择有效的 ZIP 更新包。", normalizedPackageFile);
         }
 
+        status?.Report("正在校验本地更新包...");
+        // The hash of the exact file the user confirmed is pinned for the
+        // elevated updater, which re-verifies it before applying anything.
+        var actual = await Task.Run(() => ComputeSha256(normalizedPackageFile), cancellationToken);
         var sidecar = normalizedPackageFile + ".sha256";
         if (File.Exists(sidecar))
         {
-            status?.Report("正在校验本地更新包...");
             var fields = File.ReadAllText(sidecar)
                 .Split([' ', '\t', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
             var expected = fields.Length > 0 ? NormalizeSha256(fields[0]) : string.Empty;
             if (expected.Length != 64)
                 throw new InvalidDataException("本地更新包的 .sha256 校验文件格式无效。\n请重新生成更新包及其校验文件。");
 
-            var actual = await Task.Run(() => ComputeSha256(normalizedPackageFile), cancellationToken);
             if (!actual.Equals(expected, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("本地更新包与 .sha256 校验文件不匹配。");
         }
@@ -540,16 +548,26 @@ public sealed partial class ApplicationUpdateService
             progress,
             status,
             cancellationToken,
-            deletePackageFileAfterApply: false);
+            deletePackageFileAfterApply: false,
+            packageSha256: actual);
     }
 
     internal static bool ShouldRequestPreauthorizedUpdater(bool isAdministrator) => !isAdministrator;
 
-    internal ApplicationUpdateAuthorization? RequestUpdateAuthorization()
+    internal ApplicationUpdateAuthorization? RequestUpdateAuthorization(string expectedPackageSha256)
     {
         if (!ShouldRequestPreauthorizedUpdater(ProcessRunner.IsAdministrator()))
         {
             return null;
+        }
+
+        // The hash goes on the elevated command line, which cannot be changed
+        // after UAC consent. The helper re-verifies the package against it, so
+        // files a normal user can modify are never trusted as-is.
+        var packageSha256 = NormalizeSha256(expectedPackageSha256);
+        if (packageSha256.Length != 64)
+        {
+            throw new InvalidDataException("更新包缺少有效的 SHA-256，无法请求管理员更新授权。");
         }
 
         var helperRoot = Path.Combine(
@@ -575,7 +593,8 @@ public sealed partial class ApplicationUpdateService
                         Compat.QuoteCommandLineArgument(planFile),
                         Compat.QuoteCommandLineArgument(cancelFile),
                         Compat.QuoteCommandLineArgument(installDirectory),
-                        parentProcessId.ToString()),
+                        parentProcessId.ToString(),
+                        packageSha256),
                     helperRoot,
                     elevated: true);
             }
@@ -586,6 +605,7 @@ public sealed partial class ApplicationUpdateService
 
             return new ApplicationUpdateAuthorization
             {
+                PackageSha256 = packageSha256,
                 HelperRoot = helperRoot,
                 PlanFile = planFile,
                 CancelFile = cancelFile,
@@ -654,11 +674,17 @@ internal void LaunchUpdater(
             ParentProcessId = Process.GetCurrentProcess().Id,
             StagingRoot = stagingRoot,
             PackageFile = update.PackageFile,
-            DeletePackageFileAfterApply = update.DeletePackageFileAfterApply
+            DeletePackageFileAfterApply = update.DeletePackageFileAfterApply,
+            PackageSha256 = NormalizeSha256(update.PackageSha256)
         };
 
         if (authorization is not null)
         {
+            if (!string.Equals(authorization.PackageSha256, plan.PackageSha256, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("管理员更新授权与准备好的更新包不一致，请重新点击检测并更新。");
+            }
+
             if (authorization.PlanSubmitted ||
                 !PathsEqual(authorization.InstallDirectory, installDirectory) ||
                 authorization.ParentProcessId != plan.ParentProcessId ||
@@ -726,14 +752,21 @@ internal void LaunchUpdater(
     }
 
     public static Task<int> ApplyUpdatePlanAsync(string planFile) =>
-        ApplyUpdatePlanAsync(planFile, expectedInstallDirectory: null, expectedParentProcessId: null);
+        ApplyUpdatePlanAsync(planFile, expectedInstallDirectory: null, expectedParentProcessId: null, authorizedPackageSha256: null);
 
     internal static async Task<int> WaitForAuthorizedUpdatePlanAsync(
         string planFile,
         string cancelFile,
         string expectedInstallDirectory,
-        int expectedParentProcessId)
+        int expectedParentProcessId,
+        string authorizedPackageSha256)
     {
+        var authorizedHash = NormalizeSha256(authorizedPackageSha256);
+        if (authorizedHash.Length != 64)
+        {
+            return 2;
+        }
+
         var validatedPlanFile = ValidatePlanFileLocation(planFile, requireExistingFile: false);
         var helperRoot = Path.GetDirectoryName(validatedPlanFile)!;
         var validatedCancelFile = Path.GetFullPath(cancelFile);
@@ -783,13 +816,15 @@ internal void LaunchUpdater(
         return await ApplyUpdatePlanAsync(
             validatedPlanFile,
             installDirectory,
-            expectedParentProcessId);
+            expectedParentProcessId,
+            authorizedHash);
     }
 
     private static async Task<int> ApplyUpdatePlanAsync(
         string planFile,
         string? expectedInstallDirectory,
-        int? expectedParentProcessId)
+        int? expectedParentProcessId,
+        string? authorizedPackageSha256)
     {
         ApplicationUpdatePlan? plan = null;
         var planValidated = false;
@@ -809,13 +844,32 @@ internal void LaunchUpdater(
             {
                 throw new InvalidDataException("管理员更新授权与当前 MCPanel 进程不一致。");
             }
+            var expectedHash = NormalizeSha256(authorizedPackageSha256 ?? plan.PackageSha256);
+            if (authorizedPackageSha256 is not null &&
+                !string.Equals(NormalizeSha256(plan.PackageSha256), expectedHash, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException("更新计划中的更新包与管理员授权时确认的更新包不一致。");
+            }
+
             planValidated = true;
+
+            // Close the install folder to other local users first, so nothing
+            // they control can change between verification and apply.
+            var previousStagingRoot = plan.StagingRoot;
+            var hardeningWarning = TryHardenInstallDirectory(plan);
+            StageVerifiedPayload(plan, expectedHash);
+            if (!PathsEqual(previousStagingRoot, plan.StagingRoot))
+            {
+                TryDeleteDirectory(previousStagingRoot);
+            }
+
             await WaitForParentAndStopInstalledProcessesAsync(plan);
             ApplyTransaction(plan);
             WriteResult(
                 plan.InstallDirectory,
                 true,
-                $"已更新到版本 {plan.TargetVersion}，正在重启。",
+                $"已更新到版本 {plan.TargetVersion}，正在重启。" +
+                (hardeningWarning is null ? string.Empty : Environment.NewLine + hardeningWarning),
                 plan.TargetVersion);
             TryDeleteDirectory(plan.StagingRoot);
             if (plan.DeletePackageFileAfterApply)
@@ -855,7 +909,7 @@ internal void LaunchUpdater(
     private async Task<PreparedApplicationUpdate> PreparePackageAsync(
         string packageFile, string declaredVersion, string releaseNotes,
         IProgress<double>? progress, IProgress<string>? status, CancellationToken cancellationToken,
-        bool deletePackageFileAfterApply)
+        bool deletePackageFileAfterApply, string packageSha256)
     {
         status?.Report("正在安全解压并检查更新包...");
         var stagingRoot = Path.Combine(UpdatesRoot, "Staging", Guid.NewGuid().ToString("N"));
@@ -901,7 +955,8 @@ internal void LaunchUpdater(
                 PayloadDirectory = payload,
                 PackageFile = packageFile,
                 ReleaseNotes = releaseNotes,
-                DeletePackageFileAfterApply = deletePackageFileAfterApply
+                DeletePackageFileAfterApply = deletePackageFileAfterApply,
+                PackageSha256 = NormalizeSha256(packageSha256)
             };
         }
         catch

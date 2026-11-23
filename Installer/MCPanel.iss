@@ -160,13 +160,33 @@ begin
   end;
 end;
 
+{ The default C:\MCPanel inherits "Authenticated Users: Modify" from the drive
+  root, but MCPanel's Windows services run as LocalSystem from this folder.
+  Limit write access to Administrators, SYSTEM and the account running setup.
+  The program is already deployed here, so a failure warns instead of aborting. }
+procedure SecureInstallDirectory(const Root: String);
+var Code: Integer;
+begin
+  if Exec(Root + '\MCPanel.exe', '--secure-install-directory', Root, SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0) then
+    Log('Install directory permissions hardened: ' + Root)
+  else begin
+    Log('Install directory permission hardening failed with code ' + IntToStr(Code));
+    SuppressibleMsgBox('MCPanel 已安装，但未能收紧安装目录权限（代码 ' + IntToStr(Code) + '）。' +
+      '其他本地用户可能可以修改此目录中的程序。请重新运行安装器修复。', mbError, MB_OK, IDOK);
+  end;
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var PackagePath, ActualVersion, Phase, DownloadError: String;
 begin
   Result := '';
   if ProgramDeployed then exit;
-  Phase := '检查安装目录';
+  Phase := '检查系统组件';
   try
+    if not PowerShellAvailable then
+      RaiseException('此系统的 Windows PowerShell 低于 3.0，MCPanel 的组件管理和卸载脚本无法运行。' +
+        '请先安装 Windows Management Framework 5.1（KB3191566，https://www.microsoft.com/download/details.aspx?id=54616），重启后再安装 MCPanel。原程序未修改。');
+    Phase := '检查安装目录';
     if CheckForMutexes('Local\MCPanel.Uninstall.v2') then RaiseException('MCPanel 正在完整卸载，请等待卸载完成后重新安装。');
     ValidateInstallDirectory(ExpandConstant('{app}'));
     if CheckForMutexes('Local\MCPanel.MainWindow.v1') then
@@ -204,6 +224,8 @@ begin
     Phase := '安装主程序';
     DeployProgram(ExpandConstant('{app}'), PayloadRoot);
     ProgramDeployed := True;
+    Phase := '加固安装目录权限';
+    SecureInstallDirectory(ExpandConstant('{app}'));
   except
     Result := Phase + '：' + GetExceptionMessage;
     Log('MCPanel installation stopped: ' + Result);

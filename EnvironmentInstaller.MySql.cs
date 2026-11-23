@@ -148,7 +148,7 @@ public sealed partial class EnvironmentInstaller
                     $serviceRoot = [IO.Path]::GetDirectoryName([IO.Path]::GetDirectoryName($executable))
                     $legacy = [IO.Path]::GetFileName($serviceRoot).StartsWith('mysql', [StringComparison]::OrdinalIgnoreCase) -and
                         @($legacyParents | Where-Object { [IO.Path]::GetFullPath($_).TrimEnd('\').Equals([IO.Path]::GetDirectoryName($serviceRoot), [StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
-                    if ($serverName -notin @('mysqld.exe', 'mysqld-itmc.exe') -or
+                    if (@('mysqld.exe', 'mysqld-itmc.exe') -notcontains $serverName -or
                         [IO.Path]::GetFileName([IO.Path]::GetDirectoryName($executable)) -ne 'bin' -or
                         (-not $legacy -and @($mysqlRoots | Where-Object { Test-PathUnderRoot $executable $_ }).Count -eq 0)) {
                         throw ('检测到非 MCPanel 管理的 MySQL80 服务，已停止操作以保护现有实例：' + $executable)

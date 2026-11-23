@@ -477,7 +477,7 @@ private void StartupToggle_Click(object sender, RoutedEventArgs e)
                 }
 
                 if (!ConfirmOnlineUpdate(update.Manifest)) return null;
-                if (!RequestApplicationUpdateAuthorizationAfterConfirmation()) return null;
+                if (!RequestApplicationUpdateAuthorizationAfterConfirmation(update.Manifest.Sha256)) return null;
                 return await _applicationUpdateService.PrepareGitHubReleaseAsync(update, progress, status, cancellationToken);
             });
             return;
@@ -502,7 +502,7 @@ private void StartupToggle_Click(object sender, RoutedEventArgs e)
             }
 
             if (!ConfirmOnlineUpdate(manifest)) return null;
-            if (!RequestApplicationUpdateAuthorizationAfterConfirmation()) return null;
+            if (!RequestApplicationUpdateAuthorizationAfterConfirmation(manifest.Sha256)) return null;
             return await _applicationUpdateService.PrepareOnlineAsync(manifest, progress, status, cancellationToken);
         });
     }
@@ -555,7 +555,7 @@ private void StartupToggle_Click(object sender, RoutedEventArgs e)
                 return null;
             }
 
-            if (!RequestApplicationUpdateAuthorizationAfterConfirmation())
+            if (!RequestApplicationUpdateAuthorizationAfterConfirmation(prepared.PackageSha256))
             {
                 _applicationUpdateService.DiscardPreparedUpdate(prepared);
                 return null;
@@ -570,11 +570,11 @@ private void StartupToggle_Click(object sender, RoutedEventArgs e)
         return !_model.IsUpdateBusy;
     }
 
-    private bool RequestApplicationUpdateAuthorizationAfterConfirmation()
+    private bool RequestApplicationUpdateAuthorizationAfterConfirmation(string packageSha256)
     {
         try
         {
-            var authorization = _applicationUpdateService.RequestUpdateAuthorization();
+            var authorization = _applicationUpdateService.RequestUpdateAuthorization(packageSha256);
             if (authorization is null)
             {
                 return true;

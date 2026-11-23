@@ -59,6 +59,12 @@ public partial class App : Application
                 Shutdown(0);
                 return;
             }
+            if (e.Args.Contains(InstallDirectorySecurity.Argument, StringComparer.OrdinalIgnoreCase))
+            {
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                Shutdown(InstallDirectorySecurity.RunFromInstaller());
+                return;
+            }
             if (e.Args.Contains(InstallationCleanupWorker.Argument, StringComparer.OrdinalIgnoreCase))
             {
                 ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -129,12 +135,14 @@ public partial class App : Application
                 var cancelFile = waitUpdatePlanIndex + 2 < e.Args.Length ? e.Args[waitUpdatePlanIndex + 2] : string.Empty;
                 var installDirectory = waitUpdatePlanIndex + 3 < e.Args.Length ? e.Args[waitUpdatePlanIndex + 3] : string.Empty;
                 var processIdText = waitUpdatePlanIndex + 4 < e.Args.Length ? e.Args[waitUpdatePlanIndex + 4] : string.Empty;
+                var packageSha256 = waitUpdatePlanIndex + 5 < e.Args.Length ? e.Args[waitUpdatePlanIndex + 5] : string.Empty;
                 var parentProcessId = int.TryParse(processIdText, out var parsedProcessId) ? parsedProcessId : 0;
                 var exitCode = await ApplicationUpdateService.WaitForAuthorizedUpdatePlanAsync(
                     planFile,
                     cancelFile,
                     installDirectory,
-                    parentProcessId);
+                    parentProcessId,
+                    packageSha256);
                 Shutdown(exitCode);
                 return;
             }

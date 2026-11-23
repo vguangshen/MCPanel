@@ -77,7 +77,7 @@ function Remove-ComponentService($name) {
     # SC DELETE is documented by MySQL and works even if mysqld cannot
     # start because a runtime DLL is missing. Close all our SCM handles.
     & sc.exe delete $name | Write-Output
-    if ($LASTEXITCODE -notin @(0, 1060, 1072)) { throw ('删除服务失败，退出码：' + $LASTEXITCODE) }
+    if (@(0, 1060, 1072) -notcontains $LASTEXITCODE) { throw ('删除服务失败，退出码：' + $LASTEXITCODE) }
     $global:LASTEXITCODE = 0
     $deadline = [DateTime]::UtcNow.AddSeconds(20)
     do {
@@ -175,7 +175,7 @@ function Remove-ComponentEntry($path, $isRoot) {
                 # Leave install markers until last, so a blocked cleanup
                 # still appears installed and can be retried from MCPanel.
                 $children = @(Get-ChildItem -LiteralPath $path -Force -ErrorAction Stop | Sort-Object @{Expression={
-                    if ($_.Name -in @('bin', 'nginx.exe', 'mysql.exe', 'mysqld.exe', 'mysqld-itmc.exe')) { 1 } else { 0 }
+                    if (@('bin', 'nginx.exe', 'mysql.exe', 'mysqld.exe', 'mysqld-itmc.exe') -contains $_.Name) { 1 } else { 0 }
                 }}, Name)
                 $canRepairThisEntry = $false
                 foreach ($child in $children) { Remove-ComponentEntry $child.FullName $false }

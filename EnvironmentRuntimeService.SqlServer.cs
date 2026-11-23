@@ -93,7 +93,7 @@ public sealed partial class EnvironmentRuntimeService
 
             Invoke-Step '停止 MCPanel SQL Server 默认实例服务' {
                 Get-Service -ErrorAction SilentlyContinue | Where-Object {
-                    $_.Name -in @('MSSQLSERVER','SQLSERVERAGENT')
+                    @('MSSQLSERVER','SQLSERVERAGENT') -contains $_.Name
                 } | ForEach-Object { Stop-Sql-Service $_.Name }
             }
 
@@ -154,7 +154,7 @@ public sealed partial class EnvironmentRuntimeService
 
             Invoke-Step '删除 MCPanel SQL Server 默认实例残留服务项' {
                 Get-Service -ErrorAction SilentlyContinue | Where-Object {
-                    $_.Name -in @('MSSQLSERVER','SQLSERVERAGENT')
+                    @('MSSQLSERVER','SQLSERVERAGENT') -contains $_.Name
                 } | ForEach-Object { Delete-Sql-Service $_.Name }
             }
 
@@ -184,7 +184,7 @@ public sealed partial class EnvironmentRuntimeService
             }
 
             $remainingServices = @(Get-Service -ErrorAction SilentlyContinue | Where-Object {
-                $_.Name -in @('MSSQLSERVER','SQLSERVERAGENT')
+                @('MSSQLSERVER','SQLSERVERAGENT') -contains $_.Name
             })
             $remainingManagedPaths = @($componentRoot, $migratedDataRoot, $legacyDataRoot) |
                 Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and (Test-Path $_) }

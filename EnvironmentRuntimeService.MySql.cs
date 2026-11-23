@@ -311,7 +311,7 @@ public sealed partial class EnvironmentRuntimeService
                         if (!(Test-Path $mysqlRoot)) { continue }
                         $candidate = Get-ChildItem $mysqlRoot -Filter 'mysqld*.exe' -Recurse -ErrorAction SilentlyContinue |
                             Where-Object {
-                                $_.Name -in @('mysqld.exe', 'mysqld-itmc.exe') -and
+                                @('mysqld.exe', 'mysqld-itmc.exe') -contains $_.Name -and
                                 $_.FullName -like '*\bin\*'
                             } |
                             Select-Object -First 1

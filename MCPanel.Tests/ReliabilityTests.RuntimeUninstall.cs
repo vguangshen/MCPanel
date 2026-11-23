@@ -84,7 +84,11 @@ public sealed partial class ReliabilityTests
             {
                 var failure = await RunRuntimeCleanupTestAsync(root, $"Remove-ComponentDirectory '{PsTestPath(target)}'");
                 Assert.AreNotEqual(0, failure.ExitCode);
-                StringAssert.Contains(failure.StandardOutput + failure.StandardError, target);
+                // PowerShell wraps redirected error records at the hidden
+                // console width, which can split a long temp path.
+                StringAssert.Contains(
+                    (failure.StandardOutput + failure.StandardError).Replace("\r", string.Empty).Replace("\n", string.Empty),
+                    target);
                 Assert.IsTrue(File.Exists(locked));
                 Assert.IsTrue(File.Exists(marker), "A failed cleanup must remain discoverable for another uninstall attempt.");
             }

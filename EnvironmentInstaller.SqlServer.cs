@@ -746,7 +746,7 @@ public sealed partial class EnvironmentInstaller
                     Where-Object {
                         $_.Name -ne 'setup.exe' -and
                         $_.FullName -ne $bootstrapper -and
-                        $_.Extension -in @('.exe', '.iso')
+                        @('.exe', '.iso') -contains $_.Extension
                     } |
                     Sort-Object LastWriteTime -Descending |
                     Select-Object -First 1

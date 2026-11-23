@@ -101,7 +101,7 @@ public sealed partial class EnvironmentRuntimeService
                 $legacyParents = @({{PowerShellPaths(new[] { ComponentPaths.RuntimeRoot, ComponentPaths.LegacyRuntimeRoot })}})
                 $legacyMySql = [IO.Path]::GetFileName($serviceRoot).StartsWith('mysql', [StringComparison]::OrdinalIgnoreCase) -and
                     @($legacyParents | Where-Object { [IO.Path]::GetFullPath($_).TrimEnd('\').Equals([IO.Path]::GetDirectoryName($serviceRoot), [StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
-                if ($serverName -notin @('mysqld.exe', 'mysqld-itmc.exe') -or
+                if (@('mysqld.exe', 'mysqld-itmc.exe') -notcontains $serverName -or
                     [IO.Path]::GetFileName([IO.Path]::GetDirectoryName($serviceExe)) -ne 'bin' -or
                     (-not $legacyMySql -and @($mysqlInstallationRoots | Where-Object { Test-PathUnderRoot $serviceRoot $_ }).Count -eq 0)) {
                     throw ('检测到非 MCPanel 管理的 MySQL80 服务，已停止卸载以保护现有实例：' + $serviceExe)

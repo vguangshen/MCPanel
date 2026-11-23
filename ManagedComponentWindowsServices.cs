@@ -824,7 +824,9 @@ internal sealed class FrpWindowsService : ServiceBase
             WorkRoot,
             elevated: false,
             captureOutput: true,
-            timeout: TimeSpan.FromSeconds(30));
+            timeout: TimeSpan.FromSeconds(30),
+            // frpc is a Go program and always writes UTF-8.
+            outputEncoding: Encoding.UTF8);
         if (result.ExitCode != 0)
         {
             throw new InvalidOperationException(string.IsNullOrWhiteSpace(result.CombinedOutput)

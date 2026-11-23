@@ -426,7 +426,7 @@ public sealed class CustomWebsiteService
             Set-WebConfigurationProperty -PSPath 'MACHINE/WEBROOT/APPHOST' -Filter "/system.applicationHost/sites/site[@name='$siteName']/limits" -Name maxBandwidth -Value {{maxBandwidth}}
             if ((Get-WebAppPoolState -Name $poolName).Value -ne 'Started') { Start-WebAppPool -Name $poolName }
             if ((Get-Website -Name $siteName).State -ne 'Started') { Start-Website -Name $siteName }
-            [IO.File]::WriteAllText($resultFile, $thumbprint, [Text.UTF8Encoding]::new($false))
+            [IO.File]::WriteAllText($resultFile, $thumbprint, (New-Object Text.UTF8Encoding($false)))
             exit 0
             """;
     }
