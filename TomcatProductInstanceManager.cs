@@ -579,8 +579,9 @@ public sealed class TomcatProductInstanceManager
                     return savedPort;
                 }
             }
-            catch
+            catch (Exception error)
             {
+                SuppressedErrorLog.Record("读取 Tomcat 实例 server.xml", error, existing);
                 // Recreate a damaged generated configuration below.
             }
         }

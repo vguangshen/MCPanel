@@ -36,8 +36,9 @@ public sealed class ProductCacheStore
                 .Select(ToProduct)
                 .ToList();
         }
-        catch
+        catch (Exception error)
         {
+            SuppressedErrorLog.Record("读取产品缓存", error, _cacheFile);
             return [];
         }
     }

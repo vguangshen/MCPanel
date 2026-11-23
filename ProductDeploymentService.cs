@@ -674,8 +674,9 @@ public sealed partial class ProductDeploymentService
         {
             return JsonSerializer.Deserialize<IisProductDeploymentInfo>(File.ReadAllText(file, Encoding.UTF8));
         }
-        catch
+        catch (Exception error)
         {
+            SuppressedErrorLog.Record("读取 IIS 部署记录", error, file);
             return null;
         }
     }
@@ -702,8 +703,9 @@ public sealed partial class ProductDeploymentService
                     deployments.Add(info);
                 }
             }
-            catch
+            catch (Exception error)
             {
+                SuppressedErrorLog.Record("读取 IIS 部署记录", error, stateFile);
             }
         }
 
@@ -730,8 +732,9 @@ public sealed partial class ProductDeploymentService
                     return ResolveTomcatRuntimeInfo(info);
                 }
             }
-            catch
+            catch (Exception error)
             {
+                SuppressedErrorLog.Record("读取 Tomcat 部署记录", error, stateFile);
             }
         }
 
@@ -760,8 +763,9 @@ public sealed partial class ProductDeploymentService
                     deployments.Add(ResolveTomcatRuntimeInfo(info));
                 }
             }
-            catch
+            catch (Exception error)
             {
+                SuppressedErrorLog.Record("读取 Tomcat 部署记录", error, stateFile);
             }
         }
 
@@ -1337,8 +1341,9 @@ public sealed partial class ProductDeploymentService
         {
             return JsonSerializer.Deserialize<TomcatProductDeploymentInfo>(File.ReadAllText(file, Encoding.UTF8));
         }
-        catch
+        catch (Exception error)
         {
+            SuppressedErrorLog.Record("读取 Tomcat 部署记录", error, file);
             return null;
         }
     }
@@ -1467,8 +1472,9 @@ public sealed partial class ProductDeploymentService
                         configuredPorts.Add(state.Port);
                     }
                 }
-                catch
+                catch (Exception error)
                 {
+                    SuppressedErrorLog.Record("读取 Tomcat 产品端口记录", error, stateFile);
                 }
             }
         }
