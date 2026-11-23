@@ -21,10 +21,23 @@ internal static class InstallerRegistration
 
     private static string QuotePath(string path) => "\"" + path + "\"";
 
+    /// <summary>
+    /// The branded uninstaller installed by MCPanel-Setup.exe. It lives outside
+    /// the install folder so it can remove that folder completely.
+    /// </summary>
+    internal static string SetupUninstallerPath =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "MCPanel.Setup", "MCPanel-Setup.exe");
+
     internal static string BuildCommand(string root, bool silent = false) =>
-        $"{QuotePath(ProcessRunner.NativeWindowsPowerShellPath())} -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File " +
-        $"{QuotePath(Path.Combine(root, UninstallScriptName))} -InstallRoot {QuotePath(root.TrimEnd('\\'))}" +
-        (silent ? " -Silent" : string.Empty);
+        File.Exists(SetupUninstallerPath)
+            ? BuildSetupCommand(SetupUninstallerPath, root, silent)
+            : $"{QuotePath(ProcessRunner.NativeWindowsPowerShellPath())} -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File " +
+              $"{QuotePath(Path.Combine(root, UninstallScriptName))} -InstallRoot {QuotePath(root.TrimEnd('\\'))}" +
+              (silent ? " -Silent" : string.Empty);
+
+    // Must match SystemRegistration.BuildUninstallCommand in Installer/MCPanel.Setup.
+    internal static string BuildSetupCommand(string setupExecutable, string root, bool silent) =>
+        $"{QuotePath(setupExecutable)} /UNINSTALL {QuotePath(root.TrimEnd('\\'))}" + (silent ? " /VERYSILENT" : string.Empty);
 
     internal static bool IsSameRoot(string? left, string right) => !string.IsNullOrWhiteSpace(left) &&
         Path.GetFullPath(left!).TrimEnd('\\').Equals(Path.GetFullPath(right).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);

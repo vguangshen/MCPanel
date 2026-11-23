@@ -47,6 +47,12 @@
   <ItemGroup>
     <Compile Remove="MCPanel.Tests\**\*.cs" />
     <None Remove="MCPanel.Tests\**\*" />
+    <!-- The setup bootstrapper is its own .NET 4.5 project. -->
+    <Compile Remove="Installer\MCPanel.Setup\**" />
+    <Page Remove="Installer\MCPanel.Setup\**" />
+    <ApplicationDefinition Remove="Installer\MCPanel.Setup\**" />
+    <None Remove="Installer\MCPanel.Setup\**" />
+    <Resource Remove="Installer\MCPanel.Setup\**" />
   </ItemGroup>
 
   <ItemGroup>

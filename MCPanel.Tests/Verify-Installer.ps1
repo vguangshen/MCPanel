@@ -59,9 +59,13 @@ try {
     $null = Invoke-Setup $install
     $executable = Join-Path $install 'MCPanel.exe'
     $config = Join-Path $install 'MCPanel.exe.config'
-    $uninstall = Join-Path $install 'Maintenance\unins000.exe'
-    if (!(Test-Path -LiteralPath $executable) -or !(Test-Path -LiteralPath $uninstall)) { throw 'Fresh native setup did not install both application and uninstaller.' }
-    Write-Host 'Passed: native bootstrapper installs the real application into a Unicode path with spaces, without starting the UI.'
+    $uninstall = Join-Path $env:ProgramData 'MCPanel.Setup\MCPanel-Setup.exe'
+    if (!(Test-Path -LiteralPath $executable) -or !(Test-Path -LiteralPath $uninstall)) { throw 'Fresh setup did not install both application and uninstaller.' }
+    if (Test-Path -LiteralPath (Join-Path $install 'Maintenance\unins000.exe')) { throw 'The retired Inno Setup uninstaller is still installed.' }
+    foreach ($shortcut in @((Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'MCPanel\MCPanel.lnk'), (Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'MCPanel.lnk'))) {
+        if (!(Test-Path -LiteralPath $shortcut)) { throw ('Setup did not create its shortcut: ' + $shortcut) }
+    }
+    Write-Host 'Passed: MCPanel-Setup installs the real application into a Unicode path with spaces, with shortcuts and uninstaller, without starting the UI.'
     & (Join-Path $PSScriptRoot 'Verify-InstallerUI.ps1') -InstallerFile $InstallerFile -InstallDirectory (Join-Path $root 'preview')
 
     [xml]$document = Get-Content -LiteralPath $config -Raw -Encoding UTF8
@@ -132,11 +136,11 @@ try {
     & (Join-Path $PSScriptRoot 'Verify-InstallerUI.ps1') -UninstallRoot $install
     # Upgrade the legacy ARP entry through the exact headless startup migration.
     $registrationKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{4877D128-D808-4B6B-B4CB-D4D0476F5275}_is1'
-    Set-ItemProperty -LiteralPath $registrationKey -Name UninstallString -Value ('"' + $uninstall + '"')
+    Set-ItemProperty -LiteralPath $registrationKey -Name UninstallString -Value ('"' + (Join-Path $install 'Maintenance\unins000.exe') + '"')
     $migration = Start-Process -FilePath $executable -ArgumentList '--register-uninstaller' -PassThru -Wait
-    if ($migration.ExitCode -ne 0 -or (Get-ItemProperty -LiteralPath $registrationKey).UninstallString -notlike '*Uninstall-MCPanel.ps1*') { throw 'Legacy online update did not migrate the uninstall entry.' }
+    if ($migration.ExitCode -ne 0 -or (Get-ItemProperty -LiteralPath $registrationKey).UninstallString -notlike ('"' + $uninstall + '" /UNINSTALL*')) { throw 'Legacy online update did not migrate the uninstall entry.' }
     $migration.Dispose()
-    Write-Host 'Passed: existing installations migrate their old native uninstall entry after an online update.'
+    Write-Host 'Passed: existing installations migrate their old Inno Setup uninstall entry to MCPanel-Setup after an online update.'
 
     $outside = Join-Path $root 'outside'
     [IO.Directory]::CreateDirectory($outside) | Out-Null
