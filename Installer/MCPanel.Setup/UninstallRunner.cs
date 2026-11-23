@@ -166,17 +166,12 @@ namespace MCPanel.Setup
                     return;
                 }
 
-                // Re-check right before deleting: a new installation may have
-                // registered (and refreshed this folder) in the meantime.
-                var keys = "HKLM\\" + InstallEngine.UninstallRegistryPath.TrimEnd('\\');
-                var cleanup = "/d /c ping 127.0.0.1 -n 4 >nul & " +
-                              "(reg query \"" + keys + "\\" + InstallEngine.ProductionRegistrationId + "\" >nul 2>&1 || " +
-                              "reg query \"" + keys + "\\" + InstallEngine.TestRegistrationId + "\" >nul 2>&1 || " +
-                              "rd /s /q \"" + directory + "\")";
                 Process.Start(new ProcessStartInfo
                 {
-                    FileName = Path.Combine(Environment.SystemDirectory, "cmd.exe"),
-                    Arguments = cleanup,
+                    FileName = Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"),
+                    Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand " +
+                                Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(
+                                    BuildMaintenanceCleanupScript(Process.GetCurrentProcess().Id, directory))),
                     UseShellExecute = false,
                     CreateNoWindow = true,
                     WorkingDirectory = Path.GetTempPath()
@@ -187,6 +182,36 @@ namespace MCPanel.Setup
             {
                 log.Write("Maintenance cleanup was not scheduled: " + error.Message);
             }
+        }
+
+        /// <summary>
+        /// Waits for this uninstaller to exit, then deletes the maintenance
+        /// folder while holding the setup instance mutex. Every install holds
+        /// that mutex from start to finish, so the registration re-check and
+        /// the delete can never interleave with an install that is copying a
+        /// fresh uninstaller into the folder before registering it.
+        /// </summary>
+        internal static string BuildMaintenanceCleanupScript(int uninstallerProcessId, string directory)
+        {
+            Func<string, string> quote = value => "'" + value.Replace("'", "''") + "'";
+            return string.Join("\n", new[]
+            {
+                "$ErrorActionPreference = 'Stop'",
+                "Wait-Process -Id " + uninstallerProcessId + " -Timeout 120 -ErrorAction SilentlyContinue",
+                "$mutex = New-Object System.Threading.Mutex($false, " + quote(App.InstanceMutexName) + ")",
+                "$owned = $false",
+                "try { $owned = $mutex.WaitOne(120000) } catch [System.Threading.AbandonedMutexException] { $owned = $true }",
+                "if (!$owned) { exit 1 }",
+                "try {",
+                "  $machine = [Microsoft.Win32.RegistryKey]::OpenBaseKey('LocalMachine', 'Registry64')",
+                "  foreach ($id in @(" + quote(InstallEngine.ProductionRegistrationId) + ", " + quote(InstallEngine.TestRegistrationId) + ")) {",
+                "    $key = $machine.OpenSubKey(" + quote(InstallEngine.UninstallRegistryPath) + " + $id)",
+                "    if ($key) { $key.Dispose(); exit 0 }",
+                "  }",
+                "  $directory = " + quote(directory),
+                "  if (Test-Path -LiteralPath $directory) { Remove-Item -LiteralPath $directory -Recurse -Force }",
+                "} finally { $mutex.ReleaseMutex(); $mutex.Dispose() }"
+            });
         }
     }
 }

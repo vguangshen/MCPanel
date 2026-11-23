@@ -11,7 +11,10 @@ namespace MCPanel.Setup
         internal const int ExitFailure = 1;
         internal const int ExitCancelled = 2;
 
+        internal const string InstanceMutexName = "MCPanel.Setup.v1";
+
         private Mutex _instance;
+        private bool _ownsInstance;
         private SetupLog _log;
 
         protected override void OnStartup(StartupEventArgs e)
@@ -27,9 +30,19 @@ namespace MCPanel.Setup
                 return;
             }
 
-            bool created;
-            _instance = new Mutex(true, "MCPanel.Setup.v1", out created);
-            if (!created)
+            // A finished uninstall briefly holds the mutex while it removes the
+            // maintenance folder, so wait for it rather than refusing at once.
+            _instance = new Mutex(false, InstanceMutexName);
+            try
+            {
+                _ownsInstance = _instance.WaitOne(options.Unattended ? TimeSpan.FromSeconds(60) : TimeSpan.FromSeconds(5));
+            }
+            catch (AbandonedMutexException)
+            {
+                _ownsInstance = true;
+            }
+
+            if (!_ownsInstance)
             {
                 log.Write("Another setup instance is running.");
                 if (!options.Unattended)
@@ -78,7 +91,13 @@ namespace MCPanel.Setup
                 UninstallRunner.ScheduleMaintenanceCleanup(_log);
             }
 
-            try { _instance?.ReleaseMutex(); } catch { }
+            // The cleanup scheduled above waits for this process to exit and
+            // then takes the mutex itself.
+            if (_ownsInstance)
+            {
+                try { _instance.ReleaseMutex(); } catch (ApplicationException) { }
+            }
+
             _instance?.Dispose();
             base.OnExit(e);
         }
