@@ -47,21 +47,24 @@ public sealed partial class ReliabilityTests
             try
             {
                 const double scale = 1.3d;
-                const double logicalWidth = 1000d;
-                const double logicalHeight = 640d;
+                const double logicalWidth = 740d; // 962 x 624 scaled: fits a 1024x768 runner screen
+                const double logicalHeight = 480d;
                 scaled.Show();
                 scaled.ApplyUiScale(scale);
                 scaled.Width = logicalWidth * scale;
                 scaled.Height = logicalHeight * scale;
+                scaled.UpdateLayout();
+                scaled.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+                scaled.UpdateLayout();
+
+                // A small screen (CI runners) can clamp the scaled window; compare with
+                // a plain window of the logical size the scaled window really got.
                 plain.Show();
-                plain.Width = logicalWidth;
-                plain.Height = logicalHeight;
-                foreach (var window in new[] { scaled, plain })
-                {
-                    window.UpdateLayout();
-                    window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
-                    window.UpdateLayout();
-                }
+                plain.Width = scaled.ActualWidth / scale;
+                plain.Height = scaled.ActualHeight / scale;
+                plain.UpdateLayout();
+                plain.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+                plain.UpdateLayout();
 
                 var surface = (FrameworkElement)scaled.FindName("DesignSurface");
                 var viewbox = (FrameworkElement)scaled.FindName("MainViewbox");
