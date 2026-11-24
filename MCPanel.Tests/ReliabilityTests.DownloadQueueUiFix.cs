@@ -1,5 +1,8 @@
+using System;
 using System.IO;
+using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MCPanel.Tests;
@@ -30,21 +33,51 @@ public sealed partial class ReliabilityTests
     [TestMethod]
     public void DownloadQueueToolbarLeavesRoomForRingAndUsesNormalBadgeFont()
     {
-        Assert.AreEqual(52d, MainWindow.DownloadQueueToolbarHostHeight, 0.001d);
-        Assert.AreEqual(50d, MainWindow.DownloadQueueProgressRingSize, 0.001d);
-        Assert.AreEqual(2d, MainWindow.DownloadQueueProgressRingStroke, 0.001d);
-        Assert.IsTrue(
-            MainWindow.DownloadQueueToolbarHostHeight > MainWindow.DownloadQueueProgressRingSize,
-            "工具栏宿主必须比进度环更高，避免再次裁切环形进度。 ");
-        Assert.IsTrue(
-            MainWindow.DownloadQueueProgressRingSize > 40d,
-            "进度环必须明显大于 40px 下载按钮，才能保持独立的视觉层级。");
+        RunWebsiteUiTest(() =>
+        {
+            var window = CreateUiTestWindow();
+            try
+            {
+                window.Width = 1280;
+                window.Height = 820;
+                window.Show();
+                ((FrameworkElement)window.FindName("HomePage")).Visibility = Visibility.Collapsed;
+                ((FrameworkElement)window.FindName("ProductsPage")).Visibility = Visibility.Visible;
+                window.UpdateLayout();
 
-        var source = ReadRepositoryFile("MainWindow.DownloadQueueFix.cs");
-        Assert.IsFalse(source.Contains("DownloadQueuePopup"), "工具栏修复层不应再依赖独立 WPF Popup。");
-        StringAssert.Contains(source, "ShouldCloseDownloadQueueFlyout");
-        StringAssert.Contains(source, "new FontFamily(\"Segoe UI, Microsoft YaHei UI\")");
-        StringAssert.Contains(source, "ring.StrokeThickness = DownloadQueueProgressRingStroke;");
+                var host = (Grid)window.FindName("DownloadQueueToolbarHost");
+                var ring = (CircularProgress)window.FindName("DownloadQueueProgressRing");
+                var button = (Button)window.FindName("DownloadQueueButton");
+                // The ring only shows while a queue is active; show it to measure its real layout.
+                ring.Visibility = Visibility.Visible;
+                window.UpdateLayout();
+
+                Assert.AreEqual(52d, host.ActualHeight, 0.5d, "工具栏宿主必须比进度环更高，避免再次裁切环形进度。");
+                Assert.IsFalse(host.ClipToBounds);
+                Assert.AreEqual(50d, ring.ActualWidth, 0.5d);
+                Assert.AreEqual(50d, ring.ActualHeight, 0.5d);
+                Assert.AreEqual(2d, ring.StrokeThickness, 0.001d);
+                Assert.IsTrue(ring.ActualHeight > button.ActualHeight, "进度环必须明显大于下载按钮，才能保持独立的视觉层级。");
+                Assert.IsTrue(ring.ActualHeight < host.ActualHeight);
+
+                // The numeric badge inherits the button font, not the icon font.
+                var badge = FindVisualChildren<TextBlock>(button).Single(text => text.Text != null && text.Text.All(char.IsDigit));
+                StringAssert.StartsWith(badge.FontFamily.Source, "Segoe UI");
+
+                var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(1280, 820, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+                bitmap.Render(window);
+                var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+                var output = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "artifacts", "audit"));
+                Directory.CreateDirectory(output);
+                using var stream = File.Create(Path.Combine(output, "download-queue-toolbar.png"));
+                encoder.Save(stream);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
     }
 
     [TestMethod]
