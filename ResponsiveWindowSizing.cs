@@ -74,8 +74,46 @@ internal static class ResponsiveWindowSizing
         return new Rect(left, top, width, height);
     }
 
-    /// <summary>Applies <see cref="GoldenBounds"/> for the monitor the window is on.</summary>
-    public static void FitToCurrentMonitor(Window window)
+    /// <summary>
+    /// The work area (DIPs) the interface is designed for: a 1080p screen at
+    /// 100% scaling. Its golden window shows the interface at scale 1.
+    /// </summary>
+    public static readonly Size ReferenceWorkArea = new(1920d, 1040d);
+
+    /// <summary>Largest interface scale, reached on a 4K screen at 100% scaling.</summary>
+    public const double MaximumUiScale = 2d;
+
+    /// <summary>Scales are rounded to this step so similar screens look identical.</summary>
+    public const double UiScaleStep = 0.05d;
+
+    /// <summary>
+    /// How much larger the whole interface (text, buttons, cards, spacing) is
+    /// drawn on this screen. The golden window grows with the screen's
+    /// linear size, so scaling the content by the same factor keeps every
+    /// component in the same proportion to the window on every monitor.
+    /// Screens smaller than the reference stay at 1: Windows display scaling
+    /// already sized them for reading, and shrinking text would hurt it;
+    /// those screens use the compact layouts instead.
+    /// </summary>
+    public static double UiScale(Rect workArea)
+    {
+        var width = Math.Max(1d, workArea.Width);
+        var height = Math.Max(1d, workArea.Height);
+        var linear = Math.Sqrt(width * height / (ReferenceWorkArea.Width * ReferenceWorkArea.Height));
+        var stepped = Math.Floor(linear / UiScaleStep + 1e-6) * UiScaleStep;
+        return Math.Round(Math.Max(1d, Math.Min(MaximumUiScale, stepped)), 2);
+    }
+
+    /// <summary>The interface scale for the monitor the window is on, or 1 when unknown.</summary>
+    public static double UiScaleForCurrentMonitor(Window window) =>
+        TryGetWorkArea(window, out var workArea) ? UiScale(workArea) : 1d;
+
+    /// <summary>
+    /// Applies <see cref="GoldenBounds"/> for the monitor the window is on.
+    /// <paramref name="uiScale"/> raises the minimum size so a scaled
+    /// interface keeps the same minimum logical size.
+    /// </summary>
+    public static void FitToCurrentMonitor(Window window, double uiScale = 1d)
     {
         if (!TryGetWorkArea(window, out var workArea))
         {
@@ -83,8 +121,8 @@ internal static class ResponsiveWindowSizing
         }
 
         var bounds = GoldenBounds(workArea);
-        window.MinWidth = Math.Min(MinimumWindowWidth, Math.Floor(workArea.Width * MaximumWorkAreaFill));
-        window.MinHeight = Math.Min(MinimumWindowHeight, Math.Floor(workArea.Height * MaximumWorkAreaFill));
+        window.MinWidth = Math.Min(MinimumWindowWidth * uiScale, Math.Floor(workArea.Width * MaximumWorkAreaFill));
+        window.MinHeight = Math.Min(MinimumWindowHeight * uiScale, Math.Floor(workArea.Height * MaximumWorkAreaFill));
         window.Width = bounds.Width;
         window.Height = bounds.Height;
         window.Left = bounds.Left;

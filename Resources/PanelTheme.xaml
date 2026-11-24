@@ -6,6 +6,14 @@
         <ResourceDictionary Source="PanelScrollbars.xaml" />
     </ResourceDictionary.MergedDictionaries>
 
+    <!-- Interface scale for pop-ups and tool tips (separate windows the main
+         window's scale does not reach). PanelUiScale replaces it at runtime. -->
+    <ScaleTransform x:Key="UiScaleTransform" ScaleX="1" ScaleY="1" po:Freeze="True" />
+
+    <Style TargetType="ToolTip">
+        <Setter Property="LayoutTransform" Value="{DynamicResource UiScaleTransform}" />
+    </Style>
+
     <DataTemplate x:Key="PanelIconTemplate">
         <local:PanelIcon Text="{Binding}" />
     </DataTemplate>
@@ -758,7 +766,8 @@
                                AllowsTransparency="True"
                                Focusable="False"
                                IsOpen="{TemplateBinding IsDropDownOpen}">
-                            <Border MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                            <Border LayoutTransform="{DynamicResource UiScaleTransform}"
+                                    MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
                                     Margin="0,4,0,0"
                                     Padding="5"
                                     CornerRadius="8"

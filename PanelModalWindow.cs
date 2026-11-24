@@ -80,10 +80,14 @@ public class PanelModalWindow : Window
     private void FitCardToOverlay()
     {
         if (Content is not Border card) return;
-        card.MaxWidth = Math.Max(1d, Width - 24d);
-        card.MaxHeight = Math.Max(1d, Height - 24d);
+        // Dialogs follow the main window's interface scale; their limits are
+        // in the card's own (logical) units.
+        var scale = PanelUiScale.Current;
+        card.LayoutTransform = PanelUiScale.Transform;
+        card.MaxWidth = Math.Max(1d, (Width - 24d) / scale);
+        card.MaxHeight = Math.Max(1d, (Height - 24d) / scale);
         if (card.Child is not Grid body) return;
-        if (Height < StandardCardHeight + 24d && body.Parent is Border)
+        if ((Height - 24d) / scale < StandardCardHeight && body.Parent is Border)
         {
             card.Child = null;
             card.Child = new System.Windows.Controls.ScrollViewer
