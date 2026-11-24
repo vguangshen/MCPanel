@@ -34,6 +34,9 @@ public sealed partial class ReliabilityTests
                 var environmentPage = (FrameworkElement)window.FindName("EnvironmentPage");
                 homePage.Visibility = Visibility.Collapsed;
                 environmentPage.Visibility = Visibility.Visible;
+                // The version picker lives in the detail panel of the selected component.
+                var environmentModel = (MainViewModel)window.DataContext;
+                environmentModel.SelectedEnvironmentItem = environmentModel.EnvironmentItems.Single(item => item.Kind == EnvironmentKind.SqlServer);
                 window.UpdateLayout();
                 window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
 

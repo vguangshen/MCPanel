@@ -214,20 +214,17 @@ public sealed partial class ReliabilityTests
                 var model = (MainViewModel)window.DataContext;
                 foreach (var item in model.EnvironmentItems) item.IsInstalled = true;
                 FindVisualChildren<RadioButton>(window).First(button => Equals(button.CommandParameter, "Environment")).IsChecked = true;
-                foreach (var flipped in new[] { false, true })
+                // The detail panel's icon buttons (copy connection values) draw local vectors.
+                model.SelectedEnvironmentItem = model.EnvironmentItems.Single(item => item.Kind == EnvironmentKind.MySql);
+                window.UpdateLayout();
+                window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+                var copyButtons = FindVisualChildren<Button>(window).Where(button => button.IsVisible && Equals(button.Content, "\uE8C8")).ToArray();
+                Assert.IsTrue(copyButtons.Length >= 2, "MySQL details must offer copy actions for its connection values.");
+                foreach (var button in copyButtons)
                 {
-                    foreach (var item in model.EnvironmentItems) item.IsFlipped = flipped;
-                    window.UpdateLayout();
-                    window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
-                    var buttons = FindVisualChildren<Button>(window).Where(button => button.IsVisible && Equals(button.Content, "\uE8AB")).ToArray();
-                    Assert.IsTrue(buttons.Length >= 2, "Installed environment cards must expose the flip control on both faces.");
-                    foreach (var button in buttons)
-                    {
-                        StringAssert.Contains(button.ToolTip.ToString()!, "翻转卡片");
-                        Assert.IsTrue(FindVisualChildren<PanelIcon>(button).Any(icon => icon.Text == "\uE8AB"));
-                    }
-                    SaveVectorIconPreview(window, 1280, 820, flipped ? "environment-back" : "environment-front");
+                    Assert.IsTrue(FindVisualChildren<PanelIcon>(button).Any(icon => icon.Text == "\uE8C8"));
                 }
+                SaveVectorIconPreview(window, 1280, 820, "environment-console");
             }
             finally { window.Close(); }
         });

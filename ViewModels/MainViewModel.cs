@@ -100,6 +100,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             new EnvironmentItem(definition.Kind, definition.Title, definition.VersionLabel, definition.InstallDescription)));
         EnvironmentItems.First(item => item.Kind == EnvironmentKind.FrpTunnel).StatusText =
             "FRP 尚未安装。点击“安装”后才会联网下载客户端。";
+        foreach (var item in EnvironmentItems)
+        {
+            item.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName is nameof(EnvironmentItem.IsInstalled) or nameof(EnvironmentItem.IsRunning) or nameof(EnvironmentItem.IsBusy))
+                {
+                    RaiseEnvironmentSummary();
+                }
+            };
+        }
+        _selectedEnvironmentItem = EnvironmentItems.FirstOrDefault();
 
         ComponentOperations.BusyChanged += (kind, busy) =>
         {
@@ -130,6 +141,32 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public string VersionText => ApplicationUpdateService.CurrentVersionText;
     public ObservableCollection<ServiceItem> Services { get; }
     public ObservableCollection<EnvironmentItem> EnvironmentItems { get; }
+
+    /// <summary>The component shown in the environment page's detail panel.</summary>
+    public EnvironmentItem? SelectedEnvironmentItem
+    {
+        get => _selectedEnvironmentItem;
+        set
+        {
+            if (value is null || !SetProperty(ref _selectedEnvironmentItem, value)) return;
+            value.ResetNotices();
+            if (value.IsTomcatModule && value.IsInstalled) value.RefreshTomcatPorts();
+            if (value.IsCredentialModule) value.RefreshCredentialFields();
+        }
+    }
+
+    public int EnvironmentRunningCount => EnvironmentItems.Count(item => item.IsInstalled && item.IsRunning);
+    public int EnvironmentStoppedCount => EnvironmentItems.Count(item => item.IsInstalled && !item.IsRunning);
+    public int EnvironmentNotInstalledCount => EnvironmentItems.Count(item => !item.IsInstalled);
+    public int EnvironmentBusyCount => EnvironmentItems.Count(item => item.IsBusy);
+
+    private void RaiseEnvironmentSummary()
+    {
+        OnPropertyChanged(nameof(EnvironmentRunningCount));
+        OnPropertyChanged(nameof(EnvironmentStoppedCount));
+        OnPropertyChanged(nameof(EnvironmentNotInstalledCount));
+        OnPropertyChanged(nameof(EnvironmentBusyCount));
+    }
     public ObservableCollection<ProductItem> Products { get; }
     public ObservableCollection<InstalledProductItem> InstalledProducts { get; } = [];
     public ObservableCollection<CustomWebsiteItem> CustomWebsites { get; } = [];
@@ -184,6 +221,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         RebuildVisibleProductRows();
     }
     public int EnvironmentColumnCount { get => _environmentColumnCount; private set => SetProperty(ref _environmentColumnCount, value); }
+    private EnvironmentItem? _selectedEnvironmentItem;
     private int _environmentColumnCount = 3;
     public void SetEnvironmentColumnCount(int count) => EnvironmentColumnCount = Math.Max(1, Math.Min(3, count));
     public int HomeServiceColumnCount { get => _homeServiceColumnCount; private set => SetProperty(ref _homeServiceColumnCount, value); }

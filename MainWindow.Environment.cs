@@ -384,53 +384,6 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
         }
     }
 
-    internal async void EnvironmentCardFlip_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is not FrameworkElement element ||
-            element.DataContext is not EnvironmentItem item ||
-            item.IsFlipAnimating ||
-            !item.CanFlipCard)
-        {
-            return;
-        }
-
-        if (item.IsTomcatModule && !item.IsFlipped)
-        {
-            item.RefreshTomcatPorts();
-        }
-
-        var card = FindAncestorBorder(element, "EnvironmentCard");
-        if (card is null)
-        {
-            item.IsFlipped = !item.IsFlipped;
-            return;
-        }
-
-        var scale = card.RenderTransform as ScaleTransform ?? new ScaleTransform(1, 1);
-        if (scale.IsFrozen)
-        {
-            scale = scale.CloneCurrentValue();
-        }
-        card.RenderTransform = scale;
-
-        item.IsFlipAnimating = true;
-        try
-        {
-            await AnimateScaleXAsync(scale, scale.ScaleX, 0, TimeSpan.FromMilliseconds(150));
-            item.IsFlipped = !item.IsFlipped;
-            await AnimateScaleXAsync(scale, 0, 1, TimeSpan.FromMilliseconds(190));
-        }
-        catch
-        {
-            scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-            scale.ScaleX = 1;
-        }
-        finally
-        {
-            item.IsFlipAnimating = false;
-        }
-    }
-
     internal async void TomcatPortSave_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button button ||
@@ -440,8 +393,7 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
             return;
         }
 
-        var card = FindAncestorBorder(button, "EnvironmentCard");
-        if (card?.DataContext is not EnvironmentItem environmentItem)
+        if (FindEnvironmentItem(button) is not { } environmentItem)
         {
             return;
         }
@@ -493,8 +445,7 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
 
         Clipboard.SetText(value);
         ClipboardSafety.ScheduleClear(value);
-        var card = FindAncestorBorder(button, "EnvironmentCard");
-        if (card?.DataContext is EnvironmentItem item)
+        if (FindEnvironmentItem(button) is { } item)
         {
             var label = button.CommandParameter as string ?? "信息";
             item.CredentialNotice = $"{label}已复制";
@@ -510,8 +461,7 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
             return;
         }
 
-        var card = FindAncestorBorder(button, "EnvironmentCard");
-        if (card?.DataContext is not EnvironmentItem item ||
+        if (FindEnvironmentItem(button) is not { } item ||
             item.Kind != EnvironmentKind.MySql)
         {
             return;
@@ -596,51 +546,18 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
         return dialog.ShowDialog() == true ? dialog.ResultText : null;
     }
 
-    internal void CredentialConnect_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is not FrameworkElement element || element.DataContext is not EnvironmentItem item)
-        {
-            return;
-        }
-
-        if (item.Kind == EnvironmentKind.MySql)
-        {
-            ConnectMySql_Click(sender, e);
-        }
-        else if (item.Kind == EnvironmentKind.SqlServer)
-        {
-            ConnectSqlServer_Click(sender, e);
-        }
-    }
-
-    private static Border? FindAncestorBorder(DependencyObject source, string name)
+    /// <summary>The environment component a control inside the detail panel belongs to.</summary>
+    private static EnvironmentItem? FindEnvironmentItem(DependencyObject source)
     {
         for (DependencyObject? current = source; current is not null; current = VisualTreeHelper.GetParent(current))
         {
-            if (current is Border border && border.Name == name)
+            if (current is FrameworkElement { DataContext: EnvironmentItem item })
             {
-                return border;
+                return item;
             }
         }
 
         return null;
-    }
-
-    private static Task AnimateScaleXAsync(ScaleTransform transform, double from, double to, TimeSpan duration)
-    {
-        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var animation = new DoubleAnimation(from, to, duration)
-        {
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut },
-            FillBehavior = FillBehavior.Stop
-        };
-        animation.Completed += (_, _) =>
-        {
-            transform.ScaleX = to;
-            completion.TrySetResult(true);
-        };
-        transform.BeginAnimation(ScaleTransform.ScaleXProperty, animation);
-        return completion.Task;
     }
 
     private string OpenIisManager()

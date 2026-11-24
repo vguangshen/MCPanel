@@ -618,37 +618,102 @@
                       KeyboardNavigation.TabNavigation="Local">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-                    <Border Style="{StaticResource Card}"
-                            Padding="{local:Density Normal='22,18', Compact='16,12'}"
-                            Margin="{local:Density Normal='0,0,0,16', Compact='0,0,0,10'}">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
+                    <Grid Margin="{local:Density Normal='2,0,2,14', Compact='2,0,2,10'}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="环境管理" Style="{StaticResource SectionTitle}" />
+                            <TextBlock Text="安装和管理 IIS、Nginx、MySQL、SQL Server、Tomcat 与 FRP 内网穿透。" Foreground="{DynamicResource MutedBrush}"
+                                       FontSize="13" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="1" Text="{Binding EnvironmentItems.Count, StringFormat={}{0} 个组件}" Foreground="{DynamicResource MutedBrush}"
+                                   FontSize="13" VerticalAlignment="Bottom" Margin="18,0,0,2" />
+                    </Grid>
+
+                    <!-- Status at a glance. -->
+                    <UniformGrid x:Name="EnvironmentSummaryStrip" Grid.Row="1" Columns="4" Rows="1"
+                                 Visibility="{local:Density Normal='Visible', Narrow='Collapsed'}"
+                                 Margin="{local:Density Normal='0,0,0,14', Compact='0,0,0,10'}">
+                        <UniformGrid.Resources>
+                            <Style x:Key="SummaryTile" TargetType="Border" BasedOn="{StaticResource Card}">
+                                <Setter Property="Padding" Value="16,11" />
+                                <Setter Property="Margin" Value="0,0,10,0" />
+                                <Style.Triggers>
+                                    <Trigger Property="local:ResponsiveDensity.IsCompact" Value="True">
+                                        <Setter Property="Padding" Value="12,8" />
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </UniformGrid.Resources>
+                        <Border Style="{StaticResource SummaryTile}">
                             <StackPanel>
-                                <TextBlock Text="环境管理" Style="{StaticResource SectionTitle}" />
-                                <TextBlock Text="安装和管理 IIS、Nginx、MySQL、SQL Server、Tomcat 与 FRP 内网穿透。" Foreground="{DynamicResource MutedBrush}" FontSize="14" Margin="0,6,0,0" />
+                                <TextBlock Text="{Binding EnvironmentRunningCount}" FontSize="22" FontWeight="SemiBold" Foreground="SeaGreen" />
+                                <TextBlock Text="运行中" FontSize="12" Foreground="{DynamicResource MutedBrush}" />
                             </StackPanel>
-                            <TextBlock Grid.Column="1" Text="6 个组件" Foreground="{DynamicResource MutedBrush}" FontSize="14" VerticalAlignment="Center" Margin="18,0,0,0" />
-                        </Grid>
-                    </Border>
-                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                        <ScrollViewer.Resources>
-                            <Style TargetType="ScrollBar" BasedOn="{StaticResource ModernVerticalScrollBar}" />
-                        </ScrollViewer.Resources>
-                    <ItemsControl x:Name="EnvironmentItemsControl"
-                                  ItemsSource="{Binding EnvironmentItems}"
-                                  ItemTemplate="{StaticResource EnvironmentCardTemplate}">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <UniformGrid Columns="{Binding EnvironmentColumnCount}" />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                        </ItemsControl>
-                    </ScrollViewer>
+                        </Border>
+                        <Border Style="{StaticResource SummaryTile}">
+                            <StackPanel>
+                                <TextBlock Text="{Binding EnvironmentStoppedCount}" FontSize="22" FontWeight="SemiBold" Foreground="IndianRed" />
+                                <TextBlock Text="已安装未运行" FontSize="12" Foreground="{DynamicResource MutedBrush}" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource SummaryTile}">
+                            <StackPanel>
+                                <TextBlock Text="{Binding EnvironmentNotInstalledCount}" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource MutedBrush}" />
+                                <TextBlock Text="未安装" FontSize="12" Foreground="{DynamicResource MutedBrush}" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource SummaryTile}" Margin="0">
+                            <StackPanel>
+                                <TextBlock Text="{Binding EnvironmentBusyCount}" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" />
+                                <TextBlock Text="处理中" FontSize="12" Foreground="{DynamicResource MutedBrush}" />
+                            </StackPanel>
+                        </Border>
+                    </UniformGrid>
+
+                    <!-- Component list and the selected component's details;
+                         narrow windows stack them. -->
+                    <Grid Grid.Row="2">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="{local:Density Normal='*', Narrow='Auto'}" />
+                            <RowDefinition Height="{local:Density Normal='0', Narrow='*'}" />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="{local:Density Normal='300', Compact='270', Narrow='*'}" />
+                            <ColumnDefinition Width="{local:Density Normal='*', Narrow='0'}" />
+                        </Grid.ColumnDefinitions>
+                        <Border Style="{StaticResource Card}" Padding="0" VerticalAlignment="{local:Density Normal='Stretch', Narrow='Top'}"
+                                MaxHeight="{local:Density Normal='Infinity', Narrow='210'}"
+                                Margin="{local:Density Normal='0,0,14,0', Compact='0,0,10,0', Narrow='0,0,0,10'}">
+                            <ListBox x:Name="EnvironmentItemsControl"
+                                     ItemsSource="{Binding EnvironmentItems}"
+                                     SelectedItem="{Binding SelectedEnvironmentItem, Mode=TwoWay}"
+                                     ItemTemplate="{StaticResource EnvironmentListRowTemplate}"
+                                     ItemContainerStyle="{StaticResource EnvironmentListItem}"
+                                     Background="Transparent" BorderThickness="0" Padding="0,2"
+                                     AutomationProperties.Name="环境组件"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <ListBox.Resources>
+                                    <Style TargetType="ScrollBar" BasedOn="{StaticResource ModernVerticalScrollBar}" />
+                                </ListBox.Resources>
+                            </ListBox>
+                        </Border>
+                        <ContentControl x:Name="EnvironmentDetailHost"
+                                        Grid.Row="{local:Density Normal='0', Narrow='1'}"
+                                        Grid.Column="{local:Density Normal='1', Narrow='0'}"
+                                        Content="{Binding SelectedEnvironmentItem}"
+                                        ContentTemplate="{StaticResource EnvironmentDetailTemplate}"
+                                        Focusable="False">
+                            <ContentControl.Resources>
+                                <Style TargetType="ScrollBar" BasedOn="{StaticResource ModernVerticalScrollBar}" />
+                            </ContentControl.Resources>
+                        </ContentControl>
+                    </Grid>
                 </Grid>
 
                 <local:AccountApiPage x:Name="AccountApiPageControl" Visibility="Collapsed" />

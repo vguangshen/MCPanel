@@ -903,73 +903,130 @@
         </Grid>
     </DataTemplate>
 
-    <!-- Environment card template with front, credential, and Tomcat views -->
-    <DataTemplate x:Key="EnvironmentCardTemplate">
-            <Border x:Name="EnvironmentCard" Style="{DynamicResource Card}"
-                    Margin="{local:Density Normal='0,0,16,16', Compact='0,0,10,10'}"
-                    Padding="{local:Density Normal='18,16', Compact='14,12'}" RenderTransformOrigin="0.5,0.5">
-                <Border.RenderTransform>
-                    <ScaleTransform ScaleX="1" />
-                </Border.RenderTransform>
-                <local:CardFacePanel ClipToBounds="True">
-                <Grid Visibility="{Binding FrontFaceVisibility}">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel>
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="{Binding Title}" FontSize="{local:Density Normal='18', Compact='16'}" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                                <Button Width="26" Height="26" MinWidth="0" Padding="0" Margin="7,0,0,0"
-                                        Style="{DynamicResource PathIconButton}"
-                                        Content="&#xE8B7;" ToolTip="打开安装目录"
-                                        Visibility="{Binding InstallDirectoryVisibility}"
-                                        Click="EnvironmentOpenDirectory_Click" />
-                            </StackPanel>
-                            <TextBlock Text="{Binding OptionLabel}" ToolTip="{Binding OptionLabel}" FontSize="13" Foreground="{DynamicResource MutedBrush}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="0,4,0,0" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Height="28" VerticalAlignment="Top" Margin="12,0,0,0">
-                            <Button Width="28" Height="28" Margin="0,0,8,0"
-                                    MinWidth="0" Padding="0"
-                                    Style="{DynamicResource EnvironmentTonalButton}"
-                                    FontSize="17"
-                                    Content="&#xE8AB;"
-                                    ToolTip="翻转卡片，查看管理信息" AutomationProperties.Name="翻转卡片，查看管理信息"
-                                    Click="EnvironmentCardFlip_Click"
-                                    Visibility="{Binding EnvironmentFlipVisibility}" />
-                            <Border Height="28" CornerRadius="12" Padding="8,0" VerticalAlignment="Center"
-                                    Background="{DynamicResource SurfaceAltBrush}" BorderBrush="{DynamicResource CardLineBrush}" BorderThickness="1">
-                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <Ellipse Width="8" Height="8" Fill="{Binding BadgeBrush}" VerticalAlignment="Center" />
-                                    <TextBlock Text="{Binding BadgeText}" Foreground="{DynamicResource MutedBrush}" FontSize="12"
-                                               Margin="6,0,0,0" VerticalAlignment="Center"
-                                               LineHeight="16" LineStackingStrategy="BlockLineHeight" />
-                                </StackPanel>
-                            </Border>
-                        </StackPanel>
-                    </Grid>
-                    <StackPanel Grid.Row="1" Margin="0,10,0,10">
-                        <TextBlock Text="{Binding Description}" ToolTip="{Binding Description}" TextWrapping="Wrap" FontSize="13" Foreground="{DynamicResource MutedBrush}" LineHeight="{local:Density Normal='19', Compact='17'}" MaxHeight="40" TextTrimming="CharacterEllipsis" />
-                        <Grid Margin="0,8,0,8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="6" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="{Binding ProgressStageText}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" />
-                            <TextBlock Grid.Column="2" Text="{Binding StatusText}" TextWrapping="NoWrap" FontSize="12" Foreground="{DynamicResource TextBrush}" TextTrimming="CharacterEllipsis" />
-                            <TextBlock Grid.Column="3" Text="{Binding DownloadSpeedText}" Visibility="{Binding DownloadSpeedVisibility}" FontSize="12" Foreground="{DynamicResource PrimaryBrush}" Margin="8,0,0,0" />
+    <!-- Environment page (ops console): one row per component in the list. -->
+    <Style x:Key="EnvironmentListItem" TargetType="ListBoxItem">
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="AutomationProperties.Name" Value="{Binding Title}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBoxItem">
+                    <Border x:Name="Row" Background="Transparent"
+                            BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,0,1">
+                        <Grid>
+                            <Rectangle x:Name="Accent" Width="3" HorizontalAlignment="Left"
+                                       Fill="{DynamicResource PrimaryBrush}" Visibility="Collapsed" />
+                            <ContentPresenter Margin="{local:Density Normal='16,11,14,11', Compact='14,8,12,8'}" />
                         </Grid>
-                        <ProgressBar Style="{DynamicResource MetricProgress}" Value="{Binding Progress, Mode=OneWay}" Maximum="100" IsIndeterminate="{Binding IsProgressIndeterminate}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Row" Property="Background" Value="{DynamicResource NavHoverBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Row" Property="Background" Value="{DynamicResource NavSelectedBrush}" />
+                            <Setter TargetName="Accent" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <DataTemplate x:Key="EnvironmentListRowTemplate">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Ellipse Width="9" Height="9" Fill="{Binding BadgeBrush}" VerticalAlignment="Center" Margin="0,0,11,0" />
+            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Title}" FontSize="14" FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextBrush}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding OptionLabel}" ToolTip="{Binding OptionLabel}" FontSize="12" Margin="0,2,0,0"
+                           Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+            <Border Grid.Column="2" Height="24" CornerRadius="12" Padding="9,0" Margin="10,0,0,0" VerticalAlignment="Center"
+                    Background="{DynamicResource SurfaceAltBrush}" BorderBrush="{DynamicResource CardLineBrush}" BorderThickness="1">
+                <TextBlock Text="{Binding BadgeText}" FontSize="11" VerticalAlignment="Center"
+                           Foreground="{DynamicResource MutedBrush}" />
+            </Border>
+            <ProgressBar Grid.Row="1" Grid.ColumnSpan="3" Height="3" Margin="20,8,0,0"
+                         Style="{DynamicResource MetricProgress}" Maximum="100"
+                         Value="{Binding Progress, Mode=OneWay}" IsIndeterminate="{Binding IsProgressIndeterminate}"
+                         Visibility="{Binding ProgressVisibility}" />
+        </Grid>
+    </DataTemplate>
+
+    <!-- Environment page (ops console): everything about the selected component.
+         Connection details and Tomcat product ports, formerly on the card's back,
+         are sections here. -->
+    <DataTemplate x:Key="EnvironmentDetailTemplate">
+        <Border x:Name="EnvironmentDetail" Style="{DynamicResource Card}"
+                Padding="{local:Density Normal='20,18', Compact='14,12'}">
+            <DockPanel>
+                <Grid DockPanel.Dock="Top">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding Title}" FontSize="{local:Density Normal='19', Compact='17'}" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                            <Button Width="26" Height="26" MinWidth="0" Padding="0" Margin="7,0,0,0"
+                                    Style="{DynamicResource PathIconButton}"
+                                    Content="&#xE8B7;" ToolTip="打开安装目录"
+                                    Visibility="{Binding InstallDirectoryVisibility}"
+                                    Click="EnvironmentOpenDirectory_Click" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding OptionLabel}" ToolTip="{Binding OptionLabel}" FontSize="13" Margin="0,4,0,0"
+                                   Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
-                    <WrapPanel Grid.Row="2" HorizontalAlignment="Left">
+                    <Border Grid.Column="1" Height="28" CornerRadius="14" Padding="10,0" Margin="12,0,0,0" VerticalAlignment="Top"
+                            Background="{DynamicResource SurfaceAltBrush}" BorderBrush="{DynamicResource CardLineBrush}" BorderThickness="1">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Ellipse Width="8" Height="8" Fill="{Binding BadgeBrush}" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding BadgeText}" Foreground="{DynamicResource MutedBrush}" FontSize="12"
+                                       Margin="6,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <ScrollViewer Margin="0,14,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="0,0,6,0">
+                        <TextBlock Text="{Binding Description}" TextWrapping="Wrap" FontSize="13" LineHeight="20"
+                                   Foreground="{DynamicResource MutedBrush}" />
+
+                        <Border Margin="0,14,0,0" Padding="12,10" CornerRadius="8"
+                                Background="{DynamicResource SurfaceAltBrush}" BorderBrush="{DynamicResource CardLineBrush}" BorderThickness="1">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding ProgressStageText}" FontSize="12" FontWeight="SemiBold" Margin="0,0,10,0"
+                                               Foreground="{DynamicResource TextBrush}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding StatusText}" ToolTip="{Binding StatusText}" FontSize="12"
+                                               TextWrapping="Wrap" Foreground="{DynamicResource TextBrush}" />
+                                    <TextBlock Grid.Column="2" Text="{Binding DownloadSpeedText}" Visibility="{Binding DownloadSpeedVisibility}"
+                                               FontSize="12" Foreground="{DynamicResource PrimaryBrush}" Margin="8,0,0,0" />
+                                </Grid>
+                                <ProgressBar Margin="0,10,0,0" Style="{DynamicResource MetricProgress}" Maximum="100"
+                                             Value="{Binding Progress, Mode=OneWay}" IsIndeterminate="{Binding IsProgressIndeterminate}"
+                                             Visibility="{Binding ProgressVisibility}" />
+                            </StackPanel>
+                        </Border>
+
+                        <WrapPanel Margin="0,14,0,0" HorizontalAlignment="Left">
                             <Button Content="{Binding ActionText}" Style="{DynamicResource EnvironmentCardPrimaryButton}" HorizontalAlignment="Left" Click="EnvironmentInstall_Click" IsEnabled="{Binding CanInstall}" Visibility="{Binding InstallButtonVisibility}" />
                             <ComboBox Style="{DynamicResource EnvironmentCardVersionComboBox}"
                                       ItemContainerStyle="{DynamicResource EnvironmentVersionComboBoxItem}"
@@ -1005,7 +1062,6 @@
                             <Button Content="启动" Style="{DynamicResource EnvironmentCardPrimaryButton}" HorizontalAlignment="Left" Click="EnvironmentRuntime_Click" Tag="Start" IsEnabled="{Binding CanStart}" Visibility="{Binding ServiceControlsVisibility}" />
                             <Button Content="停止" Style="{DynamicResource EnvironmentCardTonalButton}" HorizontalAlignment="Left" Click="EnvironmentRuntime_Click" Tag="Stop" IsEnabled="{Binding CanStop}" Visibility="{Binding ServiceControlsVisibility}" />
                             <Button Content="重启" Style="{DynamicResource EnvironmentCardTonalButton}" HorizontalAlignment="Left" Click="EnvironmentRuntime_Click" Tag="Restart" IsEnabled="{Binding CanRestart}" Visibility="{Binding ServiceControlsVisibility}" />
-                            <Button Content="卸载" Style="{DynamicResource EnvironmentCardTonalButton}" HorizontalAlignment="Left" Click="EnvironmentRuntime_Click" Tag="Uninstall" IsEnabled="{Binding CanUninstall}" Visibility="{Binding ServiceControlsVisibility}" />
                             <Button Content="以 Catalina 方式启动"
                                     Style="{DynamicResource EnvironmentCardWarningButton}"
                                     HorizontalAlignment="Left"
@@ -1018,171 +1074,100 @@
                             <Button Content="管理" Style="{DynamicResource EnvironmentCardTonalButton}" HorizontalAlignment="Left" Click="EnvironmentRuntime_Click" Tag="OpenIis" IsEnabled="{Binding CanManage}" Visibility="{Binding IisManagementVisibility}" />
                             <Button Content="管理" Style="{DynamicResource EnvironmentCardTonalButton}" HorizontalAlignment="Left" Click="NginxOpenManagement_Click" IsEnabled="{Binding CanManage}" Visibility="{Binding NginxManagementVisibility}" />
                             <Button Content="管理" Style="{DynamicResource EnvironmentCardTonalButton}" HorizontalAlignment="Left" Click="FrpOpenManagement_Click" IsEnabled="{Binding CanManage}" Visibility="{Binding FrpManagementVisibility}" />
-                    </WrapPanel>
-                </Grid>
-                <Grid Visibility="{Binding CredentialBackFaceVisibility}">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-                    <Grid>
-                        <StackPanel Margin="0,0,42,0">
-                            <TextBlock Text="{Binding CredentialTitle}" FontSize="{local:Density Normal='18', Compact='16'}" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextBrush}" TextTrimming="CharacterEllipsis"
-                                       ToolTip="{Binding CredentialTitle}" />
-                            <TextBlock Text="{Binding CredentialSubtitle}" FontSize="12"
-                                       Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,0"
-                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding CredentialSubtitle}" />
-                        </StackPanel>
-                        <Button HorizontalAlignment="Right" VerticalAlignment="Top"
-                                Width="32" Height="32"
-                                MinWidth="0" Padding="0" Margin="0"
-                                Style="{DynamicResource EnvironmentTonalButton}"
-                                FontSize="17"
-                                Content="&#xE8AB;"
-                                ToolTip="翻转卡片，返回管理" AutomationProperties.Name="翻转卡片，返回管理"
-                                Click="EnvironmentCardFlip_Click" />
-                    </Grid>
+                            <Button Content="卸载" Style="{DynamicResource EnvironmentCardTonalButton}" HorizontalAlignment="Left" Click="EnvironmentRuntime_Click" Tag="Uninstall" IsEnabled="{Binding CanUninstall}" Visibility="{Binding ServiceControlsVisibility}" />
+                        </WrapPanel>
 
-                    <ScrollViewer Grid.Row="1" Margin="0,12,0,8"
-                                  VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Disabled">
-                    <ItemsControl ItemsSource="{Binding CredentialFields}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <UniformGrid Columns="2" />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Border Background="{DynamicResource SurfaceAltBrush}"
-                                        BorderBrush="{DynamicResource CardLineBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="7"
-                                        Padding="10,7"
-                                        Margin="0,0,8,8">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="28" />
-                                            <ColumnDefinition Width="28" />
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel>
-                                            <TextBlock Text="{Binding Label}" FontSize="10"
-                                                       Foreground="{DynamicResource MutedBrush}" />
-                                            <TextBlock Text="{Binding Value}" FontSize="12"
-                                                       FontWeight="SemiBold"
-                                                       Foreground="{DynamicResource TextBrush}"
-                                                       Margin="0,3,4,0"
-                                                       TextTrimming="CharacterEllipsis"
-                                                       ToolTip="{Binding Value}" />
-                                        </StackPanel>
-                                        <Button Grid.Column="1"
-                                                Width="26" Height="26"
-                                                MinWidth="0" Padding="0" Margin="0"
-                                                VerticalAlignment="Center"
-                                                Style="{DynamicResource EnvironmentTonalButton}"
-                                                FontSize="12"
-                                                Content="&#xE70F;"
-                                                ToolTip="{Binding EditToolTip}"
-                                                Visibility="{Binding EditVisibility}"
-                                                Click="CredentialEdit_Click" />
-                                        <Button Grid.Column="2"
-                                                Width="26" Height="26"
-                                                MinWidth="0" Padding="0" Margin="0"
-                                                VerticalAlignment="Center"
-                                                Style="{DynamicResource EnvironmentTonalButton}"
-                                                FontSize="12"
-                                                Content="&#xE8C8;"
-                                                ToolTip="复制"
-                                                Tag="{Binding Value}"
-                                                CommandParameter="{Binding Label}"
-                                                Click="CredentialCopy_Click" />
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                    </ScrollViewer>
-
-                    <Grid Grid.Row="2">
-                        <TextBlock Text="{Binding CredentialNotice}" FontSize="11"
-                                   Foreground="{DynamicResource MemoryBrush}"
-                                   VerticalAlignment="Center"
-                                   TextTrimming="CharacterEllipsis" />
-                        <Button Content="连接工具"
-                                HorizontalAlignment="Right"
-                                Style="{DynamicResource EnvironmentCardWarningButton}"
-                                Click="CredentialConnect_Click" />
-                    </Grid>
-                </Grid>
-                <Grid Visibility="{Binding TomcatBackFaceVisibility}">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-                    <Grid>
-                        <StackPanel Margin="0,0,42,0">
-                            <TextBlock Text="产品端口管理" FontSize="{local:Density Normal='18', Compact='16'}" FontWeight="SemiBold"
+                        <!-- Connection details (MySQL / SQL Server). -->
+                        <StackPanel Margin="0,10,0,0" Visibility="{Binding CredentialSectionVisibility}">
+                            <Border Height="1" Background="{DynamicResource LineBrush}" Margin="0,0,0,14" />
+                            <TextBlock Text="{Binding CredentialTitle}" FontSize="15" FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextBrush}" />
-                            <TextBlock Text="{Binding TomcatPortSubtitle}" FontSize="12"
-                                       Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,0"
+                            <TextBlock Text="{Binding CredentialSubtitle}" FontSize="12" Margin="0,3,0,10"
+                                       Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding CredentialSubtitle}" />
+                            <ItemsControl ItemsSource="{Binding CredentialFields}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <UniformGrid Columns="{local:Density Normal='2', Narrow='1'}" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{DynamicResource SurfaceAltBrush}"
+                                                BorderBrush="{DynamicResource CardLineBrush}"
+                                                BorderThickness="1" CornerRadius="7" Padding="10,7" Margin="0,0,8,8">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="28" />
+                                                    <ColumnDefinition Width="28" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Label}" FontSize="10"
+                                                               Foreground="{DynamicResource MutedBrush}" />
+                                                    <TextBlock Text="{Binding Value}" FontSize="12" FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource TextBrush}" Margin="0,3,4,0"
+                                                               TextTrimming="CharacterEllipsis" ToolTip="{Binding Value}" />
+                                                </StackPanel>
+                                                <Button Grid.Column="1" Width="26" Height="26" MinWidth="0" Padding="0" Margin="0"
+                                                        VerticalAlignment="Center" Style="{DynamicResource EnvironmentTonalButton}" FontSize="12"
+                                                        Content="&#xE70F;" ToolTip="{Binding EditToolTip}" Visibility="{Binding EditVisibility}"
+                                                        Click="CredentialEdit_Click" />
+                                                <Button Grid.Column="2" Width="26" Height="26" MinWidth="0" Padding="0" Margin="0"
+                                                        VerticalAlignment="Center" Style="{DynamicResource EnvironmentTonalButton}" FontSize="12"
+                                                        Content="&#xE8C8;" ToolTip="复制" Tag="{Binding Value}" CommandParameter="{Binding Label}"
+                                                        Click="CredentialCopy_Click" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="{Binding CredentialNotice}" FontSize="11" Foreground="{DynamicResource MemoryBrush}"
                                        TextTrimming="CharacterEllipsis" />
                         </StackPanel>
-                        <Button HorizontalAlignment="Right" VerticalAlignment="Top"
-                                Width="32" Height="32" MinWidth="0" Padding="0" Margin="0"
-                                Style="{DynamicResource EnvironmentTonalButton}" FontSize="17"
-                                Content="&#xE8AB;" ToolTip="翻转卡片，返回管理" AutomationProperties.Name="翻转卡片，返回管理"
-                                Click="EnvironmentCardFlip_Click" />
-                    </Grid>
 
-                    <ScrollViewer Grid.Row="1" Margin="0,12,0,8"
-                                  VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Disabled">
-                        <ItemsControl ItemsSource="{Binding TomcatPorts}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Background="{DynamicResource SurfaceAltBrush}"
-                                            BorderBrush="{DynamicResource CardLineBrush}"
-                                            BorderThickness="1" CornerRadius="7"
-                                            Padding="10,8" Margin="0,0,4,8">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="82" />
-                                                <ColumnDefinition Width="32" />
-                                            </Grid.ColumnDefinitions>
-                                            <StackPanel VerticalAlignment="Center" Margin="0,0,8,0">
-                                                <TextBlock Text="{Binding ProductId}" FontSize="13" FontWeight="SemiBold"
-                                                           Foreground="{DynamicResource TextBrush}" />
-                                                <TextBlock Text="{Binding ContextPath, StringFormat=上下文：{0}}"
-                                                           FontSize="10" Foreground="{DynamicResource MutedBrush}"
-                                                           Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
-                                            </StackPanel>
-                                            <TextBox Grid.Column="1" Text="{Binding PortText, UpdateSourceTrigger=PropertyChanged}"
-                                                     Height="32" Padding="8,4" VerticalContentAlignment="Center"
-                                                     HorizontalContentAlignment="Center" MaxLength="5"
-                                                     ToolTip="产品独立端口（9000-10000）" />
-                                            <Button Grid.Column="2" Width="28" Height="28" MinWidth="0"
-                                                    Padding="0" Margin="4,0,0,0" VerticalAlignment="Center"
-                                                    Style="{DynamicResource EnvironmentPrimaryButton}" FontSize="12"
-                                                    Content="&#xE74E;" ToolTip="保存端口"
-                                                    IsEnabled="{Binding CanSave}"
-                                                    Click="TomcatPortSave_Click" />
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
-
-                    <TextBlock Grid.Row="2" Text="{Binding TomcatPortNotice}" FontSize="11"
-                               Foreground="{DynamicResource MemoryBrush}"
-                               TextTrimming="CharacterEllipsis" />
-                </Grid>
-                </local:CardFacePanel>
-            </Border>
-        </DataTemplate>
+                        <!-- Product ports (Tomcat). -->
+                        <StackPanel Margin="0,10,0,0" Visibility="{Binding TomcatPortSectionVisibility}">
+                            <Border Height="1" Background="{DynamicResource LineBrush}" Margin="0,0,0,14" />
+                            <TextBlock Text="产品端口管理" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" />
+                            <TextBlock Text="{Binding TomcatPortSubtitle}" FontSize="12" Margin="0,3,0,10"
+                                       Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis" />
+                            <ItemsControl ItemsSource="{Binding TomcatPorts}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{DynamicResource SurfaceAltBrush}"
+                                                BorderBrush="{DynamicResource CardLineBrush}"
+                                                BorderThickness="1" CornerRadius="7" Padding="10,8" Margin="0,0,0,8">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="82" />
+                                                    <ColumnDefinition Width="32" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel VerticalAlignment="Center" Margin="0,0,8,0">
+                                                    <TextBlock Text="{Binding ProductId}" FontSize="13" FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource TextBrush}" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{Binding ContextPath, StringFormat=上下文：{0}}" FontSize="10" Margin="0,2,0,0"
+                                                               Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis" />
+                                                </StackPanel>
+                                                <TextBox Grid.Column="1" Text="{Binding PortText, UpdateSourceTrigger=PropertyChanged}"
+                                                         Height="32" Padding="8,4" VerticalContentAlignment="Center"
+                                                         HorizontalContentAlignment="Center" MaxLength="5"
+                                                         ToolTip="产品独立端口（9000-10000）" />
+                                                <Button Grid.Column="2" Width="28" Height="28" MinWidth="0" Padding="0" Margin="4,0,0,0"
+                                                        VerticalAlignment="Center" Style="{DynamicResource EnvironmentPrimaryButton}" FontSize="12"
+                                                        Content="&#xE74E;" ToolTip="保存端口" IsEnabled="{Binding CanSave}"
+                                                        Click="TomcatPortSave_Click" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="{Binding TomcatPortNotice}" FontSize="11" Foreground="{DynamicResource MemoryBrush}"
+                                       TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+    </DataTemplate>
 </ResourceDictionary>

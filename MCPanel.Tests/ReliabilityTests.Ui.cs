@@ -347,7 +347,8 @@ public sealed partial class ReliabilityTests
                     "ServiceStatusTemplate",
                     "InstallationQueueItemTemplate",
                     "InstallationRecentEventTemplate",
-                    "EnvironmentCardTemplate",
+                    "EnvironmentListRowTemplate",
+                    "EnvironmentDetailTemplate",
                     "DatabaseToolCardTemplate",
                     "PathIconButton"
                 })

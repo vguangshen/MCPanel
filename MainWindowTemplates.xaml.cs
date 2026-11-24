@@ -50,9 +50,6 @@ public partial class MainWindowTemplates : ResourceDictionary
     private void EnvironmentOpenDirectory_Click(object sender, RoutedEventArgs e) =>
         GetOwner(sender)?.EnvironmentOpenDirectory_Click(sender, e);
 
-    private void EnvironmentCardFlip_Click(object sender, RoutedEventArgs e) =>
-        GetOwner(sender)?.EnvironmentCardFlip_Click(sender, e);
-
     private void EnvironmentInstall_Click(object sender, RoutedEventArgs e) =>
         GetOwner(sender)?.EnvironmentInstall_Click(sender, e);
 
@@ -76,9 +73,6 @@ public partial class MainWindowTemplates : ResourceDictionary
 
     private void CredentialCopy_Click(object sender, RoutedEventArgs e) =>
         GetOwner(sender)?.CredentialCopy_Click(sender, e);
-
-    private void CredentialConnect_Click(object sender, RoutedEventArgs e) =>
-        GetOwner(sender)?.CredentialConnect_Click(sender, e);
 
     private void TomcatPortSave_Click(object sender, RoutedEventArgs e) =>
         GetOwner(sender)?.TomcatPortSave_Click(sender, e);

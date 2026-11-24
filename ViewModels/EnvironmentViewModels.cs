@@ -144,8 +144,6 @@ public sealed class EnvironmentItem(EnvironmentKind kind, string title, string o
     private string _statusText = "等待安装";
     private string _badgeText = "未安装";
     private Brush _badgeBrush = Brushes.Gray;
-    private bool _isFlipped;
-    private bool _isFlipAnimating;
     private bool _installRestartRequired;
     private bool _iisUninstallRestartRequired;
     private bool _iisConfigurationRepairRequired;
@@ -268,7 +266,6 @@ public sealed class EnvironmentItem(EnvironmentKind kind, string title, string o
     public bool IsMySqlModule => Kind == EnvironmentKind.MySql;
     public bool IsSqlServerModule => Kind == EnvironmentKind.SqlServer;
     public bool IsCredentialModule => Kind is EnvironmentKind.MySql or EnvironmentKind.SqlServer;
-    public bool CanFlipCard => IsCredentialModule || IsTomcatModule;
     public Visibility InstallButtonVisibility => IsInstalled &&
         !(_iisConfigurationRepairRequired || _installRestartRequired || _iisUninstallRestartRequired)
         ? Visibility.Collapsed : Visibility.Visible;
@@ -277,14 +274,16 @@ public sealed class EnvironmentItem(EnvironmentKind kind, string title, string o
     public Visibility ServiceControlsVisibility => IsInstalled ? Visibility.Visible : Visibility.Collapsed;
     public Visibility MySqlConnectButtonVisibility => IsInstalled && Kind == EnvironmentKind.MySql ? Visibility.Visible : Visibility.Collapsed;
     public Visibility SqlServerConnectButtonVisibility => IsInstalled && Kind == EnvironmentKind.SqlServer ? Visibility.Visible : Visibility.Collapsed;
-    public Visibility EnvironmentFlipVisibility => IsInstalled && CanFlipCard ? Visibility.Visible : Visibility.Collapsed;
+    /// <summary>Connection details section of the detail panel (MySQL / SQL Server).</summary>
+    public Visibility CredentialSectionVisibility => IsInstalled && IsCredentialModule ? Visibility.Visible : Visibility.Collapsed;
+    /// <summary>Product port section of the detail panel (Tomcat).</summary>
+    public Visibility TomcatPortSectionVisibility => IsInstalled && IsTomcatModule ? Visibility.Visible : Visibility.Collapsed;
+    /// <summary>The progress bar only shows while an operation runs.</summary>
+    public Visibility ProgressVisibility => IsBusy ? Visibility.Visible : Visibility.Collapsed;
     public Visibility IisManagementVisibility => IsInstalled && IsIisModule ? Visibility.Visible : Visibility.Collapsed;
     public Visibility NginxManagementVisibility => IsInstalled && IsNginxModule ? Visibility.Visible : Visibility.Collapsed;
     public Visibility FrpManagementVisibility => IsInstalled && IsFrpModule ? Visibility.Visible : Visibility.Collapsed;
     public Visibility TomcatCatalinaVisibility => IsInstalled && IsTomcatModule ? Visibility.Visible : Visibility.Collapsed;
-    public Visibility FrontFaceVisibility => IsFlipped ? Visibility.Hidden : Visibility.Visible;
-    public Visibility CredentialBackFaceVisibility => IsFlipped && IsCredentialModule ? Visibility.Visible : Visibility.Hidden;
-    public Visibility TomcatBackFaceVisibility => IsFlipped && IsTomcatModule ? Visibility.Visible : Visibility.Hidden;
     public string CredentialTitle => Kind switch
     {
         EnvironmentKind.MySql => "MySQL 连接信息",
@@ -319,27 +318,11 @@ public sealed class EnvironmentItem(EnvironmentKind kind, string title, string o
         OnPropertyChanged(nameof(CredentialSubtitle));
     }
 
-    public bool IsFlipped
+    /// <summary>Clears per-view notices when the item is (re)selected.</summary>
+    public void ResetNotices()
     {
-        get => _isFlipped;
-        set
-        {
-            if (SetProperty(ref _isFlipped, value))
-            {
-                CredentialNotice = string.Empty;
-                TomcatPortNotice = string.Empty;
-                OnPropertyChanged(nameof(FrontFaceVisibility));
-                OnPropertyChanged(nameof(CredentialBackFaceVisibility));
-                OnPropertyChanged(nameof(TomcatBackFaceVisibility));
-                OnPropertyChanged(nameof(CredentialFields));
-            }
-        }
-    }
-
-    public bool IsFlipAnimating
-    {
-        get => _isFlipAnimating;
-        set => SetProperty(ref _isFlipAnimating, value);
+        CredentialNotice = string.Empty;
+        TomcatPortNotice = string.Empty;
     }
 
     public string StatusText { get => _statusText; set => SetProperty(ref _statusText, value); }
@@ -384,10 +367,6 @@ public sealed class EnvironmentItem(EnvironmentKind kind, string title, string o
         {
             if (SetProperty(ref _isInstalled, value))
             {
-                if (!value)
-                {
-                    IsFlipped = false;
-                }
                 RaiseStateProperties();
             }
         }
@@ -568,7 +547,9 @@ public sealed class EnvironmentItem(EnvironmentKind kind, string title, string o
         OnPropertyChanged(nameof(ServiceControlsVisibility));
         OnPropertyChanged(nameof(MySqlConnectButtonVisibility));
         OnPropertyChanged(nameof(SqlServerConnectButtonVisibility));
-        OnPropertyChanged(nameof(EnvironmentFlipVisibility));
+        OnPropertyChanged(nameof(CredentialSectionVisibility));
+        OnPropertyChanged(nameof(TomcatPortSectionVisibility));
+        OnPropertyChanged(nameof(ProgressVisibility));
         OnPropertyChanged(nameof(IisManagementVisibility));
         OnPropertyChanged(nameof(NginxManagementVisibility));
         OnPropertyChanged(nameof(FrpManagementVisibility));
