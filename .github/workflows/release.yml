@@ -93,13 +93,32 @@ jobs:
           Write-Host "NuGet dependency fingerprint: $hash"
           "hash=$hash" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
+      # The .NET Framework reference packs (Microsoft.NETFramework.ReferenceAssemblies.*)
+      # are kept out of the cache: a cached copy once lacked the net45 pack the
+      # MCPanel-Setup bootstrapper needs, and because the package folder existed,
+      # NuGet never downloaded it again (MSB3644 in the 1.4.1 release). They are
+      # small, so they are always restored fresh.
       - name: Restore NuGet package cache
         uses: actions/cache@v6
         with:
-          path: ${{ env.NUGET_PACKAGES }}
-          key: nuget-${{ runner.os }}-${{ steps.nuget-key.outputs.hash }}
+          path: |
+            ${{ env.NUGET_PACKAGES }}
+            !${{ env.NUGET_PACKAGES }}/microsoft.netframework.referenceassemblies*
+          key: nuget-v2-${{ runner.os }}-${{ steps.nuget-key.outputs.hash }}
           restore-keys: |
-            nuget-${{ runner.os }}-
+            nuget-v2-${{ runner.os }}-
+
+      - name: Drop cached .NET Framework reference packs
+        shell: pwsh
+        run: |
+          $packages = $env:NUGET_PACKAGES
+          if (Test-Path -LiteralPath $packages) {
+            Get-ChildItem -LiteralPath $packages -Directory -Filter 'microsoft.netframework.referenceassemblies*' |
+              ForEach-Object {
+                Write-Host "Removing cached reference pack so NuGet restores it fresh: $($_.Name)"
+                Remove-Item -LiteralPath $_.FullName -Recurse -Force
+              }
+          }
 
       - name: Ensure SharpSvn VC++ 2010 x64 runtime
         shell: pwsh
