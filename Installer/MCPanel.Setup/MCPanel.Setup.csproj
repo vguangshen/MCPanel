@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    MCPanel-Setup.exe: the branded online installer and complete uninstaller.
+    Targets .NET Framework 4.5 so it runs before MCPanel's own .NET 4.6.2+
+    requirement is met. Every supported system already has 4.5: Windows 8.1+
+    ship it, and Windows 7 SP1 / Server 2008 R2 need WMF 5.1 (PowerShell 3.0+
+    requirement), which itself requires .NET 4.5.2.
+    Build through Build-OnlineInstaller.ps1, which generates the release
+    metadata embedded as setup-config.json.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net45</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>MCPanel-Setup</AssemblyName>
+    <RootNamespace>MCPanel.Setup</RootNamespace>
+    <ApplicationIcon>..\..\Assets\AppIcon\mcpanel-logo.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <SetupConfigFile Condition="'$(SetupConfigFile)' == ''">setup-config.sample.json</SetupConfigFile>
+    <Version Condition="'$(Version)' == ''">0.0.0</Version>
+    <Product>MCPanel</Product>
+    <Company>MCPanel</Company>
+    <Description>MCPanel 部署工作台安装程序</Description>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(InstallerTestBuild)' == 'true'">
+    <DefineConstants>$(DefineConstants);INSTALLER_TEST_BUILD</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Runtime.Serialization" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MCPanel.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="$(SetupConfigFile)" LogicalName="MCPanel.Setup.setup-config.json" />
+    <None Remove="setup-config.sample.json" />
+  </ItemGroup>
+
+</Project>

@@ -13,10 +13,11 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageReference Include="MSTest.TestAdapter" Version="3.6.4" />
     <PackageReference Include="MSTest.TestFramework" Version="3.6.4" />
-    <PackageReference Include="System.Diagnostics.DiagnosticSource" Version="7.0.2" />
+    <PackageReference Include="System.Diagnostics.DiagnosticSource" Version="8.0.1" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\MCPanel.csproj" />
+    <ProjectReference Include="..\Installer\MCPanel.Setup\MCPanel.Setup.csproj" Aliases="setup" />
     <Reference Include="System.ServiceProcess" />
     <Reference Include="SharpSvn">
       <HintPath>..\Vendor\SharpSvn\SharpSvn.dll</HintPath>

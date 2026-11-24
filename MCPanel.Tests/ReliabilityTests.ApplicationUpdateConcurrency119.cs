@@ -12,8 +12,8 @@ public sealed partial class ReliabilityTests
         Assert.IsFalse(ApplicationUpdateService.ShouldRequestPreauthorizedUpdater(isAdministrator: true));
 
         var settings = ReadRepositoryFile("MainWindow.Settings.cs").Replace("\r\n", "\n");
-        StringAssert.Contains(settings, "if (!ConfirmOnlineUpdate(update.Manifest)) return null;\n                if (!RequestApplicationUpdateAuthorizationAfterConfirmation()) return null;");
-        StringAssert.Contains(settings, "if (!ConfirmOnlineUpdate(manifest)) return null;\n            if (!RequestApplicationUpdateAuthorizationAfterConfirmation()) return null;");
+        StringAssert.Contains(settings, "if (!ConfirmOnlineUpdate(update.Manifest)) return null;\n                if (!RequestApplicationUpdateAuthorizationAfterConfirmation(update.Manifest.Sha256)) return null;");
+        StringAssert.Contains(settings, "if (!ConfirmOnlineUpdate(manifest)) return null;\n            if (!RequestApplicationUpdateAuthorizationAfterConfirmation(manifest.Sha256)) return null;");
 
         var app = ReadRepositoryFile("App.xaml.cs");
         StringAssert.Contains(app, "--wait-update-plan");
@@ -27,7 +27,7 @@ public sealed partial class ReliabilityTests
     {
         var settings = ReadRepositoryFile("MainWindow.Settings.cs");
         var canStartIndex = settings.IndexOf("private bool CanStartApplicationUpdate()", StringComparison.Ordinal);
-        var nextMethodIndex = settings.IndexOf("private bool RequestApplicationUpdateAuthorizationAfterConfirmation()", canStartIndex, StringComparison.Ordinal);
+        var nextMethodIndex = settings.IndexOf("private bool RequestApplicationUpdateAuthorizationAfterConfirmation(string packageSha256)", canStartIndex, StringComparison.Ordinal);
         Assert.IsTrue(canStartIndex >= 0 && nextMethodIndex > canStartIndex);
         var canStartBody = settings.Substring(canStartIndex, nextMethodIndex - canStartIndex);
         Assert.IsFalse(canStartBody.Contains("_productInstallQueue.HasActiveItems", StringComparison.Ordinal));

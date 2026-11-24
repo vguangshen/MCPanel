@@ -292,6 +292,12 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
         }
     }
 
+    internal static bool ShouldCloseDownloadQueueFlyout(
+        bool isOpen,
+        bool toolbarButtonHovered,
+        bool flyoutHovered) =>
+        isOpen && !toolbarButtonHovered && !flyoutHovered;
+
     private void MainWindow_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (ShouldCloseDownloadQueueFlyout(

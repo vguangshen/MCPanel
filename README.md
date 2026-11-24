@@ -31,16 +31,24 @@ Build an installer for an existing version-matched release ZIP:
 ```
 
 Pass `-PackageUrl 'https://downloads.example.com/MCPanel-1.3.66.zip'` to use your
-own HTTPS download site; serve the exact same ZIP. The generated native EXE pins
+own HTTPS download site; serve the exact same ZIP. The generated EXE pins
 that version and checksum. Its stable release asset name supports the download
 link above without changing website code for each release. `Installer/dependencies.json`
-is the pinned source for runtime and compiler metadata. Chinese translation is
-vendored from the official Inno Setup 6.7.3 tag with its attribution.
+is the pinned source for runtime metadata.
+
+`MCPanel-Setup.exe` is MCPanel's own installer and complete uninstaller
+(`Installer/MCPanel.Setup`, WPF on .NET Framework 4.5 so it runs before .NET 4.8
+is installed). Its interface is drawn entirely from vector XAML with install and
+uninstall animations. Render every page for design review with
+`MCPanel-Setup.exe --render-preview <folder>`.
 
 For offline administrative deployment, place the matching official ZIP on the
 computer and run `MCPanel-Setup.exe /PACKAGEFILE="C:\MCPanel-1.3.66.zip"`.
 Missing Microsoft runtime packages still require network access. Silent deployment
-supports standard Inno options such as `/VERYSILENT /NORESTART /DIR="D:\MCPanel"`.
+keeps the familiar switches `/VERYSILENT /NORESTART /DIR="D:\MCPanel" /LOG="setup.log"`
+and `/RESTARTEXITCODE=3010`. Uninstall from Windows Settings, or run
+`MCPanel-Setup.exe /UNINSTALL "D:\MCPanel" [/VERYSILENT]`; the uninstaller is kept in
+`%ProgramData%\MCPanel.Setup` so it can remove the whole installation folder.
 
 ## Current Scope
 
@@ -76,7 +84,7 @@ state of that component while other cards continue updating.
 Product installs use the durable queue worker; the previous single-request worker,
 shared Tomcat HTTP-readiness loop, website status monitor, and single-task download
 progress model have been removed. The progress overlay is used for uninstall work;
-download state and controls belong to each queue item. `LegacyRuntimeCompatibility.cs`
+download state and controls belong to each queue item. `Infrastructure/LegacyRuntimeCompatibility.cs`
 provides APIs missing from the supported .NET Framework 4.6.2 runtime. Old storage,
 credential, service-registration and update-channel migrations remain active upgrade
 paths and are retained.

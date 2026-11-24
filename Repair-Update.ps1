@@ -5,6 +5,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if ($PSVersionTable.PSVersion.Major -lt 3) {
+    throw 'This repair script requires Windows PowerShell 3.0 or later. Install Windows Management Framework 5.1 (KB3191566) and retry.'
+}
 $installRoot = [IO.Path]::GetFullPath($InstallDirectory).TrimEnd('\', '/')
 if ($installRoot -eq [IO.Path]::GetPathRoot([IO.Path]::GetFullPath($InstallDirectory)).TrimEnd('\', '/')) {
     throw 'Select the MCPanel installation directory, not a drive root.'

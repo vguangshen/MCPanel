@@ -2,6 +2,16 @@
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+# Keep this file parseable by Windows PowerShell 2.0 so the guard below can
+# report a clear error: do not use -in/-notin or other PowerShell 3.0+ syntax.
+if ($PSVersionTable.PSVersion.Major -lt 3) {
+    $message = 'MCPanel 卸载需要 Windows PowerShell 3.0 或更高版本。请先安装 Windows Management Framework 5.1（KB3191566），重启后再卸载。'
+    if (!$Silent) {
+        try { Add-Type -AssemblyName System.Windows.Forms; [void][Windows.Forms.MessageBox]::Show($message, 'MCPanel 卸载') } catch { }
+    }
+    Write-Error $message -ErrorAction Continue
+    exit 1
+}
 $script:InstallRoot = [IO.Path]::GetFullPath($InstallRoot).TrimEnd('\')
 $script:ExitCode = 1
 $script:Busy = $false
@@ -176,7 +186,7 @@ function Remove-OwnedUserState {
             if ((Test-Path -LiteralPath $fallback) -and !(Test-PathUnderRoot $script:InstallRoot $fallback)) { Assert-NoComponentLink $fallback; Assert-Deletable $fallback; Remove-ComponentDirectory $fallback | Out-Null }
             # Logged-out profiles can also retain a per-user startup entry.
             # Load only real user hives, closing every handle before unloading.
-            if ($sid -in $loaded -or $sid -in @('S-1-5-18', 'S-1-5-19', 'S-1-5-20')) { continue }
+            if ($loaded -contains $sid -or @('S-1-5-18', 'S-1-5-19', 'S-1-5-20') -contains $sid) { continue }
             $hiveFile = Join-Path $profile 'NTUSER.DAT'
             if (!(Test-Path -LiteralPath $hiveFile)) { continue }
             $temporaryHive = 'MCPanel.Uninstall.' + [Guid]::NewGuid().ToString('N')
@@ -298,7 +308,7 @@ function Invoke-CompleteUninstall {
         Assert-Deletable $script:InstallRoot
         # Keep the retry entry and registration marker until every other file is gone.
         $last = @('InstallerAssets', 'MCPanel.exe', 'Maintenance', 'Uninstall-MCPanel.ps1')
-        foreach ($entry in @(Get-ChildItem -LiteralPath $script:InstallRoot -Force | Where-Object { $_.Name -notin $last })) {
+        foreach ($entry in @(Get-ChildItem -LiteralPath $script:InstallRoot -Force | Where-Object { $last -notcontains $_.Name })) {
             Remove-ComponentEntry $entry.FullName $false | Out-Null
         }
         foreach ($name in $last) {
@@ -320,7 +330,8 @@ function Invoke-CompleteUninstall {
 }
 
 if ($Silent) {
-    try { Invoke-CompleteUninstall } catch { Write-Host $_.ScriptStackTrace; Write-Error $_ -ErrorAction Continue }
+    # MCPANEL-ERROR: is read by MCPanel-Setup.exe to show the reason in its UI.
+    try { Invoke-CompleteUninstall } catch { Write-Host ('MCPANEL-ERROR: ' + $_.Exception.Message); Write-Host $_.ScriptStackTrace; Write-Error $_ -ErrorAction Continue }
     exit $script:ExitCode
 }
 Add-Type -AssemblyName System.Windows.Forms
