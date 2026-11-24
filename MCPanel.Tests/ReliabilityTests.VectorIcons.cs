@@ -26,7 +26,7 @@ public sealed partial class ReliabilityTests
                 .Where(path => !path.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar) &&
                                !path.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar)).ToArray();
             var pattern = new Regex(@"&#x(?<xml>E[0-9a-f]{3});|\\u(?<cs>E[0-9a-f]{3})", RegexOptions.IgnoreCase);
-            foreach (var path in Directory.GetFiles(root, "*.cs").Concat(xamlFiles))
+            foreach (var path in RepositorySource.ApplicationFiles("*.cs").Concat(xamlFiles))
             {
                 var source = File.ReadAllText(path);
                 foreach (Match match in pattern.Matches(source))
