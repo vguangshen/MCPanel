@@ -25,7 +25,7 @@ public sealed partial class ReliabilityTests
         Assert.IsTrue(launcherStart >= 0 && launcherEnd > launcherStart);
         var launcher = runtime.Substring(launcherStart, launcherEnd - launcherStart);
         StringAssert.Contains(launcher, "ProcessRunner.StartFile");
-        StringAssert.Contains(launcher, "call catalina.bat run");
+        StringAssert.Contains(launcher, "call \".\\catalina.bat\" run");
         StringAssert.Contains(launcher, "ProcessWindowStyle.Normal");
     }
 }

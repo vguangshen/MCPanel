@@ -34,8 +34,8 @@ public partial class ReliabilityTests
         // Shared Tomcat remains visible, but normal Start/Restart and explicit
         // Catalina diagnostics intentionally use different launch semantics.
         StringAssert.Contains(runtime, "internal static void LaunchTomcatStartConsole(string tomcatRoot)");
-        StringAssert.Contains(runtime, "call startup.bat");
-        StringAssert.Contains(runtime, "call catalina.bat run");
+        StringAssert.Contains(runtime, "call \".\\startup.bat\"");
+        StringAssert.Contains(runtime, "call \".\\catalina.bat\" run");
         StringAssert.Contains(runtime, "ProcessWindowStyle.Normal");
         Assert.IsFalse(runtime.Contains("TomcatWindowsServiceManager.Start();", StringComparison.Ordinal));
 

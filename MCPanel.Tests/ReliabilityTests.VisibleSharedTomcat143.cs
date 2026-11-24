@@ -33,7 +33,7 @@ public sealed partial class ReliabilityTests
         var block = runtime.Substring(start, end - start);
 
         StringAssert.Contains(block, "title MCPanel Tomcat Server");
-        StringAssert.Contains(block, "call catalina.bat run");
+        StringAssert.Contains(block, "call \".\\catalina.bat\" run");
         StringAssert.Contains(block, "ProcessWindowStyle.Normal");
         StringAssert.Contains(block, "pause >nul");
     }
