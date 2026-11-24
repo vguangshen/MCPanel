@@ -1,3 +1,10 @@
+# MCPanel 1.4.3
+
+Tomcat 控制台
+- 修复中文 Windows 上 Tomcat 启动窗口开头出现乱码报错（“锘緻echo 不是内部或外部命令”）并逐条回显命令的问题：启动脚本不再带 BOM。
+- Tomcat 控制台中的应用输出统一为 UTF-8：Java 8 至 17 与 Java 18 及以上均能正确显示中文日志；只调整控制台输出编码，不改变产品读写文件的默认编码。启动时显示的“Picked up JAVA_TOOL_OPTIONS”为正常提示。
+- 修复 MCPanel 安装在含中文的路径下时 Tomcat 无法启动的问题（启动脚本以相对路径调用 startup.bat / catalina.bat）。
+
 # MCPanel 1.4.2
 
 问题修复
