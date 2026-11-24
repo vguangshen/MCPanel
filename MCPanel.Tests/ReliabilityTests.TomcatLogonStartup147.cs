@@ -36,9 +36,9 @@ public sealed partial class ReliabilityTests
         Assert.IsFalse(startup.Contains("StartProduct", StringComparison.OrdinalIgnoreCase));
 
         StringAssert.Contains(runtime, "internal static void LaunchTomcatStartConsole(string tomcatRoot)");
-        StringAssert.Contains(runtime, "call startup.bat");
+        StringAssert.Contains(runtime, "call \".\\startup.bat\"");
         StringAssert.Contains(runtime, "internal static void LaunchTomcatConsole(string tomcatRoot)");
-        StringAssert.Contains(runtime, "call catalina.bat run");
+        StringAssert.Contains(runtime, "call \".\\catalina.bat\" run");
     }
 
     [TestMethod]

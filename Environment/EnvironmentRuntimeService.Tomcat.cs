@@ -12,6 +12,31 @@ namespace MCPanel;
 
 public sealed partial class EnvironmentRuntimeService
 {
+    /// <summary>
+    /// Puts the JVM's console output in UTF-8 to match the launcher's
+    /// <c>chcp 65001</c>: <c>sun.std*.encoding</c> for Java 8-17 and
+    /// <c>std*.encoding</c> for Java 18+. Without it Java 8 prints
+    /// application output in the ANSI code page (GBK), which shows as
+    /// mojibake. Only the console streams change; file.encoding and so the
+    /// products' own file handling stay as they were. Set through
+    /// JAVA_TOOL_OPTIONS because the JVM reads it directly, whatever the
+    /// customised catalina.bat does with JAVA_OPTS.
+    /// </summary>
+    internal const string TomcatConsoleUtf8JavaOptions =
+        "-Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8";
+
+    /// <summary>
+    /// Writes a launcher as BOM-free UTF-8 with CRLF line ends. cmd.exe does
+    /// not understand a BOM: on a GBK console it read the first line as a
+    /// garbled, unknown command, so the window showed an error and, with
+    /// echo never turned off, printed every following command.
+    /// </summary>
+    internal static void WriteTomcatLauncher(string path, string script) =>
+        AtomicFile.WriteAllText(
+            path,
+            script.Replace("\r\n", "\n").Replace("\n", "\r\n"),
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
     internal static void LaunchTomcatStartConsole(string tomcatRoot)
     {
         var root = Path.GetFullPath(tomcatRoot);
@@ -30,19 +55,19 @@ public sealed partial class EnvironmentRuntimeService
         var workDirectory = ComponentPaths.WorkRoot;
         Directory.CreateDirectory(workDirectory);
         var launcher = Path.Combine(workDirectory, "start-tomcat-server.cmd");
-        AtomicFile.WriteAllText(
+        WriteTomcatLauncher(
             launcher,
             $"""
             @echo off
             chcp 65001 >nul
+            set "JAVA_TOOL_OPTIONS=%JAVA_TOOL_OPTIONS% {TomcatConsoleUtf8JavaOptions}"
             title MCPanel Tomcat Startup
             set "CATALINA_HOME={root}"
             set "CATALINA_BASE={root}"
             set "TITLE=MCPanel Tomcat Server"
             cd /d "{binDirectory}"
-            call startup.bat
-            """,
-            new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+            call ".\startup.bat"
+            """);
 
         using var tomcatWindow = ProcessRunner.StartFile(
             launcher,
@@ -69,22 +94,22 @@ public sealed partial class EnvironmentRuntimeService
         var workDirectory = ComponentPaths.WorkRoot;
         Directory.CreateDirectory(workDirectory);
         var launcher = Path.Combine(workDirectory, "run-tomcat-server.cmd");
-        AtomicFile.WriteAllText(
+        WriteTomcatLauncher(
             launcher,
             $"""
             @echo off
             chcp 65001 >nul
+            set "JAVA_TOOL_OPTIONS=%JAVA_TOOL_OPTIONS% {TomcatConsoleUtf8JavaOptions}"
             title MCPanel Tomcat Server
             set "CATALINA_HOME={root}"
             set "CATALINA_BASE={root}"
             cd /d "{binDirectory}"
-            call catalina.bat run
+            call ".\catalina.bat" run
             echo.
             echo Tomcat has exited. Review the Catalina output above.
             echo Press any key to close this window.
             pause >nul
-            """,
-            new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+            """);
 
         using var tomcatWindow = ProcessRunner.StartFile(
             launcher,

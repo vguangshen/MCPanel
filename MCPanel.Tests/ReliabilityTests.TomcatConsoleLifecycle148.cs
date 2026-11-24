@@ -37,7 +37,7 @@ public sealed partial class ReliabilityTests
         var launchSection = runtime.Substring(launchIndex, retireIndex - launchIndex);
         StringAssert.Contains(launchSection, "TomcatConsoleWindowManager.CloseExistingConsoleWindows();");
         StringAssert.Contains(launchSection, "title MCPanel Tomcat Server");
-        StringAssert.Contains(launchSection, "call catalina.bat run");
+        StringAssert.Contains(launchSection, "call \".\\catalina.bat\" run");
 
         var stopIndex = runtime.IndexOf("public async Task<string> StopAsync", StringComparison.Ordinal);
         var restartIndex = runtime.IndexOf("public async Task<string> RestartAsync", StringComparison.Ordinal);
