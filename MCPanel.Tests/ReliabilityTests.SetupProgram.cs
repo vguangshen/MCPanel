@@ -28,7 +28,7 @@ public sealed partial class ReliabilityTests
           "visualCpp": { "name": "VC++", "minimumVersion": "10.0.40219.325", "url": "https://example.test/vc.exe", "sha256": "00", "arguments": "/q" },
           "programFiles": [ "MCPanel.exe.config", "MCPanel.exe" ],
           "preservedTopLevelNames": [ "StoreData" ],
-          "preservedAppSettingKeys": [ "Ai.Model", "Ai.ApiKey", "Environment.SqlServer.Sql2017ExpressUrl" ],
+          "preservedAppSettingKeys": [ "Environment.Tomcat.PackageUrl", "Environment.Nginx.PackageUrl", "Environment.SqlServer.Sql2017ExpressUrl" ],
           "urlMigrations": [ { "Key": "Environment.SqlServer.Sql2017ExpressUrl", "PreviousUrl": "https://old.example.test/sql.exe", "CurrentUrl": "https://new.example.test/sql.exe" } ]
         }
         """;
@@ -86,16 +86,16 @@ public sealed partial class ReliabilityTests
             File.WriteAllText(Path.Combine(root, "MCPanel.exe"), "old");
             File.WriteAllText(Path.Combine(root, "MCPanel.exe.config"),
                 "<configuration><appSettings>" +
-                "<add key=\"Ai.Model\" value=\"保留原配置\" />" +
-                "<add key=\"Ai.ApiKey\" value=\"\" />" +
+                "<add key=\"Environment.Tomcat.PackageUrl\" value=\"保留原配置\" />" +
+                "<add key=\"Environment.Nginx.PackageUrl\" value=\"\" />" +
                 "<add key=\"Environment.SqlServer.Sql2017ExpressUrl\" value=\"https://old.example.test/sql.exe\" />" +
                 "<add key=\"NotPreserved\" value=\"old\" />" +
                 "</appSettings></configuration>", new UTF8Encoding(false));
             var incoming = Path.Combine(root, "incoming.config");
             File.WriteAllText(incoming,
                 "<?xml version=\"1.0\" encoding=\"utf-8\"?><configuration><appSettings>" +
-                "<add key=\"Ai.Model\" value=\"default\" />" +
-                "<add key=\"Ai.ApiKey\" value=\"default-key\" />" +
+                "<add key=\"Environment.Tomcat.PackageUrl\" value=\"default\" />" +
+                "<add key=\"Environment.Nginx.PackageUrl\" value=\"default-key\" />" +
                 "<add key=\"NotPreserved\" value=\"new\" />" +
                 "</appSettings></configuration>", new UTF8Encoding(false));
 
@@ -104,8 +104,8 @@ public sealed partial class ReliabilityTests
 
             var settings = XDocument.Load(incoming).Descendants("add")
                 .ToDictionary(element => (string)element.Attribute("key"), element => (string)element.Attribute("value"));
-            Assert.AreEqual("保留原配置", settings["Ai.Model"]);
-            Assert.AreEqual(string.Empty, settings["Ai.ApiKey"], "Explicitly empty settings stay empty.");
+            Assert.AreEqual("保留原配置", settings["Environment.Tomcat.PackageUrl"]);
+            Assert.AreEqual(string.Empty, settings["Environment.Nginx.PackageUrl"], "Explicitly empty settings stay empty.");
             Assert.AreEqual("https://new.example.test/sql.exe", settings["Environment.SqlServer.Sql2017ExpressUrl"]);
             Assert.AreEqual("new", settings["NotPreserved"]);
 
@@ -114,11 +114,11 @@ public sealed partial class ReliabilityTests
             var rollback = Path.Combine(root, "StoreData", "Updates", "Rollback", "Current");
             Directory.CreateDirectory(rollback);
             File.WriteAllText(Path.Combine(rollback, "MCPanel.exe.config"),
-                "<configuration><appSettings><add key=\"Ai.Model\" value=\"from-rollback\" /></appSettings></configuration>");
+                "<configuration><appSettings><add key=\"Environment.Tomcat.PackageUrl\" value=\"from-rollback\" /></appSettings></configuration>");
             File.WriteAllText(Path.Combine(root, "MCPanel.exe.config"), "<configuration />");
             engine.MergeOriginalConfiguration(root, incoming);
             Assert.AreEqual("from-rollback", XDocument.Load(incoming).Descendants("add")
-                .First(element => (string)element.Attribute("key") == "Ai.Model").Attribute("value")!.Value);
+                .First(element => (string)element.Attribute("key") == "Environment.Tomcat.PackageUrl").Attribute("value")!.Value);
         }
         finally
         {

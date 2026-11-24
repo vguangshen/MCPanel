@@ -109,7 +109,7 @@ public sealed partial class ReliabilityTests
     }
 
     [TestMethod]
-    public async Task FrpLogCollectionFindsCurrentAndLegacyLogs()
+    public void FrpLogsAreFoundInCurrentAndLegacyFoldersNewestFirst()
     {
         var root = CreateTemporaryDirectory();
         try
@@ -119,10 +119,10 @@ public sealed partial class ReliabilityTests
             foreach (var path in new[] { current, legacy }) Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllText(current, "current service recovery");
             File.WriteAllText(legacy, "legacy client connection");
-            var result = await new LogCollectorService(root).CollectAsync(AiLogTarget.Frp);
-            CollectionAssert.AreEquivalent(new[] { current, legacy }, result.Files.ToArray());
-            StringAssert.Contains(result.Content, "current service recovery");
-            StringAssert.Contains(result.Content, "legacy client connection");
+            File.SetLastWriteTime(legacy, DateTime.Now.AddHours(-1));
+            var files = new LogBrowser(root).ListFiles(LogModule.Frp);
+            CollectionAssert.AreEqual(new[] { current, legacy }, files.Select(file => file.Path).ToArray());
+            Assert.AreEqual("current service recovery", LogBrowser.ReadLatest(files[0].Path));
         }
         finally { DeleteTemporaryTree(root); }
     }
@@ -151,8 +151,8 @@ public sealed partial class ReliabilityTests
             var oldConfig = Path.Combine(root, "old.config");
             var appConfig = Path.Combine(root, "app.config");
             var publishConfig = Path.Combine(root, "publish.config");
-            const string oldXml = "<configuration><appSettings><add key='Ai.Model' value='custom-model-中文'/><add key='Ai.ApiKey' value=''/><add key='Environment.Frp.PackageUrl' value='https://example.test/frp.zip'/><add key='Internal.Build' value='old'/></appSettings></configuration>";
-            const string newXml = "<configuration><appSettings><add key='Ai.Model' value='new-default'/><add key='Ai.ApiKey' value='new-default-key'/><add key='Environment.Frp.PackageUrl' value='https://example.test/default.zip'/><add key='Internal.Build' value='new'/><add key='New.Feature' value='enabled'/></appSettings></configuration>";
+            const string oldXml = "<configuration><appSettings><add key='Environment.Tomcat.PackageUrl' value='custom-model-中文'/><add key='Environment.Nginx.PackageUrl' value=''/><add key='Environment.Frp.PackageUrl' value='https://example.test/frp.zip'/><add key='Internal.Build' value='old'/></appSettings></configuration>";
+            const string newXml = "<configuration><appSettings><add key='Environment.Tomcat.PackageUrl' value='new-default'/><add key='Environment.Nginx.PackageUrl' value='new-default-key'/><add key='Environment.Frp.PackageUrl' value='https://example.test/default.zip'/><add key='Internal.Build' value='new'/><add key='New.Feature' value='enabled'/></appSettings></configuration>";
             File.WriteAllText(oldConfig, oldXml);
             var oldDocument = XDocument.Load(oldConfig);
             foreach (var migration in EnvironmentDownloadCatalog.Migrations)
@@ -184,8 +184,8 @@ public sealed partial class ReliabilityTests
             var inApp = Settings(appConfig);
             var published = Settings(publishConfig);
             CollectionAssert.AreEquivalent(inApp.ToArray(), published.ToArray());
-            Assert.AreEqual("custom-model-中文", inApp["Ai.Model"]);
-            Assert.AreEqual("", inApp["Ai.ApiKey"], "An explicitly empty setting must remain empty.");
+            Assert.AreEqual("custom-model-中文", inApp["Environment.Tomcat.PackageUrl"]);
+            Assert.AreEqual("", inApp["Environment.Nginx.PackageUrl"], "An explicitly empty setting must remain empty.");
             Assert.AreEqual("https://example.test/frp.zip", inApp["Environment.Frp.PackageUrl"]);
             Assert.AreEqual("new", inApp["Internal.Build"]);
             Assert.AreEqual("enabled", inApp["New.Feature"]);

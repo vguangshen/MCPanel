@@ -131,7 +131,7 @@ public partial class MainWindow : Window
             _databaseToolCancellation?.Cancel();
             _databaseToolCancellation?.Dispose();
             AccountApiPageControl.Dispose();
-            AiAnalysisPageControl.Dispose();
+            LogViewerPageControl.Dispose();
             _model.Dispose();
             _frpManager.Dispose();
             _storeClient.Dispose();
@@ -498,7 +498,7 @@ public partial class MainWindow : Window
             "Products" => ProductsPage,
             "Environment" => EnvironmentPage,
             "AccountApi" => AccountApiPageControl,
-            "AiAnalysis" => AiAnalysisPageControl,
+            "Logs" => LogViewerPageControl,
             "Settings" => SettingsPage,
             _ => HomePage
         };
@@ -508,7 +508,7 @@ public partial class MainWindow : Window
         SetPageVisibility(ProductsPage, activePage == ProductsPage);
         SetPageVisibility(EnvironmentPage, activePage == EnvironmentPage);
         SetPageVisibility(AccountApiPageControl, activePage == AccountApiPageControl);
-        SetPageVisibility(AiAnalysisPageControl, activePage == AiAnalysisPageControl);
+        SetPageVisibility(LogViewerPageControl, activePage == LogViewerPageControl);
         SetPageVisibility(SettingsPage, activePage == SettingsPage);
         SearchBox.Focusable = page == "Products";
         SearchBox.IsTabStop = page == "Products";
@@ -531,9 +531,9 @@ public partial class MainWindow : Window
             AccountApiPageControl.Deactivate();
         }
 
-        if (page == "AiAnalysis")
+        if (page == "Logs")
         {
-            AiAnalysisPageControl.Activate();
+            LogViewerPageControl.Activate();
         }
 
         if (page == "Home")

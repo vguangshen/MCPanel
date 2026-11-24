@@ -71,8 +71,8 @@ try {
     [xml]$document = Get-Content -LiteralPath $config -Raw -Encoding UTF8
     $urlMigrations = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\Installer\download-url-migrations.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     foreach ($setting in $document.configuration.appSettings.add) {
-        if ($setting.key -eq 'Ai.Model') { $setting.value = '保留原配置' }
-        if ($setting.key -eq 'Ai.ApiKey') { $setting.value = '' }
+        if ($setting.key -eq 'Environment.Tomcat.PackageUrl') { $setting.value = '保留原配置' }
+        if ($setting.key -eq 'Environment.Nginx.PackageUrl') { $setting.value = '' }
         foreach ($migration in $urlMigrations) {
             if ($setting.key -ieq $migration.Key) { $setting.value = $migration.PreviousUrl }
         }
@@ -89,8 +89,8 @@ try {
     $handle = [IO.File]::Open($library, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
     try { $null = Invoke-Setup $install } finally { $handle.Dispose() }
     [xml]$document = Get-Content -LiteralPath $config -Raw -Encoding UTF8
-    if (($document.configuration.appSettings.add | Where-Object key -eq 'Ai.Model').value -ne '保留原配置') { throw 'Repair lost Unicode configuration settings.' }
-    if (($document.configuration.appSettings.add | Where-Object key -eq 'Ai.ApiKey').value -ne '') { throw 'Repair lost explicitly empty settings.' }
+    if (($document.configuration.appSettings.add | Where-Object key -eq 'Environment.Tomcat.PackageUrl').value -ne '保留原配置') { throw 'Repair lost Unicode configuration settings.' }
+    if (($document.configuration.appSettings.add | Where-Object key -eq 'Environment.Nginx.PackageUrl').value -ne '') { throw 'Repair lost explicitly empty settings.' }
     foreach ($migration in $urlMigrations) {
         if (($document.configuration.appSettings.add | Where-Object key -eq $migration.Key).value -ne $migration.CurrentUrl) { throw "Repair preserved a retired SQL Server download URL: $($migration.Key)" }
     }
@@ -105,7 +105,7 @@ try {
     [IO.File]::WriteAllText($config, '<configuration />')
     $null = Invoke-Setup $install
     [xml]$document = Get-Content -LiteralPath $config -Raw -Encoding UTF8
-    if (($document.configuration.appSettings.add | Where-Object key -eq 'Ai.Model').value -ne '保留原配置') { throw 'Missing-EXE recovery did not prefer the original rollback configuration.' }
+    if (($document.configuration.appSettings.add | Where-Object key -eq 'Environment.Tomcat.PackageUrl').value -ne '保留原配置') { throw 'Missing-EXE recovery did not prefer the original rollback configuration.' }
     Write-Host 'Passed: installer restores a missing executable and recovers original settings from the rollback snapshot.'
 
     $beforeConcurrent = (Get-FileHash -LiteralPath $executable -Algorithm SHA256).Hash

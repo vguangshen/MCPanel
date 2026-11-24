@@ -17,7 +17,7 @@ function New-Case([string]$Name) {
     $staging = Join-Path $install ('StoreData\Updates\Staging\' + [Guid]::NewGuid().ToString('N'))
     $payload = Join-Path $staging 'Payload'
     Write-Text (Join-Path $install 'MCPanel.exe') 'old'
-    Write-Text (Join-Path $install 'MCPanel.exe.config') '<configuration><appSettings><add key="Ai.Model" value="custom-model" /><add key="Ai.ApiKey" value="" /><add key="Ai.Endpoint" value="https://example.com/中文" /></appSettings></configuration>'
+    Write-Text (Join-Path $install 'MCPanel.exe.config') '<configuration><appSettings><add key="Environment.Tomcat.PackageUrl" value="custom-model" /><add key="Environment.Nginx.PackageUrl" value="" /><add key="Environment.MySql.PackageUrl" value="https://example.com/中文" /></appSettings></configuration>'
     [xml]$config = Get-Content -LiteralPath (Join-Path $install 'MCPanel.exe.config') -Raw -Encoding UTF8
     $migrations = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\Installer\download-url-migrations.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     foreach ($migration in $migrations) {
@@ -144,7 +144,7 @@ try {
         if (Test-Path -LiteralPath (Join-Path $lockedCase.Install 'MCPanel.exe')) { throw 'The missing-EXE regression was not reproduced.' }
         if (!(Test-Path -LiteralPath (Join-Path $lockedCase.Install 'StoreData\Updates\Rollback\Current\MCPanel.exe.config'))) { throw 'Legacy rollback did not retain the original configuration.' }
         Write-Host 'Reproduced: real 1.3.58 deletes MCPanel.exe, then both replacement and rollback fail on a readable but deletion-locked DLL.'
-        Write-Text (Join-Path $lockedCase.Install 'MCPanel.exe.config') '<configuration><appSettings><add key="Ai.Model" value="partially-copied-default" /></appSettings></configuration>'
+        Write-Text (Join-Path $lockedCase.Install 'MCPanel.exe.config') '<configuration><appSettings><add key="Environment.Tomcat.PackageUrl" value="partially-copied-default" /></appSettings></configuration>'
 
         $recoveryPackage = Join-Path $root 'recovery.zip'
         Compress-Archive -Path (Join-Path $lockedCase.Payload '*') -DestinationPath $recoveryPackage
@@ -164,7 +164,7 @@ try {
         [xml]$recoveredConfig = Get-Content -LiteralPath (Join-Path $lockedCase.Install 'MCPanel.exe.config') -Raw -Encoding UTF8
         $settings = @{}
         foreach ($setting in $recoveredConfig.configuration.appSettings.add) { $settings[[string]$setting.key] = [string]$setting.value }
-        if ($settings['Ai.Model'] -ne 'custom-model' -or $settings['Ai.ApiKey'] -ne '' -or $settings['Ai.Endpoint'] -ne 'https://example.com/中文') { throw 'Recovery lost original or explicitly empty/Unicode settings.' }
+        if ($settings['Environment.Tomcat.PackageUrl'] -ne 'custom-model' -or $settings['Environment.Nginx.PackageUrl'] -ne '' -or $settings['Environment.MySql.PackageUrl'] -ne 'https://example.com/中文') { throw 'Recovery lost original or explicitly empty/Unicode settings.' }
         foreach ($migration in (Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\Installer\download-url-migrations.json') -Raw -Encoding UTF8 | ConvertFrom-Json)) {
             if ($settings[$migration.Key] -ne $migration.CurrentUrl) { throw 'Recovery retained a retired SQL Server default URL.' }
         }

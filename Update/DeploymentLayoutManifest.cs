@@ -26,7 +26,7 @@ internal static class DeploymentLayoutManifest
 
     private static IReadOnlyCollection<string> LoadPreservedAppSettingKeys()
     {
-        var fallback = new HashSet<string>(EnvironmentDownloadSettings.ConfigKeys.Concat(AiProviderSettings.ConfigKeys), StringComparer.OrdinalIgnoreCase)
+        var fallback = new HashSet<string>(EnvironmentDownloadSettings.ConfigKeys, StringComparer.OrdinalIgnoreCase)
         { "UpdateManifestUrl", ApplicationUpdateService.GitHubUpdateRepositoryConfigKey };
         try
         {

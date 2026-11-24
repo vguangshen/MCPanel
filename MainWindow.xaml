@@ -102,7 +102,7 @@
                         <RadioButton Style="{StaticResource NavItem}" Content="产品管理" Tag="&#xE8B7;" Checked="Nav_Checked" CommandParameter="Products" />
                         <RadioButton Style="{StaticResource NavItem}" Content="环境" Tag="&#xE7F8;" Checked="Nav_Checked" CommandParameter="Environment" />
                         <RadioButton Style="{StaticResource NavItem}" Content="账号 API" Tag="&#xE8D4;" Checked="Nav_Checked" CommandParameter="AccountApi" />
-                        <RadioButton Style="{StaticResource NavItem}" Content="AI 分析" Tag="&#xE99A;" Checked="Nav_Checked" CommandParameter="AiAnalysis" />
+                        <RadioButton Style="{StaticResource NavItem}" Content="日志" Tag="&#xE8D7;" Checked="Nav_Checked" CommandParameter="Logs" />
                         <RadioButton Style="{StaticResource NavItem}" Content="面板设置" Tag="&#xE713;" Checked="Nav_Checked" CommandParameter="Settings" />
                         </StackPanel>
                     </Grid>
@@ -652,7 +652,7 @@
                 </Grid>
 
                 <local:AccountApiPage x:Name="AccountApiPageControl" Visibility="Collapsed" />
-                <local:AiAnalysisPage x:Name="AiAnalysisPageControl" Visibility="Collapsed" />
+                <local:LogViewerPage x:Name="LogViewerPageControl" Visibility="Collapsed" />
 
                 <ScrollViewer x:Name="SettingsPage"
                               Visibility="Collapsed"
@@ -1037,7 +1037,7 @@
 
         <Border Grid.Row="2" Background="{DynamicResource FooterBrush}" Padding="24,0">
             <Grid>
-                <TextBlock Text="功能：环境安装、网站部署、反向代理、数据库工具与诊断分析。" Foreground="{DynamicResource MutedBrush}" FontSize="13" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="功能：环境安装、网站部署、反向代理、数据库工具与日志查看。" Foreground="{DynamicResource MutedBrush}" FontSize="13" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                 <TextBlock Text="{Binding VersionText, StringFormat=MCPanel  软件版本({0})}" Foreground="{DynamicResource MutedBrush}" FontSize="13" VerticalAlignment="Center" HorizontalAlignment="Right" />
             </Grid>
         </Border>

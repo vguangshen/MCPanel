@@ -1,0 +1,253 @@
+<UserControl x:Class="MCPanel.LogViewerPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:MCPanel"
+             FontFamily="Segoe UI, Microsoft YaHei UI"
+             Focusable="True"
+             KeyboardNavigation.TabNavigation="Local">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Resources/PanelScrollbars.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+        <Style x:Key="LogComboBox" TargetType="ComboBox">
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="Background" Value="{DynamicResource InputBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardLineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton Focusable="False"
+                                          ClickMode="Press"
+                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                          Background="Transparent"
+                                          BorderThickness="0"
+                                          HorizontalContentAlignment="Stretch"
+                                          VerticalContentAlignment="Stretch">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <ContentPresenter HorizontalAlignment="Stretch"
+                                                          VerticalAlignment="Stretch" />
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                                <Border x:Name="Root"
+                                        Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                        CornerRadius="7"
+                                        Padding="{TemplateBinding Padding}">
+                                    <Grid>
+                                        <TextBlock Text="{Binding SelectionBoxItem, RelativeSource={RelativeSource TemplatedParent}}"
+                                                   Margin="0,0,20,0"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center"
+                                                   HorizontalAlignment="Left"
+                                                   Foreground="{DynamicResource TextBrush}" />
+                                        <local:PanelIcon Text="&#xE70D;"
+                                                   FontSize="11"
+                                                   Foreground="{DynamicResource MutedBrush}"
+                                                   HorizontalAlignment="Right"
+                                                   VerticalAlignment="Center" />
+                                    </Grid>
+                                </Border>
+                            </ToggleButton>
+                            <Popup x:Name="PART_Popup"
+                                   Placement="Bottom"
+                                   AllowsTransparency="True"
+                                   Focusable="False"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}">
+                                <Border MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                                        Margin="0,4,0,0"
+                                        Padding="5"
+                                        CornerRadius="8"
+                                        Background="{DynamicResource SurfaceAltBrush}"
+                                        BorderBrush="{DynamicResource CardLineBrush}"
+                                        BorderThickness="1">
+                                    <ScrollViewer MaxHeight="320"
+                                                  VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled">
+                                        <ItemsPresenter />
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="LogComboBoxItem" TargetType="ComboBoxItem">
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="Root" CornerRadius="6" Background="Transparent">
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              VerticalAlignment="Center"
+                                              HorizontalAlignment="Left" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource NavHoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource TonalBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TonalTextBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ModuleChip" TargetType="ListBoxItem">
+            <Setter Property="Margin" Value="0,0,8,8" />
+            <Setter Property="Padding" Value="14,0" />
+            <Setter Property="Height" Value="34" />
+            <Setter Property="MinWidth" Value="84" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Root" CornerRadius="17" Padding="{TemplateBinding Padding}"
+                                Background="{DynamicResource InputBrush}"
+                                BorderBrush="{DynamicResource CardLineBrush}" BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource TonalBrush}" />
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TonalTextBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="ScrollBar" BasedOn="{StaticResource CompactScrollBar}" />
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <ScrollViewer x:Name="LogPageScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" SizeChanged="LogPageScroll_SizeChanged">
+    <Grid x:Name="LogPageLayout" MinHeight="0" ClipToBounds="True">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Style="{DynamicResource Card}" Padding="20,16" Margin="0,0,0,12">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <StackPanel>
+                    <TextBlock Text="组件日志" FontSize="22" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextBrush}" />
+                    <TextBlock Text="选择模块即可查看它最新的日志：自动打开最近写入的文件并显示末尾内容。" TextWrapping="Wrap"
+                               FontSize="13" Margin="0,6,0,0"
+                               Foreground="{DynamicResource MutedBrush}" />
+                </StackPanel>
+
+                <ListBox x:Name="ModuleList" Grid.Row="1" Margin="0,14,0,0"
+                         Background="Transparent" BorderThickness="0" Padding="0"
+                         ItemContainerStyle="{StaticResource ModuleChip}"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         SelectionMode="Single"
+                         SelectionChanged="ModuleList_SelectionChanged">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel />
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Name}" FontSize="13" />
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <Grid x:Name="LogToolbar" Grid.Row="2" Margin="0,4,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <ComboBox x:Name="FileComboBox" MinWidth="0"
+                              Style="{StaticResource LogComboBox}"
+                              ItemContainerStyle="{StaticResource LogComboBoxItem}"
+                              SelectionChanged="FileComboBox_SelectionChanged"
+                              ToolTip="{Binding SelectedFile.Path}" />
+                    <WrapPanel x:Name="LogActions" Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                        <Button Content="刷新" MinWidth="72" Height="36" Padding="14,0" FontSize="13" Margin="0,0,8,0"
+                                Style="{DynamicResource PrimaryButton}" Click="Refresh_Click" />
+                        <Button Content="打开文件夹" Height="36" Padding="14,0" FontSize="13" Margin="0,0,8,0"
+                                Style="{DynamicResource TonalButton}" Click="OpenFolder_Click"
+                                IsEnabled="{Binding HasFile}" />
+                        <Button Content="复制" MinWidth="64" Height="36" Padding="14,0" FontSize="13" Margin="0,0,12,0"
+                                Style="{DynamicResource TonalButton}" Click="Copy_Click"
+                                IsEnabled="{Binding HasFile}" />
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <ToggleButton x:Name="AutoRefreshToggle" Style="{DynamicResource PanelToggleSwitch}"
+                                          Checked="AutoRefresh_Changed" Unchecked="AutoRefresh_Changed"
+                                          AutomationProperties.Name="自动刷新" />
+                            <TextBlock Text="自动刷新" Margin="8,0,0,0" VerticalAlignment="Center" FontSize="13"
+                                       Foreground="{DynamicResource TextBrush}" />
+                        </StackPanel>
+                    </WrapPanel>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="1" Style="{DynamicResource Card}" Padding="16,14">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBlock Text="{Binding Status}" FontSize="12" TextWrapping="Wrap"
+                           Foreground="{DynamicResource MutedBrush}" />
+                <Grid Grid.Row="1" Margin="0,10,0,0">
+                    <TextBox x:Name="LogBox" MinHeight="120" ScrollViewer.ScrollChanged="LogBox_ScrollChanged"
+                             IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+                             FontFamily="Cascadia Mono, Consolas, Microsoft YaHei UI" FontSize="12"
+                             Padding="10,8"
+                             VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                             Background="{DynamicResource InputBrush}"
+                             Foreground="{DynamicResource TextBrush}"
+                             BorderBrush="{DynamicResource CardLineBrush}" />
+                    <TextBlock Text="{Binding EmptyText}"
+                               Visibility="{Binding EmptyVisibility}"
+                               Foreground="{DynamicResource MutedBrush}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               TextWrapping="Wrap" TextAlignment="Center" Margin="20"
+                               IsHitTestVisible="False" />
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+    </ScrollViewer>
+</UserControl>

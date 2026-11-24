@@ -837,15 +837,15 @@ public sealed partial class ReliabilityTests
         var completed = new ManualResetEventSlim();
         var thread = new Thread(() =>
         {
-            AiAnalysisPage? aiPage = null;
+            LogViewerPage? logPage = null;
             AccountApiPage? accountPage = null;
             try
             {
-                aiPage = new AiAnalysisPage();
+                logPage = new LogViewerPage();
                 accountPage = new AccountApiPage();
-                Assert.IsNotNull(aiPage.FindResource("CompactScrollBar"));
+                Assert.IsNotNull(logPage.FindResource("CompactScrollBar"));
                 Assert.IsNotNull(accountPage.FindResource("ModernVerticalScrollBar"));
-                aiPage.ApplyTemplate();
+                logPage.ApplyTemplate();
                 accountPage.ApplyTemplate();
             }
             catch (Exception ex)
@@ -854,7 +854,7 @@ public sealed partial class ReliabilityTests
             }
             finally
             {
-                aiPage?.Dispose();
+                logPage?.Dispose();
                 accountPage?.Dispose();
                 completed.Set();
             }

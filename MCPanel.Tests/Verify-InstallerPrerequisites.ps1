@@ -111,7 +111,7 @@ try {
     $late = Join-Path $CaseRoot 'late-failure'
     [IO.Directory]::CreateDirectory($late) | Out-Null
     [IO.File]::WriteAllText((Join-Path $late 'MCPanel.exe'), 'original executable')
-    [IO.File]::WriteAllText((Join-Path $late 'MCPanel.exe.config'), '<configuration><appSettings><add key="Ai.Model" value="original" /></appSettings></configuration>')
+    [IO.File]::WriteAllText((Join-Path $late 'MCPanel.exe.config'), '<configuration><appSettings><add key="Environment.Tomcat.PackageUrl" value="original" /></appSettings></configuration>')
     $configBefore = [IO.File]::ReadAllBytes((Join-Path $late 'MCPanel.exe.config'))
     $env:MCPANEL_SETUP_TEST_FAIL_FILE = 'MCPanel.exe'
     $null = Invoke-Setup $late -Package $PackageFile -Exe $testSetup -ExpectedExitCode 1
