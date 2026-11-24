@@ -179,17 +179,7 @@ public sealed partial class ProductDeploymentService
 
     private static void WriteRuntimeBindingSyncLog(string message, Exception? exception)
     {
-        try
-        {
-            var detail = exception is null ? string.Empty : $"{Environment.NewLine}{exception}";
-            RollingLogWriter.Append(
-                Path.Combine(ComponentPaths.WorkRoot, "runtime-binding-sync.log"),
-                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}{detail}{Environment.NewLine}{Environment.NewLine}",
-                Encoding.UTF8);
-        }
-        catch
-        {
-            // Passive reconciliation must never interrupt normal panel work.
-        }
+        // Passive reconciliation must never interrupt normal panel work; PanelLog never throws.
+        PanelLog.Write(PanelLog.WorkLog("runtime-binding-sync.log"), message, exception);
     }
 }

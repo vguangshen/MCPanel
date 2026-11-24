@@ -892,16 +892,7 @@ internal sealed class ProductInstallQueueService : IDisposable
 
     private void WriteQueueDiagnostic(string message)
     {
-        try
-        {
-            var path = Path.Combine(_storeDataRoot, "Work", "product-install-queue.log");
-            RollingLogWriter.Append(
-                path,
-                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}");
-        }
-        catch
-        {
-        }
+        PanelLog.Write(Path.Combine(_storeDataRoot, "Work", "product-install-queue.log"), message);
     }
 
     private static ProductInstallQueueStatus? ParseTerminalState(string? state) =>

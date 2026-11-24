@@ -70,9 +70,7 @@ public sealed class ProductCacheStore
             }
             catch (Exception error)
             {
-                RollingLogWriter.Append(
-                    Path.Combine(ComponentPaths.WorkRoot, "product-cache.log"),
-                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] 迁移旧产品缓存失败：{error}{Environment.NewLine}");
+                PanelLog.Write(PanelLog.WorkLog("product-cache.log"), "迁移旧产品缓存失败", error);
             }
         }
     }

@@ -82,11 +82,7 @@ public sealed partial class ProductDeploymentService
             }
 
             File.Move(stateFile, quarantine);
-            Directory.CreateDirectory(ComponentPaths.WorkRoot);
-            RollingLogWriter.Append(
-                Path.Combine(ComponentPaths.WorkRoot, "deployment-state-recovery.log"),
-                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] 部署状态文件损坏，已隔离而不是删除：{stateFile} -> {quarantine}{Environment.NewLine}{error}{Environment.NewLine}{Environment.NewLine}",
-                Encoding.UTF8);
+            PanelLog.Write(PanelLog.WorkLog("deployment-state-recovery.log"), $"部署状态文件损坏，已隔离而不是删除：{stateFile} -> {quarantine}", error);
         }
         catch
         {
