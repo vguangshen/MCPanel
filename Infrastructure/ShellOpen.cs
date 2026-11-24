@@ -7,8 +7,9 @@ namespace MCPanel;
 internal static class ShellOpen
 {
     /// <summary>Shows a folder in File Explorer, optionally creating it first.</summary>
-    public static void Folder(string path, bool create = false)
+    public static void Folder(string? path, bool create = false)
     {
+        path = RequirePath(path);
         if (create)
         {
             Directory.CreateDirectory(path);
@@ -19,8 +20,8 @@ internal static class ShellOpen
     }
 
     /// <summary>Opens a file with its associated program (a log in the text editor, a console snap-in).</summary>
-    public static void File(string path) =>
-        Start(new ProcessStartInfo(path) { UseShellExecute = true });
+    public static void File(string? path) =>
+        Start(new ProcessStartInfo(RequirePath(path)) { UseShellExecute = true });
 
     /// <summary>
     /// Opens an http(s) address in the default browser. Other schemes and
@@ -51,6 +52,9 @@ internal static class ShellOpen
             return false;
         }
     }
+
+    private static string RequirePath(string? path) =>
+        string.IsNullOrWhiteSpace(path) ? throw new ArgumentException("路径不能为空。", nameof(path)) : path!;
 
     private static void Start(ProcessStartInfo info) => Process.Start(info)?.Dispose();
 }
