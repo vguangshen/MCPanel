@@ -927,28 +927,8 @@ public sealed class FrpManager : IDisposable
             return;
         }
 
-        for (var attempt = 0; attempt < 5; attempt++)
-        {
-            try
-            {
-                foreach (var file in Directory.EnumerateFiles(target, "*", SearchOption.AllDirectories))
-                {
-                    File.SetAttributes(file, FileAttributes.Normal);
-                }
-
-                Directory.Delete(target, recursive: true);
-                return;
-            }
-            catch when (attempt < 4)
-            {
-                Thread.Sleep(250);
-            }
-        }
-
-        if (Directory.Exists(target))
-        {
-            Directory.Delete(target, recursive: true);
-        }
+        // frpc.exe can hold its folder for a moment after the service stops.
+        FileUtil.DeleteDirectory(target, attempts: 5, retryDelayMilliseconds: 250);
     }
 
     private bool IsCurrentFrpVersion(string version)

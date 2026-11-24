@@ -330,10 +330,7 @@ public sealed partial class ProductDeploymentService
         {
         }
 
-        var activePorts = System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties()
-            .GetActiveTcpListeners()
-            .Select(endpoint => endpoint.Port)
-            .ToHashSet();
+        var activePorts = SystemProbe.GetActiveTcpPorts(throwOnError: true);
         for (var port = 8088; port <= 8188; port++)
         {
             if (!activePorts.Contains(port))

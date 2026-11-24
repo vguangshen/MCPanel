@@ -473,33 +473,6 @@ public sealed partial class EnvironmentInstaller : IDisposable
             : Directory.GetDirectories(root, name, SearchOption.AllDirectories).FirstOrDefault();
     }
 
-    private static bool IsSamePath(string left, string right) =>
-        string.Equals(
-            Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
-            Path.GetFullPath(right).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
-            StringComparison.OrdinalIgnoreCase);
-
-    private static void DeleteDirectoryBestEffort(string path)
-    {
-        try
-        {
-            if (!Directory.Exists(path))
-            {
-                return;
-            }
-
-            foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
-            {
-                File.SetAttributes(file, FileAttributes.Normal);
-            }
-
-            Directory.Delete(path, recursive: true);
-        }
-        catch
-        {
-        }
-    }
-
     private static string IisPendingUninstallMarker => Path.Combine(GetStoreDataRoot(), "RuntimeState", "iis-pending-uninstall-restart.flag");
     private static string IisUninstalledMarker => Path.Combine(GetStoreDataRoot(), "RuntimeState", "iis-uninstalled.flag");
 
@@ -541,7 +514,7 @@ public sealed partial class EnvironmentInstaller : IDisposable
                 try { moveDirectory(targetRoot, backupRoot); }
                 catch
                 {
-                    if (!Directory.Exists(backupRoot)) DeleteDirectoryBestEffort(stagingContainer);
+                    if (!Directory.Exists(backupRoot)) FileUtil.TryDeleteDirectory(stagingContainer);
                     throw;
                 }
             }
@@ -553,7 +526,7 @@ public sealed partial class EnvironmentInstaller : IDisposable
                 var stagedData = Path.Combine(stagedRoot, "data");
                 if (Directory.Exists(oldData))
                 {
-                    DeleteDirectoryBestEffort(stagedData);
+                    FileUtil.TryDeleteDirectory(stagedData);
                     moveDirectory(oldData, stagedData);
                     dataTransferred = true;
                 }
@@ -577,7 +550,7 @@ public sealed partial class EnvironmentInstaller : IDisposable
                 {
                     throw new AggregateException($"MySQL 目录切换失败，自动恢复未完成。原数据已保留，请勿删除：{stagingContainer}；{backupRoot}。", error, recoveryError);
                 }
-                DeleteDirectoryBestEffort(stagingContainer);
+                FileUtil.TryDeleteDirectory(stagingContainer);
                 throw;
             }
         }
@@ -589,8 +562,8 @@ public sealed partial class EnvironmentInstaller : IDisposable
                 return;
             }
 
-            DeleteDirectoryBestEffort(_backupRoot);
-            DeleteDirectoryBestEffort(_stagingContainer);
+            FileUtil.TryDeleteDirectory(_backupRoot);
+            FileUtil.TryDeleteDirectory(_stagingContainer);
             _finished = true;
         }
 
@@ -605,7 +578,7 @@ public sealed partial class EnvironmentInstaller : IDisposable
             // recovery a second time while the original exception unwinds.
             _finished = true;
             RestoreBackup(ProductRoot, _backupRoot);
-            DeleteDirectoryBestEffort(_stagingContainer);
+            FileUtil.TryDeleteDirectory(_stagingContainer);
         }
 
         public void PreserveForRecovery() => _finished = true;
@@ -630,7 +603,7 @@ public sealed partial class EnvironmentInstaller : IDisposable
                 }
             }
 
-            DeleteDirectoryBestEffort(targetRoot);
+            FileUtil.TryDeleteDirectory(targetRoot);
             if (Directory.Exists(backupRoot))
             {
                 Directory.Move(backupRoot, targetRoot);

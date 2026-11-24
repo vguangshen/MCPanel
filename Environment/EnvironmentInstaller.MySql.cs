@@ -48,14 +48,14 @@ public sealed partial class EnvironmentInstaller
                 .FirstOrDefault(path => Path.GetFileName(path).Equals("mysqld.exe", StringComparison.OrdinalIgnoreCase) || Path.GetFileName(path).Equals("mysqld-itmc.exe", StringComparison.OrdinalIgnoreCase));
             if (stagedMySqlExe is null || stagedMysqldExe is null)
             {
-                DeleteDirectoryBestEffort(stagingContainer);
+                FileUtil.TryDeleteDirectory(stagingContainer);
                 throw new FileNotFoundException("MySQL 暂存包中未找到 mysql.exe 或 mysqld.exe。");
             }
 
             var stagedMySqlRoot = Directory.GetParent(Path.GetDirectoryName(stagedMySqlExe)!)!.FullName;
             var existingMySqlExe = new ComponentLocator().FindMySqlExecutable(root, stagingContainer);
             var targetMySqlRoot = existingMySqlExe is null
-                ? IsSamePath(root, ComponentPaths.MySqlRoot) ? root : Path.Combine(root, "mysql")
+                ? PathUtil.PathsEqual(root, ComponentPaths.MySqlRoot) ? root : Path.Combine(root, "mysql")
                 : Directory.GetParent(Path.GetDirectoryName(existingMySqlExe)!)!.FullName;
 
             progress(InstallingProgress(67, "下载校验完成，正在停止旧 MySQL 服务...", 10));
@@ -104,7 +104,7 @@ public sealed partial class EnvironmentInstaller
         finally
         {
             // Commit/Rollback own recovery once directory switching begins.
-            if (!transactionOwnsStaging) DeleteDirectoryBestEffort(stagingContainer);
+            if (!transactionOwnsStaging) FileUtil.TryDeleteDirectory(stagingContainer);
         }
     }
 

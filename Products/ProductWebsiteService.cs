@@ -319,29 +319,8 @@ internal sealed class ProductWebsiteService
 
     private static void DeleteManagedCertificates(string nginxRoot, string productId)
     {
-        try
-        {
-            var directory = Path.Combine(nginxRoot, "conf", "mcpanel-ssl", PathUtil.SafeProductName(productId));
-            if (Directory.Exists(directory))
-            {
-                foreach (var file in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories))
-                {
-                    try { File.SetAttributes(file, FileAttributes.Normal); } catch { }
-                }
-
-                foreach (var child in Directory.EnumerateDirectories(directory, "*", SearchOption.AllDirectories))
-                {
-                    try { File.SetAttributes(child, FileAttributes.Normal); } catch { }
-                }
-
-                try { File.SetAttributes(directory, FileAttributes.Normal); } catch { }
-                Directory.Delete(directory, recursive: true);
-            }
-        }
-        catch
-        {
-            // A stale certificate copy does not make a successfully removed rule fail.
-        }
+        // A stale certificate copy does not make a successfully removed rule fail.
+        FileUtil.TryDeleteDirectory(Path.Combine(nginxRoot, "conf", "mcpanel-ssl", PathUtil.SafeProductName(productId)));
     }
 
     private static void DeleteManagedCertificatesFromKnownRoots(string productId)

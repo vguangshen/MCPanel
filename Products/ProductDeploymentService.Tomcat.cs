@@ -181,7 +181,7 @@ public sealed partial class ProductDeploymentService
             return current;
         }
 
-        if (IsTcpPortListening(current.Port))
+        if (SystemProbe.IsTcpPortListening(current.Port))
         {
             throw new InvalidOperationException($"{productId} 当前仍在端口 {current.Port} 运行，请先停止应用或 Tomcat Server。");
         }
@@ -208,7 +208,7 @@ public sealed partial class ProductDeploymentService
             var reservedByAnotherProduct = LoadTomcatDeploymentInfos()
                 .Any(info => !string.Equals(info.ProductId, productId, StringComparison.OrdinalIgnoreCase) &&
                              info.Port == newPort);
-            if (configuredByAnotherService || reservedByAnotherProduct || IsTcpPortListening(newPort))
+            if (configuredByAnotherService || reservedByAnotherProduct || SystemProbe.IsTcpPortListening(newPort))
             {
                 throw new InvalidOperationException($"端口 {newPort} 已被其他 Tomcat 产品或程序占用。");
             }
@@ -646,10 +646,7 @@ public sealed partial class ProductDeploymentService
             }
         }
 
-        var activePorts = System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties()
-            .GetActiveTcpListeners()
-            .Select(endpoint => endpoint.Port)
-            .ToHashSet();
+        var activePorts = SystemProbe.GetActiveTcpPorts(throwOnError: true);
 
         if (preferredPort.HasValue && IsValidObservedTomcatProductPort(preferredPort.Value) &&
             !configuredPorts.Contains(preferredPort.Value) &&
@@ -710,20 +707,6 @@ public sealed partial class ProductDeploymentService
 
         XDocument.Load(temporary);
         FileCompat.Move(temporary, serverXml, overwrite: true);
-    }
-
-    private static bool IsTcpPortListening(int port)
-    {
-        try
-        {
-            return System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties()
-                .GetActiveTcpListeners()
-                .Any(endpoint => endpoint.Port == port);
-        }
-        catch
-        {
-            return false;
-        }
     }
 
     private static string? FindTomcatRoot()

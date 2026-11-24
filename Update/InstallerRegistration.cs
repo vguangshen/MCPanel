@@ -39,8 +39,7 @@ internal static class InstallerRegistration
     internal static string BuildSetupCommand(string setupExecutable, string root, bool silent) =>
         $"{QuotePath(setupExecutable)} /UNINSTALL {QuotePath(root.TrimEnd('\\'))}" + (silent ? " /VERYSILENT" : string.Empty);
 
-    internal static bool IsSameRoot(string? left, string right) => !string.IsNullOrWhiteSpace(left) &&
-        Path.GetFullPath(left!).TrimEnd('\\').Equals(Path.GetFullPath(right).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
+    internal static bool IsSameRoot(string? left, string right) => PathUtil.PathsEqual(left, right);
 
     internal static string? FindRegistration(string root)
     {

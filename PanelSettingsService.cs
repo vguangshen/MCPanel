@@ -227,7 +227,7 @@ public sealed class PanelSettingsService
         using var stream = typeof(PanelSettingsService).Assembly.GetManifestResourceStream("MCPanel.SqlServerCertificate.ps1")
             ?? throw new InvalidOperationException("缺少 SQL Server 证书配置脚本。");
         using var reader = new StreamReader(stream, Encoding.UTF8);
-        return "$log='" + EscapePowerShellLiteral(logPath) + "'" + Environment.NewLine + reader.ReadToEnd();
+        return "$log='" + PathUtil.EscapePowerShellLiteral(logPath) + "'" + Environment.NewLine + reader.ReadToEnd();
     }
 
     public bool TryOpenSqlManagementStudioForSqlServer()
@@ -365,8 +365,6 @@ public sealed class PanelSettingsService
         using var process = Process.GetCurrentProcess();
         return process.MainModule?.FileName ?? Path.Combine(ComponentPaths.ApplicationRoot, "MCPanel.exe");
     }
-
-    private static string EscapePowerShellLiteral(string value) => value.Replace("'", "''");
 
     private static void OpenDirectory(string path)
     {

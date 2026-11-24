@@ -6,8 +6,12 @@ namespace MCPanel;
 /// <summary>Shared read-only probes of the local machine.</summary>
 internal static class SystemProbe
 {
-    /// <summary>Ports with an active TCP listener; empty when the table is unavailable.</summary>
-    public static HashSet<int> GetActiveTcpPorts()
+    /// <summary>
+    /// Ports with an active TCP listener. When the table is unavailable this
+    /// returns an empty set, or throws when <paramref name="throwOnError"/> is
+    /// set (port selection must not mistake "unknown" for "free").
+    /// </summary>
+    public static HashSet<int> GetActiveTcpPorts(bool throwOnError = false)
     {
         try
         {
@@ -16,12 +20,15 @@ internal static class SystemProbe
                 .Select(endpoint => endpoint.Port)
                 .ToHashSet();
         }
-        catch
+        catch when (!throwOnError)
         {
             // A probe: callers treat "unknown" as "no listeners seen".
             return new HashSet<int>();
         }
     }
+
+    /// <summary>True when something listens on <paramref name="port"/>; false if unknown.</summary>
+    public static bool IsTcpPortListening(int port) => GetActiveTcpPorts().Contains(port);
 
     /// <summary>True when the Service Control Manager knows a service by this name.</summary>
     public static bool WindowsServiceExists(string serviceName)
