@@ -28,9 +28,9 @@ public partial class MainWindow
             "切换到总 Tomcat Server", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
     }
 
-    private Task<string?> RunComponentRuntimeActionAsync(EnvironmentKind kind, string action) =>
+    private Task<string?> RunComponentRuntimeActionAsync(EnvironmentKind kind, string action, bool confirmed = false) =>
         _model.ComponentOperations.RunAsync(kind,
-            () => ConfirmComponentRuntimeActionAsync(kind, action),
+            () => confirmed ? Task.FromResult(true) : ConfirmComponentRuntimeActionAsync(kind, action),
             () =>
             {
                 var badge = RuntimeBusyBadgeText(action);

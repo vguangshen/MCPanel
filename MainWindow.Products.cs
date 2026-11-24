@@ -258,6 +258,7 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
             }
         }
 
+        TrackQueueTomcatRestart(item);
     }
 
     private ProductItem? FindProduct(string productId) =>

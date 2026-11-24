@@ -726,8 +726,7 @@ internal static class ProductInstallWorker
     }
 
     private static bool IsTomcatProduct(ProductItem product) =>
-        (product.RunEnvironment?.Contains("tomcat", StringComparison.OrdinalIgnoreCase) ?? false) ||
-        (product.DevLanguage?.Contains("java", StringComparison.OrdinalIgnoreCase) ?? false);
+        QueueTomcatRestartTracker.IsTomcatProduct(product.RunEnvironment, product.DevLanguage);
 
     private static string SafeFileName(string value)
     {

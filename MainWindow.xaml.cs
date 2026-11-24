@@ -90,6 +90,7 @@ public partial class MainWindow : Window
         _productInstallQueue.ProgressChanged += ProductInstallQueue_ProgressChanged;
         _productInstallQueue.ItemFinished += ProductInstallQueue_ItemFinished;
         _model.ThemeMode = _settingsService.GetThemeMode();
+        LoadQueueTomcatRestartSetting();
         ApplySelectedTheme();
         SystemEvents.UserPreferenceChanged += SystemEvents_UserPreferenceChanged;
         SystemEvents.DisplaySettingsChanged += SystemEvents_DisplaySettingsChanged;
