@@ -36,7 +36,7 @@ public sealed partial class EnvironmentRuntimeService
             return $"MySQL 当前已使用端口 {newPort}。{refresh.Message}。";
         }
 
-        if (!IsPortAvailable(newPort))
+        if (!SystemProbe.IsPortAvailable(newPort))
         {
             throw new InvalidOperationException($"端口 {newPort} 已被其他程序占用，请更换端口。");
         }

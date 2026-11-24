@@ -139,7 +139,7 @@ public sealed class McPanelStoreClient : IDisposable
         {
             status?.Invoke($"正在准备 {product.ProductId} 的产品文件...");
             await DownloadWebDirectoryAsync(
-                EnsureDirectoryUri(uri),
+                HttpUtil.EnsureDirectoryUri(uri),
                 productDownloadDirectory,
                 progress,
                 message => status?.Invoke($"{product.ProductId}：{message}"),
@@ -426,7 +426,7 @@ public sealed class McPanelStoreClient : IDisposable
                 {
                     if (!next.AbsoluteUri.TrimEnd('/').Equals(currentUri.AbsoluteUri.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
                     {
-                        children.Add(EnsureDirectoryUri(next));
+                        children.Add(HttpUtil.EnsureDirectoryUri(next));
                     }
                 }
                 else
@@ -576,7 +576,7 @@ public sealed class McPanelStoreClient : IDisposable
             }
 
             var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            if (IsRedirect(response.StatusCode) && response.Headers.Location is not null)
+            if (HttpUtil.IsRedirect(response.StatusCode) && response.Headers.Location is not null)
             {
                 var nextUri = response.Headers.Location.IsAbsoluteUri
                     ? response.Headers.Location
@@ -653,18 +653,6 @@ public sealed class McPanelStoreClient : IDisposable
 
         throw new InvalidOperationException($"产品下载地址不受支持：{uri}");
     }
-
-    private static bool IsRedirect(HttpStatusCode statusCode) =>
-        statusCode == HttpStatusCode.MovedPermanently ||
-        statusCode == HttpStatusCode.Redirect ||
-        statusCode == HttpStatusCode.RedirectMethod ||
-        statusCode == HttpStatusCode.TemporaryRedirect ||
-        (int)statusCode == 308;
-
-    private static Uri EnsureDirectoryUri(Uri uri) =>
-        uri.AbsoluteUri.EndsWith("/", StringComparison.Ordinal)
-            ? uri
-            : new Uri($"{uri.AbsoluteUri}/", UriKind.Absolute);
 
     private sealed record RemoteWebFile(Uri Uri, long? Length);
 

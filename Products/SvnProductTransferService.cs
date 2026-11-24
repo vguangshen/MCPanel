@@ -195,7 +195,7 @@ internal sealed class SvnProductTransferService
             // SVN List pass before any product bytes can be downloaded.
             var transfer = new TransferTelemetry(installedDirectory);
             var args = CreateCheckOutArgs(progress, status, cancellationToken, pauseController, transfer);
-            if (!client.CheckOut(new SvnUriTarget(EnsureDirectoryUri(repositoryUri)), installedDirectory, args))
+            if (!client.CheckOut(new SvnUriTarget(HttpUtil.EnsureDirectoryUri(repositoryUri)), installedDirectory, args))
             {
                 throw (Exception?)args.LastException ?? new InvalidOperationException("供应商 SVN Checkout 未完成。");
             }
@@ -719,8 +719,8 @@ internal sealed class SvnProductTransferService
             return client.GetInfo(new SvnPathTarget(path), out var info) &&
                    info.Uri is not null &&
                    Uri.Compare(
-                       EnsureDirectoryUri(info.Uri),
-                       EnsureDirectoryUri(repositoryUri),
+                       HttpUtil.EnsureDirectoryUri(info.Uri),
+                       HttpUtil.EnsureDirectoryUri(repositoryUri),
                        UriComponents.SchemeAndServer | UriComponents.Path,
                        UriFormat.SafeUnescaped,
                        StringComparison.OrdinalIgnoreCase) == 0;
@@ -747,11 +747,6 @@ internal sealed class SvnProductTransferService
         return relative.Equals(".svn", StringComparison.OrdinalIgnoreCase) ||
                relative.StartsWith($".svn{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase);
     }
-
-    private static Uri EnsureDirectoryUri(Uri uri) =>
-        uri.AbsoluteUri.EndsWith("/", StringComparison.Ordinal)
-            ? uri
-            : new Uri(uri.AbsoluteUri + "/", UriKind.Absolute);
 
     private sealed class NativeWindowHandle : WinFormsWindow
     {

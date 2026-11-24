@@ -11,8 +11,6 @@ namespace MCPanel;
 internal static class EnvironmentInstallWorker
 {
     private const string WorkerArgument = "--environment-install-worker";
-    private static readonly JsonSerializerOptions JsonOptions = new();
-
     public static bool IsWorkerRequest(string[] args) =>
         Array.Exists(args, argument =>
             string.Equals(argument, WorkerArgument, StringComparison.OrdinalIgnoreCase));
@@ -399,59 +397,20 @@ END;";
         var directory = ComponentPaths.WorkRoot;
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, "environment-install-" + Guid.NewGuid().ToString("N") + ".json");
-        AtomicFile.WriteAllText(path, JsonSerializer.Serialize(
-            new EnvironmentInstallWorkerProgress(
-                "waiting",
-                0,
-                "等待管理员安装会话启动。",
-                Stage: InstallProgressStage.Preparing,
-                StagePercent: 0),
-            JsonOptions));
+        JsonStateFile.Write(path, new EnvironmentInstallWorkerProgress(
+            "waiting",
+            0,
+            "等待管理员安装会话启动。",
+            Stage: InstallProgressStage.Preparing,
+            StagePercent: 0));
         return path;
     }
 
-    public static bool TryReadProgress(string path, out EnvironmentInstallWorkerProgress progress)
-    {
-        try
-        {
-            if (!File.Exists(path))
-            {
-                progress = default!;
-                return false;
-            }
+    public static bool TryReadProgress(string path, out EnvironmentInstallWorkerProgress progress) =>
+        JsonStateFile.TryRead(path, out progress);
 
-            var parsed = JsonSerializer.Deserialize<EnvironmentInstallWorkerProgress>(
-                File.ReadAllText(path), JsonOptions);
-            if (parsed is null)
-            {
-                progress = default!;
-                return false;
-            }
-
-            progress = parsed;
-            return true;
-        }
-        catch
-        {
-            progress = default!;
-            return false;
-        }
-    }
-
-    public static void DeleteProgressFile(string path)
-    {
-        try
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-        catch
-        {
-            // The status file is temporary state; a later startup can safely leave it alone.
-        }
-    }
+    public static void DeleteProgressFile(string path) =>
+        PathUtil.TryDeleteFile(path);
 
     private static bool TryGetRequest(
         string[] args,
@@ -527,8 +486,7 @@ END;";
     {
         private readonly string _path;
         private readonly object _sync = new();
-        private DateTime _lastWriteUtc = DateTime.MinValue;
-        private string _lastMessage = string.Empty;
+        private readonly ProgressWriteThrottle _throttle = new(TimeSpan.FromMilliseconds(250));
         private InstallProgressStage _stage = InstallProgressStage.Preparing;
         private double? _stagePercent;
         private string? _speedText;
@@ -564,21 +522,17 @@ END;";
         {
             lock (_sync)
             {
-                var now = DateTime.UtcNow;
-                if (!force && now - _lastWriteUtc < TimeSpan.FromMilliseconds(250) &&
-                    string.Equals(_lastMessage, message, StringComparison.Ordinal))
+                if (!_throttle.ShouldWrite(message, force))
                 {
                     return;
                 }
 
-                _lastWriteUtc = now;
-                _lastMessage = message;
                 try
                 {
                     var effectiveStage = stage ?? _stage;
                     var effectiveStagePercent = stagePercent ?? _stagePercent;
                     var effectiveSpeedText = speedText ?? _speedText;
-                    AtomicFile.WriteAllText(_path, JsonSerializer.Serialize(
+                    JsonStateFile.Write(_path,
                         new EnvironmentInstallWorkerProgress(
                             state,
                             Compat.Clamp(percent, 0, 100),
@@ -586,8 +540,7 @@ END;";
                             logPath,
                             effectiveStage,
                             effectiveStagePercent,
-                            effectiveSpeedText),
-                        JsonOptions));
+                            effectiveSpeedText));
                 }
                 catch
                 {

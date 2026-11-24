@@ -399,7 +399,7 @@ public sealed partial class EnvironmentInstaller : IDisposable
             var lines = text
                 .Split(["\r\n", "\n"], StringSplitOptions.None)
                 .Where(line => !string.IsNullOrWhiteSpace(line))
-                .Where(line => !LooksLikeMojibake(line))
+                .Where(line => !TextFiles.LooksLikeMojibake(line))
                 .TakeLast(16);
             return string.Join(Environment.NewLine, lines);
         }
@@ -407,21 +407,6 @@ public sealed partial class EnvironmentInstaller : IDisposable
         {
             return string.Empty;
         }
-    }
-
-    private static bool LooksLikeMojibake(string text)
-    {
-        if (string.IsNullOrEmpty(text))
-        {
-            return false;
-        }
-
-        var markers = new[]
-        {
-            "\u7ECC", "\u93C1", "\u6FB6", "\u8FAB", "\u89E6", "\u7F02", "\u7039",
-            "\u9354", "\u95C3", "\u5A09", "\u7487", "\u9286", "\u20AC"
-        };
-        return markers.Count(marker => text.Contains(marker, StringComparison.Ordinal)) >= 2;
     }
 
     private static async Task RunProcessWithOutputAsync(string fileName, string arguments, string workingDirectory, CancellationToken cancellationToken)

@@ -223,7 +223,7 @@ public sealed partial class ApplicationUpdateService
         var uri = ValidateHttpsUrl(manifestUrl, "更新清单地址");
         using var response = await Client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         response.EnsureSuccessStatusCode();
-        var json = await ReadResponseTextAsync(response.Content, cancellationToken);
+        var json = await ReadManifestTextAsync(response.Content, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         var manifest = JsonSerializer.Deserialize<OnlineUpdateManifest>(json, JsonOptions)
             ?? throw new InvalidDataException("在线更新清单内容无效。");
@@ -253,7 +253,7 @@ public sealed partial class ApplicationUpdateService
                    cancellationToken))
         {
             EnsureGitHubResponse(response, "最新正式发行版");
-            var json = await ReadResponseTextAsync(response.Content, cancellationToken);
+            var json = await ReadManifestTextAsync(response.Content, cancellationToken);
             release = JsonSerializer.Deserialize<GitHubReleaseResponse>(json, JsonOptions);
         }
 
@@ -274,7 +274,7 @@ public sealed partial class ApplicationUpdateService
         using (var response = await DownloadGitHubAssetAsync(repository, manifestAsset.Id, cancellationToken))
         {
             EnsureGitHubResponse(response, "更新清单");
-            var json = await ReadResponseTextAsync(response.Content, cancellationToken);
+            var json = await ReadManifestTextAsync(response.Content, cancellationToken);
             releaseManifest = JsonSerializer.Deserialize<GitHubReleaseManifest>(json, JsonOptions);
         }
 
@@ -1438,7 +1438,7 @@ internal void LaunchUpdater(
         {
             using var request = CreateGitHubRequest(current, acceptBinary: true);
             var response = await _gitHubClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            if (!IsRedirect(response.StatusCode))
+            if (!HttpUtil.IsRedirect(response.StatusCode))
             {
                 return response;
             }
@@ -1482,9 +1482,6 @@ internal void LaunchUpdater(
 
         return request;
     }
-
-    private static bool IsRedirect(HttpStatusCode statusCode) =>
-        (int)statusCode is >= 300 and <= 399;
 
     private static void EnsureGitHubResponse(HttpResponseMessage response, string resource)
     {
@@ -1531,36 +1528,8 @@ internal void LaunchUpdater(
         return uri;
     }
 
-    private static async Task<string> ReadResponseTextAsync(
-        HttpContent content,
-        CancellationToken cancellationToken)
-    {
-        if (content.Headers.ContentLength is long length && length > MaxManifestBytes)
-        {
-            throw new InvalidDataException("在线更新清单过大，无法读取。");
-        }
-
-        using var stream = await content.ReadAsStreamAsync();
-        using var buffer = new MemoryStream();
-        var chunk = new byte[81920];
-        while (true)
-        {
-            var read = await stream.ReadAsync(chunk, 0, chunk.Length, cancellationToken);
-            if (read == 0)
-            {
-                break;
-            }
-
-            if (buffer.Length + read > MaxManifestBytes)
-            {
-                throw new InvalidDataException("在线更新清单过大，无法读取。");
-            }
-
-            buffer.Write(chunk, 0, read);
-        }
-
-        return Encoding.UTF8.GetString(buffer.ToArray());
-    }
+    private static Task<string> ReadManifestTextAsync(HttpContent content, CancellationToken cancellationToken) =>
+        HttpUtil.ReadBoundedTextAsync(content, MaxManifestBytes, "在线更新清单过大，无法读取。", cancellationToken);
 
     private static string NormalizeGitHubAssetDigest(string value)
     {
