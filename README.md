@@ -84,7 +84,7 @@ state of that component while other cards continue updating.
 Product installs use the durable queue worker; the previous single-request worker,
 shared Tomcat HTTP-readiness loop, website status monitor, and single-task download
 progress model have been removed. The progress overlay is used for uninstall work;
-download state and controls belong to each queue item. `LegacyRuntimeCompatibility.cs`
+download state and controls belong to each queue item. `Infrastructure/LegacyRuntimeCompatibility.cs`
 provides APIs missing from the supported .NET Framework 4.6.2 runtime. Old storage,
 credential, service-registration and update-channel migrations remain active upgrade
 paths and are retained.
