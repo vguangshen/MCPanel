@@ -1,0 +1,25 @@
+{
+  "version": "0.0.0",
+  "packageUrl": "https://example.invalid/MCPanel-0.0.0.zip",
+  "packageSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "requiredSpaceBytes": 104857600,
+  "maximumRelativeLength": 80,
+  "dotNet": {
+    "name": ".NET Framework 4.8",
+    "minimumRelease": 394802,
+    "url": "https://example.invalid/ndp48-web.exe",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "arguments": "/q /norestart"
+  },
+  "visualCpp": {
+    "name": "Visual C++ 2010 SP1 x64",
+    "minimumVersion": "10.0.40219.325",
+    "url": "https://example.invalid/vcredist_x64.exe",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "arguments": "/q /norestart"
+  },
+  "programFiles": [ "MCPanel.exe.config", "MCPanel.exe" ],
+  "preservedTopLevelNames": [ "StoreData", "Maintenance" ],
+  "preservedAppSettingKeys": [ "Ai.Model" ],
+  "urlMigrations": []
+}

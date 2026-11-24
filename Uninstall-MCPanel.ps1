@@ -330,7 +330,8 @@ function Invoke-CompleteUninstall {
 }
 
 if ($Silent) {
-    try { Invoke-CompleteUninstall } catch { Write-Host $_.ScriptStackTrace; Write-Error $_ -ErrorAction Continue }
+    # MCPANEL-ERROR: is read by MCPanel-Setup.exe to show the reason in its UI.
+    try { Invoke-CompleteUninstall } catch { Write-Host ('MCPANEL-ERROR: ' + $_.Exception.Message); Write-Host $_.ScriptStackTrace; Write-Error $_ -ErrorAction Continue }
     exit $script:ExitCode
 }
 Add-Type -AssemblyName System.Windows.Forms

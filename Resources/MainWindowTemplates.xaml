@@ -672,7 +672,10 @@
         </DataTemplate>
 
     <DataTemplate x:Key="ServiceStatusTemplate">
-        <Border CornerRadius="8" Background="{DynamicResource SurfaceAltBrush}" BorderBrush="{DynamicResource CardLineBrush}" BorderThickness="1" Padding="10" Margin="0,0,8,8" Height="166">
+        <Border CornerRadius="8" Background="{DynamicResource SurfaceAltBrush}" BorderBrush="{DynamicResource CardLineBrush}" BorderThickness="1"
+                Padding="{local:Density Normal='10', Compact='6'}"
+                Margin="{local:Density Normal='0,0,8,8', Compact='0,0,5,5'}"
+                Height="{local:Density Normal='166', Compact='92'}">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -695,9 +698,12 @@
                         </StackPanel>
                     </Border>
                 </Grid>
-                <StackPanel Grid.Row="1" Margin="0,6,0,6">
-                    <TextBlock Text="{Binding Description}" ToolTip="{Binding Description}" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextWrapping="Wrap" LineHeight="17" />
-                    <TextBlock Text="{Binding StatusText}" ToolTip="{Binding StatusText}" Foreground="{DynamicResource TextBrush}" FontSize="12" TextWrapping="Wrap" LineHeight="17" Margin="0,2,0,0" />
+                <StackPanel Grid.Row="1" Margin="{local:Density Normal='0,6,0,6', Compact='0,2,0,2'}">
+                    <!-- Compact cards keep only the live status line. -->
+                    <TextBlock Text="{Binding Description}" ToolTip="{Binding Description}" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextWrapping="Wrap" LineHeight="17"
+                               Visibility="{local:Density Normal='Visible', Compact='Collapsed'}" />
+                    <TextBlock Text="{Binding StatusText}" ToolTip="{Binding StatusText}" Foreground="{DynamicResource TextBrush}" FontSize="12" TextWrapping="Wrap" LineHeight="17"
+                               Margin="{local:Density Normal='0,2,0,0', Compact='0'}" />
                 </StackPanel>
                 <Grid Grid.Row="2">
                     <UniformGrid Columns="3" Visibility="{Binding ServiceControlsVisibility}">
@@ -899,8 +905,9 @@
 
     <!-- Environment card template with front, credential, and Tomcat views -->
     <DataTemplate x:Key="EnvironmentCardTemplate">
-            <Border x:Name="EnvironmentCard" Style="{DynamicResource Card}" Margin="0,0,16,16"
-                    Padding="18,16" RenderTransformOrigin="0.5,0.5">
+            <Border x:Name="EnvironmentCard" Style="{DynamicResource Card}"
+                    Margin="{local:Density Normal='0,0,16,16', Compact='0,0,10,10'}"
+                    Padding="{local:Density Normal='18,16', Compact='14,12'}" RenderTransformOrigin="0.5,0.5">
                 <Border.RenderTransform>
                     <ScaleTransform ScaleX="1" />
                 </Border.RenderTransform>
@@ -918,7 +925,7 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel>
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="{Binding Title}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Title}" FontSize="{local:Density Normal='18', Compact='16'}" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                 <Button Width="26" Height="26" MinWidth="0" Padding="0" Margin="7,0,0,0"
                                         Style="{DynamicResource PathIconButton}"
                                         Content="&#xE8B7;" ToolTip="打开安装目录"
@@ -948,7 +955,7 @@
                         </StackPanel>
                     </Grid>
                     <StackPanel Grid.Row="1" Margin="0,10,0,10">
-                        <TextBlock Text="{Binding Description}" ToolTip="{Binding Description}" TextWrapping="Wrap" FontSize="13" Foreground="{DynamicResource MutedBrush}" LineHeight="19" MaxHeight="40" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding Description}" ToolTip="{Binding Description}" TextWrapping="Wrap" FontSize="13" Foreground="{DynamicResource MutedBrush}" LineHeight="{local:Density Normal='19', Compact='17'}" MaxHeight="40" TextTrimming="CharacterEllipsis" />
                         <Grid Margin="0,8,0,8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
@@ -963,15 +970,14 @@
                         <ProgressBar Style="{DynamicResource MetricProgress}" Value="{Binding Progress, Mode=OneWay}" Maximum="100" IsIndeterminate="{Binding IsProgressIndeterminate}" />
                     </StackPanel>
                     <WrapPanel Grid.Row="2" HorizontalAlignment="Left">
-                            <Button Content="{Binding ActionText}" Style="{DynamicResource EnvironmentPrimaryButton}" HorizontalAlignment="Left" Click="EnvironmentInstall_Click" IsEnabled="{Binding CanInstall}" Visibility="{Binding InstallButtonVisibility}" />
-                            <ComboBox Style="{DynamicResource EnvironmentVersionComboBox}"
+                            <Button Content="{Binding ActionText}" Style="{DynamicResource EnvironmentCardPrimaryButton}" HorizontalAlignment="Left" Click="EnvironmentInstall_Click" IsEnabled="{Binding CanInstall}" Visibility="{Binding InstallButtonVisibility}" />
+                            <ComboBox Style="{DynamicResource EnvironmentCardVersionComboBox}"
                                       ItemContainerStyle="{DynamicResource EnvironmentVersionComboBoxItem}"
                                       ItemsSource="{Binding MySqlReleaseOptions}"
                                       SelectedValuePath="Id"
                                       SelectedValue="{Binding SelectedMySqlReleaseId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                       IsEnabled="{Binding CanSelectMySqlVersion}"
-                                      Visibility="{Binding MySqlVersionSelectorVisibility}"
-                                      Margin="0,0,8,8">
+                                      Visibility="{Binding MySqlVersionSelectorVisibility}">
                                 <ComboBox.ItemTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding DisplayName}"
@@ -980,14 +986,13 @@
                                     </DataTemplate>
                                 </ComboBox.ItemTemplate>
                             </ComboBox>
-                            <ComboBox Style="{DynamicResource EnvironmentVersionComboBox}"
+                            <ComboBox Style="{DynamicResource EnvironmentCardVersionComboBox}"
                                       ItemContainerStyle="{DynamicResource SqlServerEnvironmentVersionComboBoxItem}"
                                       ItemsSource="{Binding SqlServerReleaseOptions}"
                                       SelectedValuePath="Id"
                                       SelectedValue="{Binding SelectedSqlServerReleaseId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                       IsEnabled="{Binding CanSelectSqlServerVersion}"
-                                      Visibility="{Binding SqlServerVersionSelectorVisibility}"
-                                      Margin="0,0,8,8">
+                                      Visibility="{Binding SqlServerVersionSelectorVisibility}">
                                 <ComboBox.ItemTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding DisplayNameWithSupport}"
@@ -997,22 +1002,22 @@
                                     </DataTemplate>
                                 </ComboBox.ItemTemplate>
                             </ComboBox>
-                            <Button Content="启动" Style="{DynamicResource EnvironmentPrimaryButton}" HorizontalAlignment="Left" Click="EnvironmentRuntime_Click" Tag="Start" IsEnabled="{Binding CanStart}" Visibility="{Binding ServiceControlsVisibility}" />
-                            <Button Content="停止" Style="{DynamicResource EnvironmentTonalButton}" HorizontalAlignment="Left" Click="EnvironmentRuntime_Click" Tag="Stop" IsEnabled="{Binding CanStop}" Visibility="{Binding ServiceControlsVisibility}" />
-                            <Button Content="重启" Style="{DynamicResource EnvironmentTonalButton}" HorizontalAlignment="Left" Click="EnvironmentRuntime_Click" Tag="Restart" IsEnabled="{Binding CanRestart}" Visibility="{Binding ServiceControlsVisibility}" />
-                            <Button Content="卸载" Style="{DynamicResource EnvironmentTonalButton}" HorizontalAlignment="Left" Click="EnvironmentRuntime_Click" Tag="Uninstall" IsEnabled="{Binding CanUninstall}" Visibility="{Binding ServiceControlsVisibility}" />
+                            <Button Content="启动" Style="{DynamicResource EnvironmentCardPrimaryButton}" HorizontalAlignment="Left" Click="EnvironmentRuntime_Click" Tag="Start" IsEnabled="{Binding CanStart}" Visibility="{Binding ServiceControlsVisibility}" />
+                            <Button Content="停止" Style="{DynamicResource EnvironmentCardTonalButton}" HorizontalAlignment="Left" Click="EnvironmentRuntime_Click" Tag="Stop" IsEnabled="{Binding CanStop}" Visibility="{Binding ServiceControlsVisibility}" />
+                            <Button Content="重启" Style="{DynamicResource EnvironmentCardTonalButton}" HorizontalAlignment="Left" Click="EnvironmentRuntime_Click" Tag="Restart" IsEnabled="{Binding CanRestart}" Visibility="{Binding ServiceControlsVisibility}" />
+                            <Button Content="卸载" Style="{DynamicResource EnvironmentCardTonalButton}" HorizontalAlignment="Left" Click="EnvironmentRuntime_Click" Tag="Uninstall" IsEnabled="{Binding CanUninstall}" Visibility="{Binding ServiceControlsVisibility}" />
                             <Button Content="以 Catalina 方式启动"
-                                    Style="{DynamicResource EnvironmentWarningButton}"
+                                    Style="{DynamicResource EnvironmentCardWarningButton}"
                                     HorizontalAlignment="Left"
                                     Click="EnvironmentRuntime_Click"
                                     Tag="CatalinaRun"
                                     IsEnabled="{Binding CanStartCatalina}"
                                     Visibility="{Binding TomcatCatalinaVisibility}" />
-                            <Button Content="连接 MySQL" Style="{DynamicResource EnvironmentWarningButton}" HorizontalAlignment="Left" Click="ConnectMySql_Click" IsEnabled="{Binding CanManage}" Visibility="{Binding MySqlConnectButtonVisibility}" />
-                            <Button Content="连接 SQL Server" Style="{DynamicResource EnvironmentWarningButton}" HorizontalAlignment="Left" Click="ConnectSqlServer_Click" IsEnabled="{Binding CanManage}" Visibility="{Binding SqlServerConnectButtonVisibility}" />
-                            <Button Content="管理" Style="{DynamicResource EnvironmentTonalButton}" HorizontalAlignment="Left" Click="EnvironmentRuntime_Click" Tag="OpenIis" IsEnabled="{Binding CanManage}" Visibility="{Binding IisManagementVisibility}" />
-                            <Button Content="管理" Style="{DynamicResource EnvironmentTonalButton}" HorizontalAlignment="Left" Click="NginxOpenManagement_Click" IsEnabled="{Binding CanManage}" Visibility="{Binding NginxManagementVisibility}" />
-                            <Button Content="管理" Style="{DynamicResource EnvironmentTonalButton}" HorizontalAlignment="Left" Click="FrpOpenManagement_Click" IsEnabled="{Binding CanManage}" Visibility="{Binding FrpManagementVisibility}" />
+                            <Button Content="连接 MySQL" Style="{DynamicResource EnvironmentCardWarningButton}" HorizontalAlignment="Left" Click="ConnectMySql_Click" IsEnabled="{Binding CanManage}" Visibility="{Binding MySqlConnectButtonVisibility}" />
+                            <Button Content="连接 SQL Server" Style="{DynamicResource EnvironmentCardWarningButton}" HorizontalAlignment="Left" Click="ConnectSqlServer_Click" IsEnabled="{Binding CanManage}" Visibility="{Binding SqlServerConnectButtonVisibility}" />
+                            <Button Content="管理" Style="{DynamicResource EnvironmentCardTonalButton}" HorizontalAlignment="Left" Click="EnvironmentRuntime_Click" Tag="OpenIis" IsEnabled="{Binding CanManage}" Visibility="{Binding IisManagementVisibility}" />
+                            <Button Content="管理" Style="{DynamicResource EnvironmentCardTonalButton}" HorizontalAlignment="Left" Click="NginxOpenManagement_Click" IsEnabled="{Binding CanManage}" Visibility="{Binding NginxManagementVisibility}" />
+                            <Button Content="管理" Style="{DynamicResource EnvironmentCardTonalButton}" HorizontalAlignment="Left" Click="FrpOpenManagement_Click" IsEnabled="{Binding CanManage}" Visibility="{Binding FrpManagementVisibility}" />
                     </WrapPanel>
                 </Grid>
                 <Grid Visibility="{Binding CredentialBackFaceVisibility}">
@@ -1023,7 +1028,7 @@
                     </Grid.RowDefinitions>
                     <Grid>
                         <StackPanel Margin="0,0,42,0">
-                            <TextBlock Text="{Binding CredentialTitle}" FontSize="18" FontWeight="SemiBold"
+                            <TextBlock Text="{Binding CredentialTitle}" FontSize="{local:Density Normal='18', Compact='16'}" FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextBrush}" TextTrimming="CharacterEllipsis"
                                        ToolTip="{Binding CredentialTitle}" />
                             <TextBlock Text="{Binding CredentialSubtitle}" FontSize="12"
@@ -1108,7 +1113,7 @@
                                    TextTrimming="CharacterEllipsis" />
                         <Button Content="连接工具"
                                 HorizontalAlignment="Right"
-                                Style="{DynamicResource EnvironmentWarningButton}"
+                                Style="{DynamicResource EnvironmentCardWarningButton}"
                                 Click="CredentialConnect_Click" />
                     </Grid>
                 </Grid>
@@ -1120,7 +1125,7 @@
                     </Grid.RowDefinitions>
                     <Grid>
                         <StackPanel Margin="0,0,42,0">
-                            <TextBlock Text="产品端口管理" FontSize="18" FontWeight="SemiBold"
+                            <TextBlock Text="产品端口管理" FontSize="{local:Density Normal='18', Compact='16'}" FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextBrush}" />
                             <TextBlock Text="{Binding TomcatPortSubtitle}" FontSize="12"
                                        Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,0"
