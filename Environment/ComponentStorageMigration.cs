@@ -264,19 +264,8 @@ internal static class ComponentStorageMigration
 
     private static void WriteMigrationWarning(string applicationRoot, string name, string message, Exception? error)
     {
-        try
-        {
-            var workDirectory = Path.Combine(applicationRoot, "StoreData", "Work");
-            Directory.CreateDirectory(workDirectory);
-            var detail = error is null ? string.Empty : Environment.NewLine + error;
-            RollingLogWriter.Append(
-                Path.Combine(workDirectory, "storage-layout-migration.log"),
-                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {name}：{message}{detail}{Environment.NewLine}");
-        }
-        catch
-        {
-            // Migration diagnostics must never prevent application startup.
-        }
+        // Runs before ComponentPaths is usable for this root, so the folder is spelled out.
+        PanelLog.Write(Path.Combine(applicationRoot, "StoreData", "Work", "storage-layout-migration.log"), $"{name}：{message}", error);
     }
 
     private sealed class StorageMove
