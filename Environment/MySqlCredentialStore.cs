@@ -27,20 +27,13 @@ public static class MySqlCredentialStore
             foundCredentialFile = true;
             try
             {
-                var credentials = JsonSerializer.Deserialize<MySqlDefaultCredentials>(File.ReadAllText(file));
-                if (credentials is null || string.IsNullOrWhiteSpace(credentials.Password))
-                {
-                    credentialReadError = new InvalidDataException($"MySQL 本地凭据文件内容无效：{file}");
-                    continue;
-                }
-
-                var wasProtected = LocalSecretProtector.IsProtected(credentials.Password);
-                var normalized = credentials with { Password = LocalSecretProtector.Unprotect(credentials.Password) };
-                if (string.IsNullOrWhiteSpace(normalized.Password))
-                {
-                    credentialReadError = new InvalidDataException($"MySQL 本地凭据文件中的密码为空：{file}");
-                    continue;
-                }
+                // An unusable file is remembered and the next candidate is tried.
+                var (normalized, wasProtected) = ProtectedCredentialFile.Read<MySqlDefaultCredentials>(
+                    file,
+                    c => c.Password,
+                    (c, password) => c with { Password = password },
+                    $"MySQL 本地凭据文件内容无效：{file}",
+                    $"MySQL 本地凭据文件中的密码为空：{file}");
 
                 if (!PathUtil.PathsEqual(file, CredentialFile) || !wasProtected)
                 {
@@ -74,13 +67,8 @@ public static class MySqlCredentialStore
         return new MySqlDefaultCredentials("127.0.0.1", DefaultPort, "root", OriginalDefaultPassword);
     }
 
-    public static void Save(MySqlDefaultCredentials credentials)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(CredentialFile)!);
-        var stored = credentials with { Password = LocalSecretProtector.Protect(credentials.Password) };
-        var json = JsonSerializer.Serialize(stored, new JsonSerializerOptions { WriteIndented = true });
-        AtomicFile.WriteAllText(CredentialFile, json);
-    }
+    public static void Save(MySqlDefaultCredentials credentials) =>
+        ProtectedCredentialFile.Save(CredentialFile, credentials, c => c.Password, (c, password) => c with { Password = password });
 
     public static string FormatForDisplay()
     {

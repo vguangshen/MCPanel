@@ -30,6 +30,39 @@ internal static class SystemProbe
     /// <summary>True when something listens on <paramref name="port"/>; false if unknown.</summary>
     public static bool IsTcpPortListening(int port) => GetActiveTcpPorts().Contains(port);
 
+    /// <summary>
+    /// True when a new service could listen on <paramref name="port"/>: no
+    /// active listener is reported and an exclusive bind on all addresses
+    /// succeeds. Either check alone misses cases (a listener on one address
+    /// only, or a port reserved without a listener).
+    /// </summary>
+    public static bool IsPortAvailable(int port)
+    {
+        if (IsTcpPortListening(port))
+        {
+            return false;
+        }
+
+        try
+        {
+            var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Any, port);
+            try
+            {
+                listener.ExclusiveAddressUse = true;
+                listener.Start();
+                return true;
+            }
+            finally
+            {
+                listener.Stop();
+            }
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     /// <summary>True when the Service Control Manager knows a service by this name.</summary>
     public static bool WindowsServiceExists(string serviceName)
     {

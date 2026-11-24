@@ -103,17 +103,12 @@ public static class SqlServerCredentialStore
 
     public static SqlServerDefaultCredentials CreateNew() => CreateGeneratedDefaults();
 
-    public static void Save(SqlServerDefaultCredentials credentials)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(CredentialFile)!);
-        var normalized = credentials with
-        {
-            Host = NormalizeLocalHost(credentials.Host),
-            Password = LocalSecretProtector.Protect(credentials.Password)
-        };
-        var json = JsonSerializer.Serialize(normalized, new JsonSerializerOptions { WriteIndented = true });
-        AtomicFile.WriteAllText(CredentialFile, json);
-    }
+    public static void Save(SqlServerDefaultCredentials credentials) =>
+        ProtectedCredentialFile.Save(
+            CredentialFile,
+            credentials with { Host = NormalizeLocalHost(credentials.Host) },
+            c => c.Password,
+            (c, password) => c with { Password = password });
 
     public static string FormatForDisplay()
     {
@@ -154,22 +149,13 @@ public static class SqlServerCredentialStore
 
         try
         {
-            var credentials = JsonSerializer.Deserialize<SqlServerDefaultCredentials>(File.ReadAllText(file));
-            if (credentials is null || string.IsNullOrWhiteSpace(credentials.Password))
-            {
-                throw new InvalidDataException("SQL Server 本地凭据文件内容无效。");
-            }
-
-            var wasProtected = LocalSecretProtector.IsProtected(credentials.Password);
-            var normalized = credentials with
-            {
-                Host = NormalizeLocalHost(credentials.Host),
-                Password = LocalSecretProtector.Unprotect(credentials.Password)
-            };
-            if (string.IsNullOrWhiteSpace(normalized.Password))
-            {
-                throw new InvalidDataException("SQL Server 本地凭据文件中的密码为空。");
-            }
+            var (plain, wasProtected) = ProtectedCredentialFile.Read<SqlServerDefaultCredentials>(
+                file,
+                c => c.Password,
+                (c, password) => c with { Password = password },
+                "SQL Server 本地凭据文件内容无效。",
+                "SQL Server 本地凭据文件中的密码为空。");
+            var normalized = plain with { Host = NormalizeLocalHost(plain.Host) };
 
             if (!wasProtected)
             {

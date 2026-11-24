@@ -80,6 +80,53 @@ internal static class TextFiles
         }
     }
 
+    private static readonly Lazy<Encoding?> Gbk = new(() =>
+    {
+        try { return Encoding.GetEncoding(936); }
+        catch (ArgumentException) { return null; }
+        catch (NotSupportedException) { return null; }
+    });
+
+    /// <summary>
+    /// True for text that is unreadable: it contains U+FFFD, or it is UTF-8
+    /// Chinese that was decoded as GBK. Encoding such text back to GBK and
+    /// reading the bytes as UTF-8 recovers Chinese with at most a little
+    /// damage at the edges (a half character is often lost), while genuine
+    /// Chinese comes back as almost nothing but invalid sequences. So no
+    /// hand-picked character list is needed and common characters are never
+    /// flagged.
+    /// </summary>
+    public static bool LooksLikeMojibake(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return false;
+        }
+
+        if (text!.IndexOf('�') >= 0)
+        {
+            return true;
+        }
+
+        var gbk = Gbk.Value;
+        if (gbk is null || text.All(ch => ch < 0x80))
+        {
+            return false;
+        }
+
+        var repaired = Encoding.UTF8.GetString(gbk.GetBytes(text));
+        if (string.Equals(repaired, text, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var recovered = repaired.Count(ch => ch >= '一' && ch <= '鿿');
+        var invalid = repaired.Count(ch => ch == '�');
+        // Short genuine labels ("版本", "内存") can yield one valid character by
+        // chance; real mojibake recovers several.
+        return recovered >= 2 && invalid <= Math.Max(1, recovered / 4);
+    }
+
     /// <summary>True when <paramref name="value"/> contains any candidate, ignoring case.</summary>
     public static bool ContainsAny(string value, params string[] candidates) =>
         candidates.Any(candidate => value.Contains(candidate, StringComparison.OrdinalIgnoreCase));

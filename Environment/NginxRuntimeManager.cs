@@ -130,42 +130,6 @@ public static class NginxRuntimeManager
         return ports.Distinct().Where(port => port is > 0 and <= 65535).ToArray();
     }
 
-    public static bool IsPortAvailable(int port)
-    {
-        try
-        {
-            if (IPGlobalProperties.GetIPGlobalProperties()
-                .GetActiveTcpListeners()
-                .Any(endpoint => endpoint.Port == port))
-            {
-                return false;
-            }
-        }
-        catch
-        {
-            // Fall through to a bind test.
-        }
-
-        try
-        {
-            var listener = new TcpListener(IPAddress.Any, port);
-            try
-            {
-                listener.ExclusiveAddressUse = true;
-                listener.Start();
-                return true;
-            }
-            finally
-            {
-                listener.Stop();
-            }
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
     public static bool IsPortBindFailure(string text)
     {
         return text.Contains("bind()", StringComparison.OrdinalIgnoreCase) ||
@@ -780,18 +744,12 @@ public static class NginxRuntimeManager
     private static string NormalizeLabel(string value, string fallback)
     {
         var text = (value ?? string.Empty).Trim();
-        if (text.Length == 0 || LooksLikeMojibake(text))
+        if (text.Length == 0 || TextFiles.LooksLikeMojibake(text))
         {
             return fallback;
         }
 
         return text;
-    }
-
-    private static bool LooksLikeMojibake(string value)
-    {
-        var markers = new[] { '鐩', '鍙', '绠', '淇', '缂', '鏉', '浠', '閰', '宸', '鏈', '鍚', '涓', '鏃', '濡', '琛', '绋', '鐞', '瑙', '蹇', '銆', '鈥' };
-        return value.IndexOfAny(markers) >= 0 || value.Contains('\uFFFD');
     }
 
     private static IEnumerable<Process> EnumerateProcessesUnderRoot(string nginxRoot)

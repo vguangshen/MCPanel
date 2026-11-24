@@ -59,7 +59,11 @@ public sealed partial class EnvironmentInstaller
         progress(InstallingProgress(82, "正在生成 Nginx 监听配置...", 32));
 
         progress(InstallingProgress(88, "正在校验 Nginx 配置和端口...", 48));
-        var listenPort = await ConfigureAndTestNginxAsync(nginxExe, nginxWorkDirectory, cancellationToken);
+        var listenPort = await NginxConfigurator.ConfigureAndTestAsync(
+            nginxWorkDirectory,
+            token => RunProcessWithOutputAsync(nginxExe, "-t", nginxWorkDirectory, token),
+            NginxSavedRulesPolicy.Install,
+            cancellationToken);
 
         var serviceExecutable = Process.GetCurrentProcess().MainModule?.FileName;
         if (string.IsNullOrWhiteSpace(serviceExecutable) || !File.Exists(serviceExecutable))
@@ -72,7 +76,7 @@ public sealed partial class EnvironmentInstaller
         progress(InstallingProgress(95, $"正在启动 Nginx Windows 服务，监听端口 {listenPort}...", 78));
         NginxWindowsServiceManager.Start();
         await Task.Delay(1000, cancellationToken);
-        if (!IsNginxOperational(nginxWorkDirectory))
+        if (!NginxConfigurator.IsProcessOrServiceRunning(nginxWorkDirectory))
         {
             var log = NginxRuntimeManager.ReadRecentErrorLog(nginxWorkDirectory);
             throw new InvalidOperationException(string.IsNullOrWhiteSpace(log)
@@ -86,71 +90,4 @@ public sealed partial class EnvironmentInstaller
             ? $"Nginx 已注册为 Windows 服务并安装到 {Path.GetDirectoryName(nginxExe)}，监听端口 {listenPort}。"
             : $"Nginx 已注册为 Windows 服务并安装到 {Path.GetDirectoryName(nginxExe)}，监听端口 {listenPort}；产品反向代理规则同步失败，请查看日志后重试。"));
     }
-
-    private static async Task<int> ConfigureAndTestNginxAsync(string nginxExe, string nginxRoot, CancellationToken cancellationToken)
-    {
-        var savedOptions = NginxRuntimeManager.LoadOptions();
-        if (savedOptions is { Rules.Count: > 1 })
-        {
-            var normalized = NginxRuntimeManager.NormalizeOptions(savedOptions);
-            var configuredPorts = NginxRuntimeManager.GetEffectiveListenPorts(normalized).ToArray();
-            if (configuredPorts.Length == 0)
-            {
-                configuredPorts = [normalized.ListenPort];
-            }
-            foreach (var port in configuredPorts)
-            {
-                if (!NginxRuntimeManager.IsPortAvailable(port))
-                {
-                    throw new InvalidOperationException(
-                        $"Nginx 多规则配置的端口 {port} 已被占用，请先在“管理”中调整端口后再安装。");
-                }
-            }
-
-            try
-            {
-                NginxRuntimeManager.CleanConfigFiles(nginxRoot);
-                NginxRuntimeManager.WriteManagedConfig(nginxRoot, normalized);
-                await RunProcessWithOutputAsync(nginxExe, "-t", nginxRoot, cancellationToken);
-                NginxRuntimeManager.SaveOptions(normalized);
-                return normalized.ListenPort;
-            }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException($"Nginx 多规则配置校验失败：{ex.Message}", ex);
-            }
-        }
-
-        Exception? lastError = null;
-        foreach (var port in NginxRuntimeManager.BuildPortCandidates())
-        {
-            if (!NginxRuntimeManager.IsPortAvailable(port))
-            {
-                continue;
-            }
-
-            NginxRuntimeManager.CleanConfigFiles(nginxRoot);
-            NginxRuntimeManager.WriteListenPort(nginxRoot, port);
-
-            try
-            {
-                await RunProcessWithOutputAsync(nginxExe, "-t", nginxRoot, cancellationToken);
-                NginxRuntimeManager.SaveOptions(port);
-                return port;
-            }
-            catch (Exception ex) when (NginxRuntimeManager.IsPortBindFailure(ex.Message))
-            {
-                lastError = ex;
-            }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException($"Nginx 配置校验失败：{ex.Message}", ex);
-            }
-        }
-
-        throw new InvalidOperationException("Nginx 无法找到可用监听端口。请检查 72、80、8088、8080、8090、8099、18080 是否被占用。", lastError);
-    }
-    private static bool IsNginxOperational(string nginxRoot) =>
-        NginxRuntimeManager.IsRunningUnderRoot(nginxRoot) ||
-        NginxWindowsServiceManager.IsRunningForRoot(nginxRoot);
 }
