@@ -214,10 +214,13 @@ public sealed partial class ReliabilityTests
         var sourceRoot = FindRepositoryRoot();
         foreach (var file in new[] { "EnvironmentInstaller.SqlServer.cs", "EnvironmentRuntimeService.SqlServer.cs" })
         {
-            var text = File.ReadAllText(Path.Combine(sourceRoot, file));
+            var text = File.ReadAllText(RepositorySource.Resolve(file));
             Assert.IsFalse(text.Contains("NetFirewallRule"), $"{file} 仍在使用 Windows 8+ 才有的防火墙 cmdlet。");
             StringAssert.Contains(text, "{{WindowsFirewallScript.Functions}}");
         }
+
+        var modernInstallBody = File.ReadAllText(Path.Combine(sourceRoot, "Installer", "SqlServerModernInstall.ps1"));
+        Assert.IsFalse(modernInstallBody.Contains("NetFirewallRule"), "SqlServerModernInstall.ps1 仍在使用 Windows 8+ 才有的防火墙 cmdlet。");
 
         StringAssert.Contains(WindowsFirewallScript.Functions, "HNetCfg.FwPolicy2");
     }
@@ -238,12 +241,6 @@ public sealed partial class ReliabilityTests
 
     private static string FindRepositoryRoot()
     {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "MCPanel.csproj")))
-        {
-            directory = directory.Parent;
-        }
-
-        return directory?.FullName ?? throw new DirectoryNotFoundException("找不到 MCPanel 源码目录。");
+        return RepositorySource.Root;
     }
 }
