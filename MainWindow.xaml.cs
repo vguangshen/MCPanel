@@ -258,12 +258,7 @@ public partial class MainWindow : Window
 
     private void FitWindowToMonitor()
     {
-        ResponsiveWindowSizing.FitToCurrentMonitor(
-            this,
-            ResponsiveWindowSizing.MainDesignWidth,
-            ResponsiveWindowSizing.MainDesignHeight,
-            workAreaFill: 0.94,
-            maximumScale: ResponsiveWindowSizing.MainDefaultScale);
+        ResponsiveWindowSizing.FitToCurrentMonitor(this);
     }
 
     private void ApplySelectedTheme()
