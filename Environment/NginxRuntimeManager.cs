@@ -577,8 +577,9 @@ public static class NginxRuntimeManager
             var options = JsonSerializer.Deserialize<NginxRuntimeOptions>(File.ReadAllText(StateFile, Encoding.UTF8));
             return options is null ? null : NormalizeOptions(options);
         }
-        catch
+        catch (Exception error)
         {
+            SuppressedErrorLog.Record("读取 Nginx 运行配置", error, StateFile);
             return null;
         }
     }

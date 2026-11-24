@@ -120,7 +120,7 @@
                         Focusable="True"
                         AutomationProperties.Name="当前页面内容" />
                 <ScrollViewer x:Name="HomePage"
-                                  VerticalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled"
                               Focusable="True"
                               KeyboardNavigation.TabNavigation="Local">
@@ -135,18 +135,23 @@
                     </Grid.RowDefinitions>
                     <Border x:Name="HomeSystemSummaryCard"
                             Style="{StaticResource Card}"
-                            Padding="22,16"
-                            Height="92">
+                            Padding="{local:Density Normal='22,16', Compact='18,10'}"
+                            Height="{local:Density Normal='92', Narrow='NaN'}">
+                        <!-- Narrow windows stack the hardware lines under the heading. -->
                         <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="1.55*" />
+                                <ColumnDefinition Width="{local:Density Normal='1.55*', Narrow='0'}" />
                             </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="{local:Density Normal='0,0,24,0', Narrow='0'}">
                                 <TextBlock Text="系统概览" Style="{StaticResource SectionTitle}" FontSize="20" />
                                 <TextBlock Text="{Binding UptimeText}" Foreground="{DynamicResource MutedBrush}" FontSize="13" Margin="0,3,0,0" />
                             </StackPanel>
-                            <StackPanel Grid.Column="1" HorizontalAlignment="Stretch" VerticalAlignment="Center" Margin="24,0,0,0">
+                            <StackPanel Grid.Row="{local:Density Normal='0', Narrow='1'}" Grid.Column="{local:Density Normal='1', Narrow='0'}" HorizontalAlignment="Stretch" VerticalAlignment="Center" Margin="{local:Density Normal='24,0,0,0', Narrow='0,10,0,0'}">
                                 <TextBlock x:Name="HomeHardwareCpuText"
                                            Text="{Binding HardwareCpuText}"
                                            Foreground="{DynamicResource TextBrush}"
@@ -173,11 +178,19 @@
                         </Grid>
                     </Border>
 
-                    <Border Grid.Row="1" Style="{StaticResource Card}" Padding="16,10" Margin="0,10,0,0" Height="162">
+                    <Border Grid.Row="1" Style="{StaticResource Card}"
+                            Padding="{local:Density Normal='16,10', Compact='14,7'}"
+                            Margin="{local:Density Normal='0,10,0,0', Compact='0,8,0,0'}"
+                            Height="{local:Density Normal='162', Compact='132', Narrow='NaN'}">
+                        <!-- Narrow windows move the disks under the CPU/memory gauges. -->
                         <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="260" />
-                                <ColumnDefinition Width="1" />
+                                <ColumnDefinition Width="{local:Density Normal='260', Narrow='*'}" />
+                                <ColumnDefinition Width="{local:Density Normal='1', Narrow='0'}" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <StackPanel>
@@ -185,22 +198,22 @@
                                 <UniformGrid Columns="2" Margin="0,6,0,0">
                                     <Grid Margin="0,0,14,0">
                                         <Grid.RowDefinitions>
-                                            <RowDefinition Height="90" />
-                                            <RowDefinition Height="20" />
+                                            <RowDefinition Height="{local:Density Normal='90', Compact='72'}" />
+                                            <RowDefinition Height="{local:Density Normal='20', Compact='18'}" />
                                         </Grid.RowDefinitions>
-                                        <Grid Width="86" Height="86" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                            <local:CircularProgress x:Name="CpuProgress" Value="{Binding CpuUsage}" ProgressBrush="{DynamicResource PrimaryBrush}" TrackBrush="{DynamicResource DisabledBrush}" Width="86" Height="86" StrokeThickness="9" />
+                                        <Grid Width="{local:Density Normal='86', Compact='70'}" Height="{local:Density Normal='86', Compact='70'}" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <local:CircularProgress x:Name="CpuProgress" Value="{Binding CpuUsage}" ProgressBrush="{DynamicResource PrimaryBrush}" TrackBrush="{DynamicResource DisabledBrush}" Width="{local:Density Normal='86', Compact='70'}" Height="{local:Density Normal='86', Compact='70'}" StrokeThickness="9" />
                                             <TextBlock Text="{Binding AnimatedValue, ElementName=CpuProgress, StringFormat={}{0:N0}%}" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" />
                                         </Grid>
                                         <TextBlock Grid.Row="1" Text="CPU" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource TextBrush}" FontSize="12" FontWeight="SemiBold" />
                                     </Grid>
                                     <Grid>
                                         <Grid.RowDefinitions>
-                                            <RowDefinition Height="90" />
-                                            <RowDefinition Height="20" />
+                                            <RowDefinition Height="{local:Density Normal='90', Compact='72'}" />
+                                            <RowDefinition Height="{local:Density Normal='20', Compact='18'}" />
                                         </Grid.RowDefinitions>
-                                        <Grid Width="86" Height="86" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                            <local:CircularProgress x:Name="MemoryProgress" Value="{Binding MemoryUsage}" ProgressBrush="{DynamicResource MemoryBrush}" TrackBrush="{DynamicResource DisabledBrush}" Width="86" Height="86" StrokeThickness="9" />
+                                        <Grid Width="{local:Density Normal='86', Compact='70'}" Height="{local:Density Normal='86', Compact='70'}" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <local:CircularProgress x:Name="MemoryProgress" Value="{Binding MemoryUsage}" ProgressBrush="{DynamicResource MemoryBrush}" TrackBrush="{DynamicResource DisabledBrush}" Width="{local:Density Normal='86', Compact='70'}" Height="{local:Density Normal='86', Compact='70'}" StrokeThickness="9" />
                                             <TextBlock Text="{Binding AnimatedValue, ElementName=MemoryProgress, StringFormat={}{0:N0}%}" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" />
                                         </Grid>
                                         <TextBlock Grid.Row="1" Text="内存" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource TextBrush}" FontSize="12" FontWeight="SemiBold" />
@@ -208,9 +221,10 @@
                                 </UniformGrid>
                             </StackPanel>
 
-                            <Border Grid.Column="1" Background="{DynamicResource LineBrush}" Margin="6,4,20,4" />
+                            <Border Grid.Column="1" Background="{DynamicResource LineBrush}" Margin="6,4,20,4"
+                                    Visibility="{local:Density Normal='Visible', Narrow='Collapsed'}" />
 
-                            <StackPanel Grid.Column="2">
+                            <StackPanel Grid.Row="{local:Density Normal='0', Narrow='1'}" Grid.Column="{local:Density Normal='2', Narrow='0'}" Margin="{local:Density Normal='0', Narrow='0,16,0,0'}">
                                 <TextBlock Text="磁盘" Style="{StaticResource SectionTitle}" FontSize="17" />
                                 <ItemsControl ItemsSource="{Binding Drives}"
                                               ItemTemplate="{StaticResource DriveStatTemplate}"
@@ -225,14 +239,14 @@
                         </Grid>
                     </Border>
 
-                    <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,10,0,0" Padding="0">
+                    <Border Grid.Row="2" Style="{StaticResource Card}" Margin="{local:Density Normal='0,10,0,0', Compact='0,8,0,0'}" Padding="0">
                         <DockPanel>
-                            <Border DockPanel.Dock="Top" Padding="16,8" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,0,1">
+                            <Border DockPanel.Dock="Top" Padding="{local:Density Normal='16,8', Compact='14,5'}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,0,1">
                                 <TextBlock Text="套件服务" Style="{StaticResource SectionTitle}" FontSize="18" />
                             </Border>
                             <ItemsControl ItemsSource="{Binding Services}"
                                           ItemTemplate="{StaticResource ServiceStatusTemplate}"
-                                          Margin="10">
+                                          Margin="{local:Density Normal='10', Compact='6'}">
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
                                                 <UniformGrid Columns="{Binding HomeServiceColumnCount}" />
@@ -320,17 +334,23 @@
                                         </TextBlock>
                                     </Grid>
                                 </Border>
-                                <Grid Grid.Column="1"
+                                <!-- The host is taller than the 50px ring so the ring is never clipped. -->
+                                <Grid x:Name="DownloadQueueToolbarHost"
+                                      Grid.Column="1"
                                       Width="64"
-                                      Height="40"
+                                      Height="52"
+                                      ClipToBounds="False"
                                       HorizontalAlignment="Left"
                                       Margin="7,0,0,0"
                                       VerticalAlignment="Center">
-                                    <local:CircularProgress Value="0"
+                                    <local:CircularProgress x:Name="DownloadQueueProgressRing"
+                                                            Value="0"
                                                             IsIndeterminate="{Binding InstallationProgress.IsQueueActivityAnimating}"
-                                                            Width="48"
-                                                            Height="48"
-                                                            StrokeThickness="3"
+                                                            Width="50"
+                                                            Height="50"
+                                                            StrokeThickness="2"
+                                                            SnapsToDevicePixels="True"
+                                                            UseLayoutRounding="True"
                                                             ProgressBrush="{DynamicResource PrimaryBrush}"
                                                             TrackBrush="{DynamicResource DisabledBrush}"
                                                             HorizontalAlignment="Center"
@@ -339,6 +359,7 @@
                                                             Visibility="{Binding InstallationProgress.HasActiveQueue, Converter={StaticResource BooleanToVisibility}}" />
                                     <Button x:Name="DownloadQueueButton"
                                             Style="{StaticResource ProductToolbarIconButton}"
+                                            FontFamily="Segoe UI, Microsoft YaHei UI"
                                             Margin="0"
                                             Panel.ZIndex="2"
                                             ToolTip="展开下载与安装进度"
@@ -599,7 +620,9 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-                    <Border Style="{StaticResource Card}" Padding="22,18" Margin="0,0,0,16">
+                    <Border Style="{StaticResource Card}"
+                            Padding="{local:Density Normal='22,18', Compact='16,12'}"
+                            Margin="{local:Density Normal='0,0,0,16', Compact='0,0,0,10'}">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />

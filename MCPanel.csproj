@@ -67,6 +67,7 @@
     <None Update="Installer\download-url-migrations.json" CopyToOutputDirectory="PreserveNewest" TargetPath="InstallerAssets\DownloadUrlMigrations.json" />
     <EmbeddedResource Include="Installer\RuntimeCleanup.ps1" LogicalName="MCPanel.RuntimeCleanup.ps1" />
     <EmbeddedResource Include="Installer\SqlServerCertificate.ps1" LogicalName="MCPanel.SqlServerCertificate.ps1" />
+    <EmbeddedResource Include="Installer\SqlServerModernInstall.ps1" LogicalName="MCPanel.SqlServerModernInstall.ps1" />
   </ItemGroup>
 
 </Project>

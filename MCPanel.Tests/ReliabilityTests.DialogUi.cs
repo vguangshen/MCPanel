@@ -72,17 +72,6 @@ public partial class ReliabilityTests
 
     private static string FindRepositoryRootForDialogUi()
     {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, "MCPanel.csproj")))
-            {
-                return directory.FullName;
-            }
-            directory = directory.Parent;
-        }
-
-        Assert.Fail("Unable to locate MCPanel repository root.");
-        return string.Empty;
+        return RepositorySource.Root;
     }
 }

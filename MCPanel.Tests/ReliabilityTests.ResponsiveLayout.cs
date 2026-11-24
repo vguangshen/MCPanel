@@ -378,8 +378,8 @@ public sealed partial class ReliabilityTests
 
         var densitySource = ReadRepositoryFile("MainWindow.ResponsivePageDensity.cs");
         StringAssert.Contains(densitySource, "IconOnlyNavigationBreakpoint");
-        StringAssert.Contains(densitySource, "ApplyHomePageDensity");
-        StringAssert.Contains(densitySource, "ApplyEnvironmentPageDensity");
+        StringAssert.Contains(densitySource, "ResponsiveDensity.SetIsCompact(this, compactPageDensity)");
+        Assert.IsFalse(densitySource.Contains("FindFirstVisualChild"), "页面密度应由 XAML 声明，不能再在视觉树里按尺寸查找控件。");
 
         var aiPage = ReadRepositoryFile("AiAnalysisPage.xaml");
         Assert.IsFalse(aiPage.Contains("MinHeight=\"620\""),

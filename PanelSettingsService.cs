@@ -341,8 +341,9 @@ public sealed class PanelSettingsService
                     return settings;
                 }
             }
-            catch
+            catch (Exception error)
             {
+                SuppressedErrorLog.Record("读取面板设置", error, path);
                 // A partially synchronized settings file must not prevent startup.
             }
         }

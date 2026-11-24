@@ -564,8 +564,9 @@ public sealed class CustomWebsiteService
             CleanupEmptyManagedSections(document.Descendants("system.webServer").FirstOrDefault());
             SaveXml(configFile, document);
         }
-        catch
+        catch (Exception error)
         {
+            SuppressedErrorLog.Record("清理网站 web.config", error, configFile);
             // The IIS site was removed successfully; do not delete or replace an unreadable user config.
         }
     }

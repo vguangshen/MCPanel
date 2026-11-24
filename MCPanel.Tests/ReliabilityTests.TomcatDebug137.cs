@@ -85,28 +85,18 @@ public partial class ReliabilityTests
 
     private static string ReadRepositoryFile(string relativePath)
     {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null)
+        var candidate = RepositorySource.Resolve(relativePath);
+        var directory = Path.GetDirectoryName(candidate)!;
+        var text = File.ReadAllText(candidate);
+        var name = Path.GetFileName(candidate);
+        if (name is "EnvironmentRuntimeService.cs" or "EnvironmentInstaller.cs" or "ProductDeploymentService.cs")
         {
-            var candidate = Path.Combine(directory.FullName, relativePath);
-            if (File.Exists(candidate))
-            {
-                var text = File.ReadAllText(candidate);
-                var name = Path.GetFileName(candidate);
-                if (name is "EnvironmentRuntimeService.cs" or "EnvironmentInstaller.cs")
-                {
-                    var prefix = Path.GetFileNameWithoutExtension(candidate) + ".";
-                    foreach (var partial in Directory.EnumerateFiles(directory.FullName, prefix + "*.cs").OrderBy(path => path, StringComparer.Ordinal))
-                        text += Environment.NewLine + File.ReadAllText(partial);
-                }
-                if (name == "MainWindow.Environment.cs")
-                    text += Environment.NewLine + File.ReadAllText(Path.Combine(directory.FullName, "MainWindow.ComponentActions.cs"));
-                return text;
-            }
-            directory = directory.Parent;
+            var prefix = Path.GetFileNameWithoutExtension(candidate) + ".";
+            foreach (var partial in Directory.EnumerateFiles(directory, prefix + "*.cs").OrderBy(path => path, StringComparer.Ordinal))
+                text += Environment.NewLine + File.ReadAllText(partial);
         }
-
-        Assert.Fail($"Unable to locate repository file: {relativePath}");
-        return string.Empty;
+        if (name == "MainWindow.Environment.cs")
+            text += Environment.NewLine + File.ReadAllText(RepositorySource.Resolve("MainWindow.ComponentActions.cs"));
+        return text;
     }
 }
