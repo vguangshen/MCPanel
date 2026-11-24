@@ -54,6 +54,7 @@ public partial class MainWindow : Window
     private readonly ApplicationUpdateService _applicationUpdateService = new();
     private bool _isDarkThemeActive;
     private bool _monitoringStarted;
+    private readonly bool _monitorAwareScaling;
     private bool _runtimeRefreshInFlight;
     private DateTime _nextRuntimeRefreshUtc = DateTime.MinValue;
     private bool _productRouteSyncInFlight;
@@ -74,6 +75,8 @@ public partial class MainWindow : Window
 
     internal MainWindow(bool initializeRuntime, string? queueDataRoot)
     {
+        // Tests build windows at fixed sizes; only the real panel follows the monitor.
+        _monitorAwareScaling = initializeRuntime;
         _model = new MainViewModel(initializeRuntime);
         _model.ComponentOperations.BusyChanged += (_, _) =>
         {
@@ -96,6 +99,8 @@ public partial class MainWindow : Window
             ApplyWindowCornerPreference();
         };
         StateChanged += (_, _) => UpdateWindowStateChrome();
+        DpiChanged += (_, _) => UpdateUiScaleForMonitor();
+        LocationChanged += (_, _) => UpdateUiScaleForMonitor();
         Closing += MainWindow_Closing;
         ContentRendered += (_, _) =>
         {
@@ -258,7 +263,9 @@ public partial class MainWindow : Window
 
     private void FitWindowToMonitor()
     {
-        ResponsiveWindowSizing.FitToCurrentMonitor(this);
+        var scale = _monitorAwareScaling ? ResponsiveWindowSizing.UiScaleForCurrentMonitor(this) : 1d;
+        ResponsiveWindowSizing.FitToCurrentMonitor(this, scale);
+        ApplyUiScale(scale);
     }
 
     private void ApplySelectedTheme()

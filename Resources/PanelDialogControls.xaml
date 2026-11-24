@@ -177,7 +177,7 @@
                     </ToggleButton>
                     <Popup x:Name="PART_Popup" Placement="Bottom" AllowsTransparency="True" Focusable="False"
                         IsOpen="{TemplateBinding IsDropDownOpen}" PopupAnimation="None">
-                        <Border Background="{DynamicResource InputBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="6"
+                        <Border LayoutTransform="{DynamicResource UiScaleTransform}" Background="{DynamicResource InputBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="6"
                             MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}" MaxHeight="{TemplateBinding MaxDropDownHeight}" Padding="2">
                             <ScrollViewer CanContentScroll="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                                 <ScrollViewer.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ModernVerticalScrollBar}" /></ScrollViewer.Resources>

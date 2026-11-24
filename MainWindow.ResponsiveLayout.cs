@@ -93,16 +93,20 @@ public partial class MainWindow
                     ? MainViewbox.ActualHeight
                     : Math.Max(1d, ActualHeight);
 
-            if (IsUsableDimension(viewportWidth) &&
-                Math.Abs(DesignSurface.Width - viewportWidth) > ResponsiveLayoutEpsilon)
+            // The design surface is laid out at the logical size and drawn
+            // UiScale times larger by its LayoutTransform, filling the window.
+            var logicalWidth = viewportWidth / _uiScale;
+            var logicalHeight = viewportHeight / _uiScale;
+            if (IsUsableDimension(logicalWidth) &&
+                Math.Abs(DesignSurface.Width - logicalWidth) > ResponsiveLayoutEpsilon)
             {
-                DesignSurface.Width = viewportWidth;
+                DesignSurface.Width = logicalWidth;
             }
 
-            if (IsUsableDimension(viewportHeight) &&
-                Math.Abs(DesignSurface.Height - viewportHeight) > ResponsiveLayoutEpsilon)
+            if (IsUsableDimension(logicalHeight) &&
+                Math.Abs(DesignSurface.Height - logicalHeight) > ResponsiveLayoutEpsilon)
             {
-                DesignSurface.Height = viewportHeight;
+                DesignSurface.Height = logicalHeight;
             }
 
             DesignSurface.MinWidth = 0d;
@@ -121,6 +125,9 @@ public partial class MainWindow
                 : IsUsableDimension(Height)
                     ? Height
                     : viewportHeight;
+
+            responsiveWidth /= _uiScale;
+            responsiveHeight /= _uiScale;
 
             var compactWidth = responsiveWidth < CompactShellBreakpoint;
             var compactShell = compactWidth || responsiveHeight < CompactShellHeightBreakpoint;
