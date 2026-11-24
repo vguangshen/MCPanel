@@ -979,15 +979,6 @@ public sealed partial class ReliabilityTests
     [TestMethod]
     public void SsmsReleaseMatchesLegacyAndCurrentSqlServerGenerations()
     {
-        Assert.AreEqual(SsmsReleaseCatalog.Ssms18121Id, SsmsReleaseCatalog.ResolveForSqlServerMajor(10).Id);
-        Assert.AreEqual(SsmsReleaseCatalog.Ssms18121Id, SsmsReleaseCatalog.ResolveForSqlServerMajor(11).Id);
-        Assert.AreEqual(SsmsReleaseCatalog.Ssms22Id, SsmsReleaseCatalog.ResolveForSqlServerMajor(12).Id);
-        Assert.AreEqual(SsmsReleaseCatalog.Ssms22Id, SsmsReleaseCatalog.ResolveForSqlServerMajor(13).Id);
-        Assert.AreEqual(SsmsReleaseCatalog.Ssms22Id, SsmsReleaseCatalog.ResolveForSqlServerMajor(14).Id);
-        Assert.AreEqual(SsmsReleaseCatalog.Ssms22Id, SsmsReleaseCatalog.ResolveForSqlServerMajor(15).Id);
-        Assert.AreEqual(SsmsReleaseCatalog.Ssms22Id, SsmsReleaseCatalog.ResolveForSqlServerMajor(16).Id);
-        Assert.AreEqual(SsmsReleaseCatalog.Ssms22Id, SsmsReleaseCatalog.ResolveForSqlServerMajor(17).Id);
-        Assert.AreEqual(SsmsReleaseCatalog.Ssms22Id, SsmsReleaseCatalog.ResolveForSqlServerMajor(null).Id);
         Assert.AreEqual(11, SqlServerInstallationDetector.TryParseMajorVersion("11.0.7001.0"));
         Assert.AreEqual(17, SqlServerInstallationDetector.TryParseMajorVersion("MSSQL17.MSSQLSERVER"));
 

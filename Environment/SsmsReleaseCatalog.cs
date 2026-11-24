@@ -86,24 +86,4 @@ public static class SsmsReleaseCatalog
             _ => Ssms18121
         };
     }
-
-    public static SsmsReleaseDefinition ResolveForSqlServerMajor(int? majorVersion)
-    {
-        // SQL Server 2008 and 2008 R2 are 10.x; SQL Server 2012 is 11.x.
-        // SSMS 22's supported Database Engine list starts at SQL Server 2014
-        // (12.x). Keep the cases explicit so a newly added engine generation
-        // cannot accidentally inherit the legacy rule.
-        return majorVersion switch
-        {
-            10 => Ssms18121,
-            11 => Ssms18121,
-            12 => Ssms22,
-            13 => Ssms22,
-            14 => Ssms22,
-            15 => Ssms22,
-            16 => Ssms22,
-            17 => Ssms22,
-            _ => Ssms22
-        };
-    }
 }
