@@ -494,11 +494,11 @@ public sealed partial class ReliabilityTests
             Directory.CreateDirectory(payload);
             File.WriteAllText(Path.Combine(install, "MCPanel.exe"), "old");
             File.WriteAllText(Path.Combine(install, "MCPanel.exe.config"),
-                "<configuration><appSettings><add key=\"UpdateManifestUrl\" value=\"https://updates.example.com/manifest.json\" /><add key=\"GitHubUpdateRepository\" value=\"vguangshen/MCPanel-override\" /><add key=\"Environment.Frp.PackageUrl\" value=\"https://mirror.example.com/frp.zip\" /><add key=\"Ai.Provider\" value=\"OpenAI\" /><add key=\"Ai.Endpoint\" value=\"https://mirror.example.com/v1/chat/completions\" /><add key=\"Ai.Model\" value=\"ops-model\" /><add key=\"Ai.ApiKey\" value=\"old-ai-key\" /></appSettings></configuration>");
+                "<configuration><appSettings><add key=\"UpdateManifestUrl\" value=\"https://updates.example.com/manifest.json\" /><add key=\"GitHubUpdateRepository\" value=\"vguangshen/MCPanel-override\" /><add key=\"Environment.Frp.PackageUrl\" value=\"https://mirror.example.com/frp.zip\" /><add key=\"Environment.Iis.UrlRewriteUrl\" value=\"OpenAI\" /><add key=\"Environment.MySql.PackageUrl\" value=\"https://mirror.example.com/v1/chat/completions\" /><add key=\"Environment.Tomcat.PackageUrl\" value=\"ops-model\" /><add key=\"Environment.Nginx.PackageUrl\" value=\"old-nginx-url\" /></appSettings></configuration>");
             File.WriteAllText(Path.Combine(install, "obsolete.dll"), "obsolete");
             File.WriteAllText(Path.Combine(payload, "MCPanel.exe"), "new");
             File.WriteAllText(Path.Combine(payload, "MCPanel.exe.config"),
-                "<configuration><appSettings><add key=\"UpdateManifestUrl\" value=\"\" /><add key=\"GitHubUpdateRepository\" value=\"vguangshen/MCPanel\" /><add key=\"Environment.Frp.PackageUrl\" value=\"https://github.com/fatedier/frp/releases/download/v0.71.0/frp_0.71.0_windows_amd64.zip\" /><add key=\"Ai.Provider\" value=\"GLM\" /><add key=\"Ai.Endpoint\" value=\"https://open.bigmodel.cn/api/paas/v4/chat/completions\" /><add key=\"Ai.Model\" value=\"glm-5.2\" /><add key=\"Ai.ApiKey\" value=\"new-ai-key\" /></appSettings></configuration>");
+                "<configuration><appSettings><add key=\"UpdateManifestUrl\" value=\"\" /><add key=\"GitHubUpdateRepository\" value=\"vguangshen/MCPanel\" /><add key=\"Environment.Frp.PackageUrl\" value=\"https://github.com/fatedier/frp/releases/download/v0.71.0/frp_0.71.0_windows_amd64.zip\" /><add key=\"Environment.Iis.UrlRewriteUrl\" value=\"GLM\" /><add key=\"Environment.MySql.PackageUrl\" value=\"https://open.bigmodel.cn/api/paas/v4/chat/completions\" /><add key=\"Environment.Tomcat.PackageUrl\" value=\"glm-5.2\" /><add key=\"Environment.Nginx.PackageUrl\" value=\"new-nginx-url\" /></appSettings></configuration>");
             File.WriteAllText(Path.Combine(payload, "current.dll"), "current");
 
             foreach (var name in new[] { "StoreData", "AccountApi", "Runtime", "Downloads", "Tools", "web", "Cache", "Frp", "Nginx", "MySQL", "MSSQL", "Tomcat", "SSMS", "Navicat Premium Lite" })
@@ -531,16 +531,16 @@ public sealed partial class ReliabilityTests
                 "https://mirror.example.com/frp.zip");
             StringAssert.Contains(
                 File.ReadAllText(Path.Combine(install, "MCPanel.exe.config")),
-                "key=\"Ai.Provider\" value=\"OpenAI\"");
+                "key=\"Environment.Iis.UrlRewriteUrl\" value=\"OpenAI\"");
             StringAssert.Contains(
                 File.ReadAllText(Path.Combine(install, "MCPanel.exe.config")),
                 "https://mirror.example.com/v1/chat/completions");
             StringAssert.Contains(
                 File.ReadAllText(Path.Combine(install, "MCPanel.exe.config")),
-                "key=\"Ai.Model\" value=\"ops-model\"");
+                "key=\"Environment.Tomcat.PackageUrl\" value=\"ops-model\"");
             StringAssert.Contains(
                 File.ReadAllText(Path.Combine(install, "MCPanel.exe.config")),
-                "old-ai-key");
+                "old-nginx-url");
             foreach (var name in new[] { "StoreData", "AccountApi", "Runtime", "Downloads", "Tools", "web", "Cache", "Frp", "Nginx", "MySQL", "MSSQL", "Tomcat", "SSMS", "Navicat Premium Lite" })
             {
                 Assert.AreEqual(name, File.ReadAllText(Path.Combine(install, name, "preserved.txt")));

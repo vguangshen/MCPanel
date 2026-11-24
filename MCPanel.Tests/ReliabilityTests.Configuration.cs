@@ -920,25 +920,6 @@ public sealed partial class ReliabilityTests
     }
 
     [TestMethod]
-    public void AiProviderSettingsReadsConfigurationOverrides()
-    {
-        var appSettings = new NameValueCollection
-        {
-            [AiProviderSettings.ProviderConfigKey] = "OpenAI",
-            [AiProviderSettings.EndpointConfigKey] = "https://api.example.com/v1/chat/completions",
-            [AiProviderSettings.ModelConfigKey] = "ops-model",
-            [AiProviderSettings.ApiKeyConfigKey] = "test-api-key"
-        };
-
-        var settings = AiProviderSettings.FromAppSettings(appSettings);
-
-        Assert.AreEqual("OpenAI", settings.Provider);
-        Assert.AreEqual("https://api.example.com/v1/chat/completions", settings.Endpoint);
-        Assert.AreEqual("ops-model", settings.Model);
-        Assert.AreEqual("test-api-key", settings.ApiKey);
-    }
-
-    [TestMethod]
     public void SqlServerNewPasswordMatchesOriginalStoreFormat()
     {
         var credentials = SqlServerCredentialStore.CreateNew();

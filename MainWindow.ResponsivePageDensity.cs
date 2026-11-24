@@ -38,9 +38,9 @@ public partial class MainWindow
         AccountApiPageControl.MinHeight = 0d;
         AccountApiPageControl.VerticalAlignment = VerticalAlignment.Stretch;
         AccountApiPageControl.HorizontalAlignment = HorizontalAlignment.Stretch;
-        AiAnalysisPageControl.MinHeight = 0d;
-        AiAnalysisPageControl.VerticalAlignment = VerticalAlignment.Stretch;
-        AiAnalysisPageControl.HorizontalAlignment = HorizontalAlignment.Stretch;
+        LogViewerPageControl.MinHeight = 0d;
+        LogViewerPageControl.VerticalAlignment = VerticalAlignment.Stretch;
+        LogViewerPageControl.HorizontalAlignment = HorizontalAlignment.Stretch;
     }
 
     private void ApplyIconOnlyNavigation(bool iconOnly)

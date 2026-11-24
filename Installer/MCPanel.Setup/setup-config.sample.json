@@ -20,6 +20,6 @@
   },
   "programFiles": [ "MCPanel.exe.config", "MCPanel.exe" ],
   "preservedTopLevelNames": [ "StoreData", "Maintenance" ],
-  "preservedAppSettingKeys": [ "Ai.Model" ],
+  "preservedAppSettingKeys": [ "Environment.Tomcat.PackageUrl" ],
   "urlMigrations": []
 }

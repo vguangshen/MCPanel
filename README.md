@@ -124,8 +124,6 @@ The published application reads environment package URLs from `MCPanel.exe.confi
 
 Values must be full `http://` or `https://` URLs. MCPanel validates every catalog entry at startup and reports the exact missing or invalid keys. The installer refuses to start with an incomplete executable configuration instead of silently choosing a different package. Customized values are preserved when the application updates; the complete built-in catalog remains available for tests and explicit compatibility loading.
 
-AI analysis uses the same `MCPanel.exe.config`: edit `Ai.Provider`, `Ai.Endpoint`, `Ai.Model`, and `Ai.ApiKey`. The API key is stored as plain text in this file because it is an administrator-managed deployment setting; keep the file access restricted.
-
 ## Run
 
 ```powershell

@@ -198,24 +198,6 @@ public sealed partial class ReliabilityTests
     }
 
     [TestMethod]
-    public void AiProviderSettingsReadConfiguredValues()
-    {
-        var values = new NameValueCollection
-        {
-            [AiProviderSettings.ProviderConfigKey] = "Local",
-            [AiProviderSettings.EndpointConfigKey] = "http://localhost:8080/v1/chat/completions",
-            [AiProviderSettings.ModelConfigKey] = "test-model",
-            [AiProviderSettings.ApiKeyConfigKey] = "test-key"
-        };
-
-        var settings = AiProviderSettings.FromAppSettings(values);
-        Assert.AreEqual("Local", settings.Provider);
-        Assert.AreEqual("http://localhost:8080/v1/chat/completions", settings.Endpoint);
-        Assert.AreEqual("test-model", settings.Model);
-        Assert.AreEqual("test-key", settings.ApiKey);
-    }
-
-    [TestMethod]
     public async Task FailedManualBindingRestoresPreviousRecordAndRemovesNewRecord()
     {
         var root = CreateTemporaryDirectory();

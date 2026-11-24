@@ -84,7 +84,7 @@ public sealed partial class ReliabilityTests
             loaded = EnvironmentDownloadSettings.Load(settings);
             Assert.AreEqual(custom, migration.Key == EnvironmentDownloadSettings.SqlServer2017ExpressKey
                 ? loaded.SqlServer2017ExpressUrl : loaded.SqlServer2022ExpressUrl);
-            Assert.AreEqual(migration.PreviousUrl, EnvironmentDownloadCatalog.NormalizeUrl("Ai.Model", migration.PreviousUrl));
+            Assert.AreEqual(migration.PreviousUrl, EnvironmentDownloadCatalog.NormalizeUrl("Unrelated.Setting", migration.PreviousUrl));
         }
     }
 

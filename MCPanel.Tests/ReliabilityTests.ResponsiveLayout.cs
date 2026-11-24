@@ -23,7 +23,7 @@ public sealed partial class ReliabilityTests
             {
                 window.Show();
                 var model = (MainViewModel)window.DataContext;
-                var ai = (AiAnalysisPage)window.FindName("AiAnalysisPageControl");
+                var logs = (LogViewerPage)window.FindName("LogViewerPageControl");
                 foreach (var width in new[] { 760d, 600d, 1280d })
                 {
                     window.Width = width;
@@ -42,14 +42,15 @@ public sealed partial class ReliabilityTests
                     var productSearch = (FrameworkElement)window.FindName("ProductsSearchHost");
                     Assert.AreEqual(width < 950d ? 1 : 0, Grid.GetRow(productSearch));
 
-                    ai.Visibility = Visibility.Visible;
+                    logs.Visibility = Visibility.Visible;
                     window.UpdateLayout();
-                    var aiScroll = (ScrollViewer)ai.FindName("AiPageScroll");
-                    var aiColumns = (Grid)ai.FindName("AiContentGrid");
-                    Assert.IsTrue(aiScroll.ExtentWidth <= aiScroll.ViewportWidth + 2d,
-                        $"{width} DIP 的 AI 页面出现横向溢出。");
-                    Assert.AreEqual(width < 1000d ? 0d : 1.08d, aiColumns.ColumnDefinitions[1].Width.Value, 0.1d);
-                    ai.Visibility = Visibility.Collapsed;
+                    var logScroll = (ScrollViewer)logs.FindName("LogPageScroll");
+                    var logActions = (FrameworkElement)logs.FindName("LogActions");
+                    Assert.IsTrue(logScroll.ExtentWidth <= logScroll.ViewportWidth + 2d,
+                        $"{width} DIP 的日志页面出现横向溢出。");
+                    Assert.AreEqual(logScroll.ActualWidth < 760d ? 1 : 0, Grid.GetRow(logActions),
+                        "窄屏时日志操作按钮应换到文件列表下方。");
+                    logs.Visibility = Visibility.Collapsed;
                 }
             }
             finally { window.Close(); }
@@ -184,13 +185,13 @@ public sealed partial class ReliabilityTests
 
                 var contentHost = (Grid)((FrameworkElement)window.FindName("PageFocusSentinel")).Parent;
                 var accountPage = (FrameworkElement)window.FindName("AccountApiPageControl");
-                var aiPage = (FrameworkElement)window.FindName("AiAnalysisPageControl");
+                var logPage = (FrameworkElement)window.FindName("LogViewerPageControl");
                 Assert.AreSame(contentHost, accountPage.Parent,
                     "账号 API 页面必须直接参与主内容区布局，不能再套强制滚动宿主。");
-                Assert.AreSame(contentHost, aiPage.Parent,
-                    "AI 分析页面必须直接参与主内容区布局，不能再套强制滚动宿主。");
+                Assert.AreSame(contentHost, logPage.Parent,
+                    "日志页面必须直接参与主内容区布局，不能再套强制滚动宿主。");
                 Assert.IsFalse(accountPage.Parent is ScrollViewer);
-                Assert.IsFalse(aiPage.Parent is ScrollViewer);
+                Assert.IsFalse(logPage.Parent is ScrollViewer);
             }
             catch (Exception ex)
             {
@@ -266,17 +267,17 @@ public sealed partial class ReliabilityTests
                     $"图标导航后环境页应获得足够横向空间；实际 {environmentPage.ActualWidth:N1}。");
                 Assert.AreEqual(6, environmentItems.Items.Count);
 
-                var aiNav = navItems.Children
+                var logNav = navItems.Children
                     .OfType<RadioButton>()
-                    .Single(button => string.Equals(button.CommandParameter as string, "AiAnalysis", StringComparison.Ordinal));
-                aiNav.IsChecked = true;
+                    .Single(button => string.Equals(button.CommandParameter as string, "Logs", StringComparison.Ordinal));
+                logNav.IsChecked = true;
                 window.UpdateLayout();
                 window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
                 window.UpdateLayout();
 
-                var aiPage = (FrameworkElement)window.FindName("AiAnalysisPageControl");
-                Assert.AreEqual(((Grid)pageSentinel.Parent).ActualHeight, aiPage.ActualHeight, 2d,
-                    "AI 分析页应直接填满主内容区高度，而不是使用大于视口的最小高度触发整页滚动。");
+                var logPage = (FrameworkElement)window.FindName("LogViewerPageControl");
+                Assert.AreEqual(((Grid)pageSentinel.Parent).ActualHeight, logPage.ActualHeight, 2d,
+                    "日志页应直接填满主内容区高度，而不是使用大于视口的最小高度触发整页滚动。");
             }
             catch (Exception ex)
             {
@@ -374,16 +375,16 @@ public sealed partial class ReliabilityTests
         Assert.IsFalse(responsiveSource.Contains("viewportWidth / ResponsiveWindowSizing.MainDesignWidth"),
             "主窗口不应再计算整棵视觉树的缩放比例。");
         Assert.IsFalse(responsiveSource.Contains("WrapEmbeddedPage"),
-            "账号 API 与 AI 分析页不能再被额外 ScrollViewer 包裹。");
+            "账号 API 与日志页不能再被额外 ScrollViewer 包裹。");
 
         var densitySource = ReadRepositoryFile("MainWindow.ResponsivePageDensity.cs");
         StringAssert.Contains(densitySource, "IconOnlyNavigationBreakpoint");
         StringAssert.Contains(densitySource, "ResponsiveDensity.SetIsCompact(this, compactPageDensity)");
         Assert.IsFalse(densitySource.Contains("FindFirstVisualChild"), "页面密度应由 XAML 声明，不能再在视觉树里按尺寸查找控件。");
 
-        var aiPage = ReadRepositoryFile("AiAnalysisPage.xaml");
-        Assert.IsFalse(aiPage.Contains("MinHeight=\"620\""),
-            "AI 分析页不能再通过固定 620 高度强制整页滚动。");
+        var logPageXaml = ReadRepositoryFile("LogViewerPage.xaml");
+        Assert.IsFalse(logPageXaml.Contains("MinHeight=\"620\""),
+            "日志页不能再通过固定 620 高度强制整页滚动。");
 
         var templates = ReadRepositoryFile("Resources/MainWindowTemplates.xaml");
         var viewboxCount = templates.Split(new[] { "<Viewbox" }, StringSplitOptions.None).Length - 1;
