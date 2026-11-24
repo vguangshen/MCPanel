@@ -530,7 +530,7 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
     {
         if (((FrameworkElement)sender).DataContext is InstalledProductItem item && Directory.Exists(item.InstallPath))
         {
-            Process.Start(new ProcessStartInfo("explorer.exe", $"\"{item.InstallPath}\"") { UseShellExecute = true });
+            ShellOpen.Folder(item.InstallPath);
         }
     }
 
@@ -539,7 +539,10 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
         if (((FrameworkElement)sender).DataContext is InstalledProductItem item &&
             !string.IsNullOrWhiteSpace(item.Url))
         {
-            Process.Start(new ProcessStartInfo(item.Url) { UseShellExecute = true });
+            if (!ShellOpen.TryUrl(item.Url))
+            {
+                MessageBox.Show("该地址不是 http 或 https 网址，已取消打开：" + item.Url, "打开网址", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
         }
     }
 
@@ -593,7 +596,7 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
             {
                 var logDirectory = _tomcatInstanceManager.GetLogDirectory(item.ProductId);
                 Directory.CreateDirectory(logDirectory);
-                Process.Start(new ProcessStartInfo("explorer.exe", $"\"{logDirectory}\"") { UseShellExecute = true });
+                ShellOpen.Folder(logDirectory);
                 item.RefreshRuntime();
                 return;
             }
@@ -628,7 +631,7 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
                 var directory = Directory.Exists(deploymentPath) ? deploymentPath : Path.GetDirectoryName(deploymentPath);
                 if (!string.IsNullOrWhiteSpace(directory) && Directory.Exists(directory))
                 {
-                    Process.Start(new ProcessStartInfo("explorer.exe", $"\"{directory}\"") { UseShellExecute = true });
+                    ShellOpen.Folder(directory);
                 }
             }
 
@@ -642,7 +645,7 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
             return;
         }
 
-        Process.Start(new ProcessStartInfo(inetMgr) { UseShellExecute = true });
+        ShellOpen.File(inetMgr);
     }
 
     internal async void InstalledProductRepair_Click(object sender, RoutedEventArgs e)
@@ -752,7 +755,10 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
     {
         if (((FrameworkElement)sender).DataContext is CustomWebsiteItem item)
         {
-            Process.Start(new ProcessStartInfo(item.Url) { UseShellExecute = true });
+            if (!ShellOpen.TryUrl(item.Url))
+            {
+                MessageBox.Show("该地址不是 http 或 https 网址，已取消打开：" + item.Url, "打开网址", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
         }
     }
 
@@ -760,7 +766,7 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
     {
         if (((FrameworkElement)sender).DataContext is CustomWebsiteItem item && Directory.Exists(item.PhysicalPath))
         {
-            Process.Start(new ProcessStartInfo("explorer.exe", $"\"{item.PhysicalPath}\"") { UseShellExecute = true });
+            ShellOpen.Folder(item.PhysicalPath);
         }
     }
 

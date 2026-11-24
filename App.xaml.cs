@@ -475,18 +475,8 @@ public partial class App : Application
 
     private static void WriteLifecycleError(string action, Exception exception)
     {
-        try
-        {
-            var workDirectory = ComponentPaths.WorkRoot;
-            Directory.CreateDirectory(workDirectory);
-            RollingLogWriter.Append(
-                Path.Combine(workDirectory, "application-lifecycle-error.log"),
-                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {action}{Environment.NewLine}{exception}{Environment.NewLine}{Environment.NewLine}");
-        }
-        catch
-        {
-            // Lifecycle diagnostics must never prevent tray startup or shutdown.
-        }
+        // Lifecycle diagnostics must never prevent tray startup or shutdown; PanelLog never throws.
+        PanelLog.Write(PanelLog.WorkLog("application-lifecycle-error.log"), action, exception);
     }
 
     [DllImport("user32.dll")]

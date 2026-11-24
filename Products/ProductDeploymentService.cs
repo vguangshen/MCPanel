@@ -37,8 +37,8 @@ public sealed partial class ProductDeploymentService
                 DeleteFileIfExists(stateFile);
                 if (state is not null)
                 {
-                    DeleteDirectoryIfExists(Path.Combine(ComponentPaths.RuntimeRoot, "TomcatInstances", PathUtil.SafeProductName(state.ProductId)));
-                    DeleteDirectoryIfExists(Path.Combine(ComponentPaths.LegacyRuntimeRoot, "TomcatInstances", PathUtil.SafeProductName(state.ProductId)));
+                    FileUtil.DeleteDirectory(Path.Combine(ComponentPaths.RuntimeRoot, "TomcatInstances", PathUtil.SafeProductName(state.ProductId)));
+                    FileUtil.DeleteDirectory(Path.Combine(ComponentPaths.LegacyRuntimeRoot, "TomcatInstances", PathUtil.SafeProductName(state.ProductId)));
                 }
             }
             catch (Exception error)
@@ -82,11 +82,7 @@ public sealed partial class ProductDeploymentService
             }
 
             File.Move(stateFile, quarantine);
-            Directory.CreateDirectory(ComponentPaths.WorkRoot);
-            RollingLogWriter.Append(
-                Path.Combine(ComponentPaths.WorkRoot, "deployment-state-recovery.log"),
-                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] 部署状态文件损坏，已隔离而不是删除：{stateFile} -> {quarantine}{Environment.NewLine}{error}{Environment.NewLine}{Environment.NewLine}",
-                Encoding.UTF8);
+            PanelLog.Write(PanelLog.WorkLog("deployment-state-recovery.log"), $"部署状态文件损坏，已隔离而不是删除：{stateFile} -> {quarantine}", error);
         }
         catch
         {
@@ -184,12 +180,12 @@ public sealed partial class ProductDeploymentService
     internal static ProductRuntimeKind DetectRuntime(ProductItem product, string packagePath)
     {
         var declaredRuntime = product.RunEnvironment?.Trim() ?? string.Empty;
-        if (ContainsAny(declaredRuntime, "tomcat", "java web", "jsp", "servlet"))
+        if (TextFiles.ContainsAny(declaredRuntime, "tomcat", "java web", "jsp", "servlet"))
         {
             return ProductRuntimeKind.Tomcat;
         }
 
-        if (ContainsAny(declaredRuntime, "iis", "asp", ".net", "framework"))
+        if (TextFiles.ContainsAny(declaredRuntime, "iis", "asp", ".net", "framework"))
         {
             return ProductRuntimeKind.Iis;
         }
@@ -208,12 +204,12 @@ public sealed partial class ProductDeploymentService
         }
 
         var language = product.DevLanguage?.Trim() ?? string.Empty;
-        if (ContainsAny(language, "java", "jsp"))
+        if (TextFiles.ContainsAny(language, "java", "jsp"))
         {
             return ProductRuntimeKind.Tomcat;
         }
 
-        if (ContainsAny(language, "c#", "visual basic", "vb.net", ".net"))
+        if (TextFiles.ContainsAny(language, "c#", "visual basic", "vb.net", ".net"))
         {
             return ProductRuntimeKind.Iis;
         }
@@ -253,9 +249,6 @@ public sealed partial class ProductDeploymentService
         }
     }
 
-    private static bool ContainsAny(string value, params string[] candidates) =>
-        candidates.Any(candidate => value.Contains(candidate, StringComparison.OrdinalIgnoreCase));
-
     private static ProductInstallTransaction PrepareProductFiles(ProductItem product, string packagePath, ProductRuntimeKind kind)
     {
         var installRoot = ProductInstallPathResolver.ResolveProductRoot(product.InstallRoot);
@@ -287,7 +280,7 @@ public sealed partial class ProductDeploymentService
             string stagedPreparedPath;
             if (Directory.Exists(packagePath))
             {
-                CopyDirectory(packagePath, stagingContent);
+                FileUtil.CopyDirectory(packagePath, stagingContent);
                 EnsureDirectoryContainsFiles(stagingContent);
                 stagedPreparedPath = NormalizeProductRoot(stagingContent);
             }
@@ -341,7 +334,7 @@ public sealed partial class ProductDeploymentService
         }
         catch
         {
-            DeleteDirectoryIfExists(stagingContainer);
+            FileUtil.DeleteDirectory(stagingContainer);
             throw;
         }
     }
@@ -486,7 +479,7 @@ public sealed partial class ProductDeploymentService
                 DeleteFileIfExists(GetTomcatContextFile(tomcatRoot, safeName));
                 if (!product.IsExternalPlatform)
                 {
-                    DeleteDirectoryIfExists(Path.Combine(tomcatRoot, "webapps", safeName));
+                    FileUtil.DeleteDirectory(Path.Combine(tomcatRoot, "webapps", safeName));
                     DeleteFileIfExists(Path.Combine(tomcatRoot, "webapps", $"{safeName}.war"));
                 }
                 await RemoveTomcatProductServiceAsync(tomcatRoot, safeName, cancellationToken);
@@ -497,7 +490,7 @@ public sealed partial class ProductDeploymentService
                 var appBase = tomcatState?.HostAppBase ?? tomcatService?.HostAppBase;
                 if (!product.IsExternalPlatform && !string.IsNullOrWhiteSpace(appBase) && IsSafeTomcatAppBase(appBase!))
                 {
-                    DeleteDirectoryIfExists(Path.Combine(tomcatRoot, appBase));
+                    FileUtil.DeleteDirectory(Path.Combine(tomcatRoot, appBase));
                 }
             }
 

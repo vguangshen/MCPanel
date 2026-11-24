@@ -212,13 +212,7 @@ internal static class ComponentStorageMigration
                 return false;
             }
 
-            using var leftStream = new FileStream(left, FileMode.Open, FileAccess.Read, FileShare.Read);
-            using var rightStream = new FileStream(right, FileMode.Open, FileAccess.Read, FileShare.Read);
-            using var sha = SHA256.Create();
-            var leftHash = sha.ComputeHash(leftStream);
-            sha.Initialize();
-            var rightHash = sha.ComputeHash(rightStream);
-            return leftHash.SequenceEqual(rightHash);
+            return string.Equals(FileUtil.ComputeSha256(left), FileUtil.ComputeSha256(right), StringComparison.Ordinal);
         }
         catch (IOException)
         {
@@ -270,19 +264,8 @@ internal static class ComponentStorageMigration
 
     private static void WriteMigrationWarning(string applicationRoot, string name, string message, Exception? error)
     {
-        try
-        {
-            var workDirectory = Path.Combine(applicationRoot, "StoreData", "Work");
-            Directory.CreateDirectory(workDirectory);
-            var detail = error is null ? string.Empty : Environment.NewLine + error;
-            RollingLogWriter.Append(
-                Path.Combine(workDirectory, "storage-layout-migration.log"),
-                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {name}：{message}{detail}{Environment.NewLine}");
-        }
-        catch
-        {
-            // Migration diagnostics must never prevent application startup.
-        }
+        // Runs before ComponentPaths is usable for this root, so the folder is spelled out.
+        PanelLog.Write(Path.Combine(applicationRoot, "StoreData", "Work", "storage-layout-migration.log"), $"{name}：{message}", error);
     }
 
     private sealed class StorageMove

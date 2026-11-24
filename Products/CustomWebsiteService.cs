@@ -67,9 +67,7 @@ public sealed class CustomWebsiteService
         }
         catch (Exception error)
         {
-            RollingLogWriter.Append(
-                Path.Combine(WorkDirectory, "custom-website-state.log"),
-                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] 读取网站状态失败：{error}{Environment.NewLine}");
+            PanelLog.Write(Path.Combine(WorkDirectory, "custom-website-state.log"), "读取网站状态失败", error);
             if (throwOnError)
             {
                 throw new InvalidDataException(

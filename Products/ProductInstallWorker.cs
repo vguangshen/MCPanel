@@ -642,11 +642,7 @@ internal static class ProductInstallWorker
         try
         {
             var queueGroupRoot = Directory.GetParent(Path.GetFullPath(queueRoot))?.FullName ?? queueRoot;
-            using var sha = SHA256.Create();
-            var hash = BitConverter.ToString(
-                    sha.ComputeHash(Encoding.UTF8.GetBytes(queueGroupRoot)))
-                .Replace("-", string.Empty)
-                .ToLowerInvariant();
+            var hash = FileUtil.Sha256Hex(queueGroupRoot);
             mutex = new Mutex(false, $"Local\\MCPanel.ProductInstallQueue.{hash}");
             try
             {

@@ -97,7 +97,7 @@ internal static class EnvironmentOperationDiagnostics
 
         try
         {
-            var text = ReadTextBestEffort(logPath!);
+            var text = TextFiles.ReadTailBestEffort(logPath!);
             if (string.IsNullOrWhiteSpace(text))
             {
                 return string.Empty;
@@ -119,37 +119,4 @@ internal static class EnvironmentOperationDiagnostics
         }
     }
 
-    private static string ReadTextBestEffort(string path)
-    {
-        const int maximumBytes = 512 * 1024;
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        var offset = stream.Length > maximumBytes ? stream.Length - maximumBytes : 0;
-        stream.Seek(offset, SeekOrigin.Begin);
-        var buffer = new byte[(int)Math.Min(maximumBytes, stream.Length - offset)];
-        var read = 0;
-        while (read < buffer.Length)
-        {
-            var chunk = stream.Read(buffer, read, buffer.Length - read);
-            if (chunk <= 0) break;
-            read += chunk;
-        }
-
-        var bytes = read == buffer.Length ? buffer : buffer.Take(read).ToArray();
-        if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
-        {
-            return Encoding.UTF8.GetString(bytes);
-        }
-
-        if (bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE)
-        {
-            return Encoding.Unicode.GetString(bytes);
-        }
-
-        if (bytes.Length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF)
-        {
-            return Encoding.BigEndianUnicode.GetString(bytes);
-        }
-
-        return Encoding.UTF8.GetString(bytes);
-    }
 }

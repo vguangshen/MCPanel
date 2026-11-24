@@ -23,6 +23,25 @@ internal static class SystemProbe
         }
     }
 
+    /// <summary>True when the Service Control Manager knows a service by this name.</summary>
+    public static bool WindowsServiceExists(string serviceName)
+    {
+        try
+        {
+            return ProcessRunner.RunSynchronously(
+                "sc.exe",
+                $"query {Compat.QuoteCommandLineArgument(serviceName)}",
+                ComponentPaths.ApplicationRoot,
+                captureOutput: true,
+                timeout: TimeSpan.FromSeconds(3)).ExitCode == 0;
+        }
+        catch
+        {
+            // A probe: an unreachable SCM means "not known".
+            return false;
+        }
+    }
+
     /// <summary>
     /// Registry views to search, native first: 64-bit, 32-bit, then the
     /// process default. Each view is returned once.

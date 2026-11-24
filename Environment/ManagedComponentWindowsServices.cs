@@ -48,7 +48,11 @@ internal static class ManagedWindowsServiceController
         }
     }
 
-    public static bool IsRegisteredForRoot(string serviceName, string serviceArgument, string componentRoot)
+    /// <summary>
+    /// True when the service's image path points into <paramref name="componentRoot"/>
+    /// and, unless <paramref name="serviceArgument"/> is null, carries that host argument.
+    /// </summary>
+    public static bool IsRegisteredForRoot(string serviceName, string? serviceArgument, string componentRoot)
     {
         if (!IsInstalled(serviceName) || string.IsNullOrWhiteSpace(componentRoot))
         {
@@ -67,7 +71,7 @@ internal static class ManagedWindowsServiceController
             }
 
             var expanded = Environment.ExpandEnvironmentVariables(imagePath);
-            return expanded.Contains(serviceArgument, StringComparison.OrdinalIgnoreCase) &&
+            return (serviceArgument is null || expanded.Contains(serviceArgument, StringComparison.OrdinalIgnoreCase)) &&
                    ImagePathContainsRoot(expanded, expectedRoot);
         }
         catch
@@ -136,10 +140,15 @@ internal static class ManagedWindowsServiceController
         string executablePath,
         string serviceArgument,
         string componentRoot,
-        bool configureRecovery = true)
+        bool configureRecovery = true,
+        bool elevated = true,
+        bool ownershipRequiresServiceArgument = true)
     {
+        // An existing service counts as ours when its image path points into the root;
+        // older registrations (for example an nginx wrapper) may lack the host argument.
+        var ownership = ownershipRequiresServiceArgument ? serviceArgument : null;
         var imagePath = BuildServiceImagePath(executablePath, serviceArgument, componentRoot);
-        if (IsInstalled(serviceName) && !IsRegisteredForRoot(serviceName, serviceArgument, componentRoot))
+        if (IsInstalled(serviceName) && !IsRegisteredForRoot(serviceName, ownership, componentRoot))
         {
             throw new InvalidOperationException(
                 $"Windows 服务 {serviceName} 已存在，但未指向当前 MCPanel 组件目录，已停止操作以保护现有服务。");
@@ -157,32 +166,33 @@ internal static class ManagedWindowsServiceController
                 "DisplayName=",
                 displayName),
             $"{(operation == "create" ? "注册" : "更新")} {displayName} Windows 服务",
-            elevated: true);
+            elevated);
 
         RunScOrThrow(
             BuildScArguments("description", serviceName, description),
             $"写入 {displayName} Windows 服务说明",
-            elevated: true);
+            elevated);
         if (configureRecovery)
         {
-            ConfigureRecovery(serviceName, displayName);
+            ConfigureRecovery(serviceName, displayName, elevated);
         }
         else
         {
-            DisableRecovery(serviceName, displayName);
+            DisableRecovery(serviceName, displayName, elevated);
         }
     }
 
-    public static void ConfigureRecovery(string serviceName, string displayName)
+    /// <summary>SCM restarts the service host after 5 s, 15 s and 30 s; the counter resets daily.</summary>
+    public static void ConfigureRecovery(string serviceName, string displayName, bool elevated = true)
     {
-        RunScOrThrow(BuildRecoveryPolicyArguments(serviceName), $"配置 {displayName} Windows 服务自动恢复", elevated: true);
-        RunScOrThrow(BuildFailureFlagArguments(serviceName), $"启用 {displayName} Windows 服务失败恢复", elevated: true);
+        RunScOrThrow(BuildRecoveryPolicyArguments(serviceName), $"配置 {displayName} Windows 服务自动恢复", elevated);
+        RunScOrThrow(BuildFailureFlagArguments(serviceName), $"启用 {displayName} Windows 服务失败恢复", elevated);
     }
 
-    public static void DisableRecovery(string serviceName, string displayName)
+    public static void DisableRecovery(string serviceName, string displayName, bool elevated = true)
     {
-        RunScOrThrow(BuildDisableRecoveryPolicyArguments(serviceName), $"清除 {displayName} Windows 服务自动恢复", elevated: true);
-        RunScOrThrow(BuildFailureFlagArguments(serviceName, enabled: false), $"禁用 {displayName} Windows 服务失败恢复", elevated: true);
+        RunScOrThrow(BuildDisableRecoveryPolicyArguments(serviceName), $"清除 {displayName} Windows 服务自动恢复", elevated);
+        RunScOrThrow(BuildFailureFlagArguments(serviceName, enabled: false), $"禁用 {displayName} Windows 服务失败恢复", elevated);
     }
 
     internal static string BuildRecoveryPolicyArguments(string serviceName) =>
@@ -233,7 +243,7 @@ internal static class ManagedWindowsServiceController
             ThrowCommandFailure($"删除 {displayName} Windows 服务", result);
         }
     }
-    public static void Start(string serviceName, string displayName)
+    public static void Start(string serviceName, string displayName, bool elevated = true, TimeSpan? timeout = null)
     {
         if (!IsInstalled(serviceName))
         {
@@ -242,46 +252,51 @@ internal static class ManagedWindowsServiceController
 
         if (!IsRunning(serviceName))
         {
-            var result = RunSc(BuildScArguments("start", serviceName), elevated: true);
-            if (result.ExitCode != 0 && result.ExitCode != 1056)
+            var result = RunSc(BuildScArguments("start", serviceName), elevated);
+            if (result.ExitCode != 0 && !IsAlreadyRunning(result))
             {
                 ThrowCommandFailure($"启动 {displayName} Windows 服务", result);
             }
         }
 
-        WaitForStatus(serviceName, displayName, ServiceControllerStatus.Running, TimeSpan.FromSeconds(45));
+        WaitForStatus(serviceName, displayName, ServiceControllerStatus.Running, timeout ?? TimeSpan.FromSeconds(45));
     }
 
-    public static void Stop(string serviceName, string displayName)
+    public static void Stop(string serviceName, string displayName, bool elevated = true, TimeSpan? timeout = null)
     {
         if (!IsInstalled(serviceName) || !IsRunning(serviceName))
         {
             return;
         }
 
-        var result = RunSc(BuildScArguments("stop", serviceName), elevated: true);
-        if (result.ExitCode != 0 && result.ExitCode != 1062)
+        var result = RunSc(BuildScArguments("stop", serviceName), elevated);
+        if (result.ExitCode != 0 && !IsAlreadyStopped(result))
         {
             ThrowCommandFailure($"停止 {displayName} Windows 服务", result);
         }
 
-        WaitForStatus(serviceName, displayName, ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(45));
+        WaitForStatus(serviceName, displayName, ServiceControllerStatus.Stopped, timeout ?? TimeSpan.FromSeconds(45));
     }
 
-    public static void Delete(string serviceName, string displayName)
+    public static void Delete(string serviceName, string displayName, bool elevated = true, TimeSpan? timeout = null)
     {
         if (!IsInstalled(serviceName))
         {
             return;
         }
 
-        var result = RunSc(BuildScArguments("delete", serviceName), elevated: true);
-        if (result.ExitCode != 0 && result.ExitCode != 1060)
+        var result = RunSc(BuildScArguments("delete", serviceName), elevated);
+        if (result.ExitCode != 0 && !IsServiceMissing(result))
         {
             ThrowCommandFailure($"删除 {displayName} Windows 服务", result);
         }
 
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(25);
+        WaitUntilMissing(serviceName, displayName, timeout ?? TimeSpan.FromSeconds(25));
+    }
+
+    internal static void WaitUntilMissing(string serviceName, string displayName, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
         while (DateTime.UtcNow < deadline)
         {
             if (!IsInstalled(serviceName))
@@ -294,7 +309,13 @@ internal static class ManagedWindowsServiceController
         throw new TimeoutException($"{displayName} Windows 服务正在等待系统删除，请稍后重试。");
     }
 
-    private static void WaitForStatus(
+    /// <summary>True when sc.exe or the SCM refused the call for lack of rights.</summary>
+    public static bool IsAccessDenied(Exception exception) =>
+        exception is ServiceCommandException { ExitCode: 5 } ||
+        exception.Message.Contains("Access is denied", StringComparison.OrdinalIgnoreCase) ||
+        exception.Message.Contains("拒绝访问", StringComparison.Ordinal);
+
+    internal static void WaitForStatus(
         string serviceName,
         string displayName,
         ServiceControllerStatus expected,
@@ -352,11 +373,39 @@ internal static class ManagedWindowsServiceController
         var detail = string.Join(Environment.NewLine, new[] { result.Output, result.Error }
             .Where(text => !string.IsNullOrWhiteSpace(text)))
             .Trim();
-        throw new InvalidOperationException(
+        throw new ServiceCommandException(
+            result.ExitCode,
             string.IsNullOrWhiteSpace(detail)
                 ? $"{action}失败，sc.exe 退出码：{result.ExitCode}"
                 : $"{action}失败：{detail}");
     }
+
+    // Exit codes 1056 / 1062 / 1060, or the same condition in sc.exe's English or Chinese output.
+    private static bool IsAlreadyRunning(ScResult result) =>
+        result.ExitCode == 1056 || OutputContains(result, "already been started", "正在运行");
+
+    private static bool IsAlreadyStopped(ScResult result) =>
+        result.ExitCode == 1062 || OutputContains(result, "1062", "not started", "已停止");
+
+    private static bool IsServiceMissing(ScResult result) =>
+        result.ExitCode == 1060 || OutputContains(result, "1060", "does not exist");
+
+    private static bool OutputContains(ScResult result, params string[] markers) =>
+        markers.Any(marker =>
+            (result.Output ?? string.Empty).Contains(marker, StringComparison.OrdinalIgnoreCase) ||
+            (result.Error ?? string.Empty).Contains(marker, StringComparison.OrdinalIgnoreCase));
+}
+
+/// <summary>An sc.exe call that failed; <see cref="ExitCode"/> is sc.exe's exit code.</summary>
+internal sealed class ServiceCommandException : InvalidOperationException
+{
+    public ServiceCommandException(int exitCode, string message)
+        : base(message)
+    {
+        ExitCode = exitCode;
+    }
+
+    public int ExitCode { get; }
 }
 
 internal static class TomcatWindowsServiceManager
@@ -409,64 +458,20 @@ internal static class TomcatWindowsServiceHost
 {
     public const string ServiceArgument = "--tomcat-service";
 
-    public static bool IsServiceRequest(string[] args) =>
-        Array.Exists(args, argument => string.Equals(argument, ServiceArgument, StringComparison.OrdinalIgnoreCase));
+    public static bool IsServiceRequest(string[] args) => ServiceHostArguments.IsRequest(args, ServiceArgument);
 
-    public static int Run(string[] args)
-    {
-        if (!TryGetRoot(args, out var root))
-        {
-            return 2;
-        }
-
-        ServiceBase.Run(new TomcatWindowsService(root));
-        return 0;
-    }
-
-    private static bool TryGetRoot(string[] args, out string root)
-    {
-        root = string.Empty;
-        var index = Array.FindIndex(args, argument => string.Equals(argument, ServiceArgument, StringComparison.OrdinalIgnoreCase));
-        if (index < 0 || index + 1 >= args.Length || string.IsNullOrWhiteSpace(args[index + 1]))
-        {
-            return false;
-        }
-
-        root = Path.GetFullPath(args[index + 1]);
-        return Directory.Exists(root);
-    }
+    public static int Run(string[] args) =>
+        ServiceHostArguments.Run(args, ServiceArgument, root => new TomcatWindowsService(root));
 }
 
 internal static class FrpWindowsServiceHost
 {
     public const string ServiceArgument = "--frp-service";
 
-    public static bool IsServiceRequest(string[] args) =>
-        Array.Exists(args, argument => string.Equals(argument, ServiceArgument, StringComparison.OrdinalIgnoreCase));
+    public static bool IsServiceRequest(string[] args) => ServiceHostArguments.IsRequest(args, ServiceArgument);
 
-    public static int Run(string[] args)
-    {
-        if (!TryGetRoot(args, out var root))
-        {
-            return 2;
-        }
-
-        ServiceBase.Run(new FrpWindowsService(root));
-        return 0;
-    }
-
-    private static bool TryGetRoot(string[] args, out string root)
-    {
-        root = string.Empty;
-        var index = Array.FindIndex(args, argument => string.Equals(argument, ServiceArgument, StringComparison.OrdinalIgnoreCase));
-        if (index < 0 || index + 1 >= args.Length || string.IsNullOrWhiteSpace(args[index + 1]))
-        {
-            return false;
-        }
-
-        root = Path.GetFullPath(args[index + 1]);
-        return Directory.Exists(root);
-    }
+    public static int Run(string[] args) =>
+        ServiceHostArguments.Run(args, ServiceArgument, root => new FrpWindowsService(root));
 }
 
 internal sealed class TomcatWindowsService : ServiceBase
@@ -613,32 +618,13 @@ internal sealed class TomcatWindowsService : ServiceBase
         }
     }
 
-    private void WriteServiceLog(string message)
-    {
-        try
-        {
-            var path = GetServiceLogPath(_tomcatRoot);
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            RollingLogWriter.Append(path, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}", Encoding.UTF8);
-        }
-        catch
-        {
-        }
-    }
+    private void WriteServiceLog(string message) => PanelLog.Write(GetServiceLogPath(_tomcatRoot), message);
 }
 
 internal sealed class FrpWindowsService : ServiceBase
 {
-    internal const int MaxRecoveriesPerWindow = 5;
-    internal static readonly TimeSpan RecoveryWindow = TimeSpan.FromMinutes(10);
-    private static readonly TimeSpan[] RecoveryDelays =
-    [
-        TimeSpan.FromSeconds(1),
-        TimeSpan.FromSeconds(3),
-        TimeSpan.FromSeconds(10),
-        TimeSpan.FromSeconds(30),
-        TimeSpan.FromSeconds(60)
-    ];
+    internal const int MaxRecoveriesPerWindow = WatchdogRecoveryBudget.MaxRecoveriesPerWindow;
+    internal static readonly TimeSpan RecoveryWindow = WatchdogRecoveryBudget.Window;
 
     private readonly string _applicationRoot;
     private readonly object _processGate = new();
@@ -660,9 +646,8 @@ internal sealed class FrpWindowsService : ServiceBase
     private string FrpcPath => Path.Combine(WorkRoot, "frpc.exe");
     private string ConfigPath => Path.Combine(WorkRoot, "frpc.toml");
     internal static string GetServiceLogPath(string applicationRoot) => Path.Combine(applicationRoot, EnvironmentComponentCatalog.FrpDirectoryName, "frp-service.log");
-    internal static TimeSpan GetRecoveryDelay(int previousAttempts) =>
-        RecoveryDelays[Math.Min(Math.Max(previousAttempts, 0), RecoveryDelays.Length - 1)];
-    internal static bool ShouldEscalate(int attemptsInWindow) => attemptsInWindow >= MaxRecoveriesPerWindow;
+    internal static TimeSpan GetRecoveryDelay(int previousAttempts) => WatchdogRecoveryBudget.GetDelay(previousAttempts);
+    internal static bool ShouldEscalate(int attemptsInWindow) => WatchdogRecoveryBudget.ShouldEscalate(attemptsInWindow);
 
     protected override void OnStart(string[] args)
     {
@@ -696,7 +681,7 @@ internal sealed class FrpWindowsService : ServiceBase
 
     private void WatchdogLoop(CancellationToken cancellationToken)
     {
-        var recoveryHistory = new Queue<DateTime>();
+        var budget = new WatchdogRecoveryBudget();
         while (!cancellationToken.WaitHandle.WaitOne(TimeSpan.FromSeconds(2)))
         {
             if (IsChildRunning())
@@ -705,12 +690,8 @@ internal sealed class FrpWindowsService : ServiceBase
             }
 
             var now = DateTime.UtcNow;
-            while (recoveryHistory.Count > 0 && now - recoveryHistory.Peek() > RecoveryWindow)
-            {
-                recoveryHistory.Dequeue();
-            }
-
-            if (ShouldEscalate(recoveryHistory.Count))
+            var attempts = budget.AttemptsInWindow(now);
+            if (ShouldEscalate(attempts))
             {
                 WriteServiceLog("FRP repeatedly exited; escalating to SCM recovery.");
                 ExitCode = 1;
@@ -718,8 +699,8 @@ internal sealed class FrpWindowsService : ServiceBase
                 return;
             }
 
-            var delay = GetRecoveryDelay(recoveryHistory.Count);
-            recoveryHistory.Enqueue(now);
+            var delay = GetRecoveryDelay(attempts);
+            budget.Record(now);
             WriteServiceLog($"FRP child exited; recovery in {delay.TotalSeconds:0}s.");
             if (cancellationToken.WaitHandle.WaitOne(delay))
             {
@@ -906,16 +887,5 @@ internal sealed class FrpWindowsService : ServiceBase
         }
     }
 
-    private void WriteServiceLog(string message)
-    {
-        try
-        {
-            var path = GetServiceLogPath(_applicationRoot);
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            RollingLogWriter.Append(path, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}", Encoding.UTF8);
-        }
-        catch
-        {
-        }
-    }
+    private void WriteServiceLog(string message) => PanelLog.Write(GetServiceLogPath(_applicationRoot), message);
 }

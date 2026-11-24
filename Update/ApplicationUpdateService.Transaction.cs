@@ -61,7 +61,7 @@ public sealed partial class ApplicationUpdateService
         if ((firstAttributes & FileAttributes.Directory) != (secondAttributes & FileAttributes.Directory)) return false;
         if ((firstAttributes & FileAttributes.Directory) == 0)
             return new FileInfo(first).Length == new FileInfo(second).Length &&
-                string.Equals(ComputeSha256(first), ComputeSha256(second), StringComparison.OrdinalIgnoreCase);
+                string.Equals(FileUtil.ComputeSha256(first), FileUtil.ComputeSha256(second), StringComparison.OrdinalIgnoreCase);
         var firstChildren = Directory.GetFileSystemEntries(first);
         var secondChildren = Directory.GetFileSystemEntries(second);
         return firstChildren.Length == secondChildren.Length && firstChildren.All(child =>

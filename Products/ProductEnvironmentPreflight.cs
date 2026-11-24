@@ -25,8 +25,8 @@ internal static class ProductEnvironmentPreflight
     {
         var runtimeText = $"{product.RunEnvironment} {product.DevLanguage}";
         var databaseText = product.SqlEnvironment ?? string.Empty;
-        var isJava = ContainsAny(runtimeText, "tomcat", "java", "jsp", "servlet");
-        var isDotNet = ContainsAny(runtimeText, "iis", "asp", ".net", "c#", "vb.net", "visual basic", "framework");
+        var isJava = TextFiles.ContainsAny(runtimeText, "tomcat", "java", "jsp", "servlet");
+        var isDotNet = TextFiles.ContainsAny(runtimeText, "iis", "asp", ".net", "c#", "vb.net", "visual basic", "framework");
         var required = new List<EnvironmentKind>();
 
         if (isJava)
@@ -38,11 +38,11 @@ internal static class ProductEnvironmentPreflight
             required.Add(EnvironmentKind.Iis);
         }
 
-        if (ContainsAny(databaseText, "mysql", "maria"))
+        if (TextFiles.ContainsAny(databaseText, "mysql", "maria"))
         {
             required.Add(EnvironmentKind.MySql);
         }
-        else if (ContainsAny(databaseText, "sql server", "sqlserver", "mssql"))
+        else if (TextFiles.ContainsAny(databaseText, "sql server", "sqlserver", "mssql"))
         {
             required.Add(EnvironmentKind.SqlServer);
         }
@@ -73,6 +73,4 @@ internal static class ProductEnvironmentPreflight
         _ => kind.ToString()
     };
 
-    private static bool ContainsAny(string value, params string[] candidates) =>
-        candidates.Any(candidate => value.Contains(candidate, StringComparison.OrdinalIgnoreCase));
 }

@@ -249,7 +249,7 @@ public sealed class PanelSettingsService
         // Keep the original Windows Authentication behavior without -E. SSMS
         // 2008 through SSMS 22 use Windows Authentication when -U is omitted;
         // -E is rejected by current SSMS and -P was removed in SSMS 18.
-        return $"-nosplash -S {QuoteCommandLineArgument(serverTarget)}";
+        return $"-nosplash -S {Compat.QuoteCommandLineArgument(serverTarget)}";
     }
 
     internal static string BuildSsmsInstallArguments(SsmsReleaseDefinition release)
@@ -276,9 +276,6 @@ public sealed class PanelSettingsService
             "--path",
             Compat.QuoteCommandLineArgument($"cache={ComponentPaths.SsmsCacheRoot}"));
     }
-
-    private static string QuoteCommandLineArgument(string value) =>
-        $"\"{value.Replace("\"", "\\\"", StringComparison.Ordinal)}\"";
 
     public async Task InstallSqlManagementStudioAsync(
         Action<InstallProgress>? progress = null,
@@ -373,12 +370,7 @@ public sealed class PanelSettingsService
 
     private static void OpenDirectory(string path)
     {
-        Directory.CreateDirectory(path);
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = path,
-            UseShellExecute = true
-        });
+        ShellOpen.Folder(path, create: true);
     }
 
     private string? FindNavicatPath()

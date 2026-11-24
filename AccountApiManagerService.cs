@@ -433,25 +433,13 @@ public sealed class AccountApiManagerService : IDisposable
 
     public void OpenRuntimeDirectory()
     {
-        Directory.CreateDirectory(AccountApiStorage.RootPath);
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = "explorer.exe",
-            Arguments = QuoteArgument(AccountApiStorage.RootPath),
-            UseShellExecute = true
-        });
+        ShellOpen.Folder(AccountApiStorage.RootPath, create: true);
     }
 
     public void OpenLogDirectory()
     {
         var configuration = RequireConfiguration();
-        Directory.CreateDirectory(configuration.LogDirectory);
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = "explorer.exe",
-            Arguments = QuoteArgument(configuration.LogDirectory),
-            UseShellExecute = true
-        });
+        ShellOpen.Folder(configuration.LogDirectory, create: true);
     }
 
     public void Dispose()
@@ -935,9 +923,6 @@ public sealed class AccountApiManagerService : IDisposable
 
     private static string JoinMessages(params string?[] messages) =>
         string.Join(Environment.NewLine, messages.Where(message => !string.IsNullOrWhiteSpace(message)));
-
-    private static string QuoteArgument(string value) =>
-        "\"" + value.Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
 
     private void ThrowIfDisposed()
     {

@@ -339,14 +339,7 @@ internal static class ProductConfigurationService
 
     private static void WriteRefreshLog(string productId, string file, Exception exception)
     {
-        try
-        {
-            var directory = ComponentPaths.WorkRoot;
-            RollingLogWriter.Append(Path.Combine(directory, "product-config-refresh.log"),
-                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {productId} / {file}{Environment.NewLine}{exception}{Environment.NewLine}{Environment.NewLine}",
-                Encoding.UTF8);
-        }
-        catch { }
+        PanelLog.Write(PanelLog.WorkLog("product-config-refresh.log"), $"{productId} / {file}", exception);
     }
 
     private static bool PathHasDirectory(string path, string name) =>

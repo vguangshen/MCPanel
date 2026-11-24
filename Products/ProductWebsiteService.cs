@@ -304,9 +304,7 @@ internal sealed class ProductWebsiteService
 
     private static string FileHash(string path)
     {
-        using var sha = SHA256.Create();
-        using var stream = File.OpenRead(path);
-        return BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", string.Empty).Substring(0, 16).ToLowerInvariant();
+        return FileUtil.ComputeSha256(path).Substring(0, 16);
     }
 
     private static void CopyIfDifferent(string source, string target)

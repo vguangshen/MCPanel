@@ -213,7 +213,7 @@ internal sealed class SvnProductTransferService
             }
             else
             {
-                DeleteDirectory(installedDirectory);
+                FileUtil.DeleteDirectory(installedDirectory);
                 RestoreLegacyInstallation(legacyBackup, installedDirectory);
             }
 
@@ -267,7 +267,7 @@ internal sealed class SvnProductTransferService
         {
             if (Path.GetFileName(backup).StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
             {
-                DeleteDirectory(backup);
+                FileUtil.DeleteDirectory(backup);
             }
         }
     }
@@ -752,21 +752,6 @@ internal sealed class SvnProductTransferService
         uri.AbsoluteUri.EndsWith("/", StringComparison.Ordinal)
             ? uri
             : new Uri(uri.AbsoluteUri + "/", UriKind.Absolute);
-
-    private static void DeleteDirectory(string path)
-    {
-        if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
-        {
-            return;
-        }
-
-        foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
-        {
-            File.SetAttributes(file, FileAttributes.Normal);
-        }
-
-        Directory.Delete(path, recursive: true);
-    }
 
     private sealed class NativeWindowHandle : WinFormsWindow
     {

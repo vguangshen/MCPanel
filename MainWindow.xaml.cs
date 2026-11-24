@@ -236,17 +236,7 @@ public partial class MainWindow : Window
 
     private static void WriteRuntimeRefreshError(Exception exception)
     {
-        try
-        {
-            var workDirectory = ComponentPaths.WorkRoot;
-            RollingLogWriter.Append(
-                Path.Combine(workDirectory, "runtime-refresh-error.log"),
-                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}]{Environment.NewLine}{exception}{Environment.NewLine}");
-        }
-        catch
-        {
-            // A monitoring failure must never terminate the panel.
-        }
+        PanelLog.Write(PanelLog.WorkLog("runtime-refresh-error.log"), "运行状态刷新失败", exception);
     }
 
     private void SystemEvents_UserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)

@@ -888,42 +888,42 @@ public sealed class ProductItem(string productId, string name, string level, str
     private static string Classify(string productName, string productLevel)
     {
         var text = $"{productName} {productLevel}";
-        if (ContainsAny(text, "考务", "考试", "考核", "认证"))
+        if (TextFiles.ContainsAny(text, "考务", "考试", "考核", "认证"))
         {
             return "考试考务";
         }
 
-        if (ContainsAny(text, "评价", "评测", "测评"))
+        if (TextFiles.ContainsAny(text, "评价", "评测", "测评"))
         {
             return "评价系统";
         }
 
-        if (ContainsAny(text, "实训", "训练", "实操", "练习"))
+        if (TextFiles.ContainsAny(text, "实训", "训练", "实操", "练习"))
         {
             return "实训系统";
         }
 
-        if (ContainsAny(text, "课程", "教学", "课堂", "云课", "资源平台"))
+        if (TextFiles.ContainsAny(text, "课程", "教学", "课堂", "云课", "资源平台"))
         {
             return "教学平台";
         }
 
-        if (ContainsAny(text, "网店", "电商", "跨境", "商品", "营销", "运营"))
+        if (TextFiles.ContainsAny(text, "网店", "电商", "跨境", "商品", "营销", "运营"))
         {
             return "电商运营";
         }
 
-        if (ContainsAny(text, "财务", "会计", "财会", "税务"))
+        if (TextFiles.ContainsAny(text, "财务", "会计", "财会", "税务"))
         {
             return "财会管理";
         }
 
-        if (ContainsAny(text, "物流", "供应链", "仓储"))
+        if (TextFiles.ContainsAny(text, "物流", "供应链", "仓储"))
         {
             return "物流供应链";
         }
 
-        if (ContainsAny(text, "大数据", "人工智能", "云计算", "软件开发", "程序设计", "网络技术"))
+        if (TextFiles.ContainsAny(text, "大数据", "人工智能", "云计算", "软件开发", "程序设计", "网络技术"))
         {
             return "数字技术";
         }
@@ -944,8 +944,6 @@ public sealed class ProductItem(string productId, string name, string level, str
         return productName;
     }
 
-    private static bool ContainsAny(string text, params string[] keywords) =>
-        keywords.Any(keyword => text.Contains(keyword, StringComparison.OrdinalIgnoreCase));
 }
 public sealed class DriveItem : ObservableObject
 {

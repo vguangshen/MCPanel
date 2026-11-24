@@ -62,18 +62,7 @@ internal static class TomcatProductStartupManager
 
     internal static void WriteLog(string message, Exception? exception)
     {
-        try
-        {
-            var directory = ComponentPaths.WorkRoot;
-            var detail = exception is null ? string.Empty : $"{Environment.NewLine}{exception}";
-            RollingLogWriter.Append(
-                Path.Combine(directory, "tomcat-autostart.log"),
-                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}{detail}{Environment.NewLine}{Environment.NewLine}",
-                Encoding.UTF8);
-        }
-        catch
-        {
-            // Startup migration diagnostics must never break Windows logon.
-        }
+        // Startup migration diagnostics must never break Windows logon; PanelLog never throws.
+        PanelLog.Write(PanelLog.WorkLog("tomcat-autostart.log"), message, exception);
     }
 }

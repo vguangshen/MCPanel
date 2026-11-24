@@ -461,18 +461,7 @@ public static class NginxProductProxyService
 
     private static void WriteSyncLog(string message, Exception? exception)
     {
-        try
-        {
-            var workDirectory = ComponentPaths.WorkRoot;
-            var detail = exception is null ? string.Empty : $"{Environment.NewLine}{exception}";
-            RollingLogWriter.Append(
-                Path.Combine(workDirectory, "nginx-product-sync.log"),
-                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}{detail}{Environment.NewLine}{Environment.NewLine}",
-                Encoding.UTF8);
-        }
-        catch
-        {
-            // A proxy-sync diagnostic must never interrupt product installation.
-        }
+        // A proxy-sync diagnostic must never interrupt product installation; PanelLog never throws.
+        PanelLog.Write(PanelLog.WorkLog("nginx-product-sync.log"), message, exception);
     }
 }

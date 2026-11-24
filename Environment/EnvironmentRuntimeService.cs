@@ -646,51 +646,7 @@ public sealed partial class EnvironmentRuntimeService
             throw new InvalidOperationException("卸载目录不在 MCPanel Tomcat 组件目录下，已取消删除。");
         }
 
-        if (Directory.Exists(full))
-        {
-            ClearDirectoryAttributes(full);
-            for (var attempt = 0; attempt < 3; attempt++)
-            {
-                try
-                {
-                    Directory.Delete(full, recursive: true);
-                    return;
-                }
-                catch (IOException) when (attempt < 2)
-                {
-                    Thread.Sleep(100);
-                }
-                catch (UnauthorizedAccessException) when (attempt < 2)
-                {
-                    ClearDirectoryAttributes(full);
-                    Thread.Sleep(100);
-                }
-            }
-
-            Directory.Delete(full, recursive: true);
-        }
-    }
-
-    private static void ClearDirectoryAttributes(string path)
-    {
-        try
-        {
-            foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
-            {
-                try { File.SetAttributes(file, FileAttributes.Normal); } catch { }
-            }
-
-            foreach (var directory in Directory.EnumerateDirectories(path, "*", SearchOption.AllDirectories))
-            {
-                try { File.SetAttributes(directory, FileAttributes.Normal); } catch { }
-            }
-
-            File.SetAttributes(path, FileAttributes.Normal);
-        }
-        catch
-        {
-            // Directory.Delete below supplies the actionable final error.
-        }
+        FileUtil.DeleteDirectory(full);
     }
 
     private static string ReadTextFileBestEffort(string path)

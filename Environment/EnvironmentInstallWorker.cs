@@ -266,7 +266,7 @@ internal static class EnvironmentInstallWorker
 
     private static bool HasStaleSqlServerDefaultInstanceRegistration()
     {
-        if (WindowsServiceExists("MSSQLSERVER"))
+        if (SystemProbe.WindowsServiceExists("MSSQLSERVER"))
         {
             return false;
         }
@@ -298,23 +298,6 @@ internal static class EnvironmentInstallWorker
             yield return RegistryView.Registry64;
         }
         yield return RegistryView.Registry32;
-    }
-
-    private static bool WindowsServiceExists(string serviceName)
-    {
-        try
-        {
-            return ProcessRunner.RunSynchronously(
-                "sc.exe",
-                $"query {Compat.QuoteCommandLineArgument(serviceName)}",
-                ComponentPaths.ApplicationRoot,
-                captureOutput: true,
-                timeout: TimeSpan.FromSeconds(3)).ExitCode == 0;
-        }
-        catch
-        {
-            return false;
-        }
     }
 
     private static void EnsureSqlServerWindowsLogin(string windowsUser)
