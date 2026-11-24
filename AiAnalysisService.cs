@@ -166,7 +166,7 @@ public sealed class AiAnalysisService
             request,
             HttpCompletionOption.ResponseHeadersRead,
             cancellationToken);
-        var responseText = await ReadResponseTextAsync(response.Content, cancellationToken);
+        var responseText = await HttpUtil.ReadBoundedTextAsync(response.Content, MaxResponseBytes, "AI 服务返回内容过大，已停止读取以避免占用过多内存。", cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             throw new InvalidOperationException(
@@ -200,49 +200,4 @@ public sealed class AiAnalysisService
         return trimmed.Length <= 800 ? trimmed : $"{trimmed.Substring(0, 800)}...";
     }
 
-    private static async Task<string> ReadResponseTextAsync(
-        HttpContent content,
-        CancellationToken cancellationToken)
-    {
-        if (content.Headers.ContentLength is long length && length > MaxResponseBytes)
-        {
-            throw new InvalidDataException("AI 服务返回内容过大，已停止读取以避免占用过多内存。");
-        }
-
-        using var stream = await content.ReadAsStreamAsync();
-        using var buffer = new MemoryStream();
-        var chunk = new byte[81920];
-        while (true)
-        {
-            var read = await stream.ReadAsync(chunk, 0, chunk.Length, cancellationToken);
-            if (read == 0)
-            {
-                break;
-            }
-
-            if (buffer.Length + read > MaxResponseBytes)
-            {
-                throw new InvalidDataException("AI 服务返回内容过大，已停止读取以避免占用过多内存。");
-            }
-
-            buffer.Write(chunk, 0, read);
-        }
-
-        var encoding = Encoding.UTF8;
-        var charset = content.Headers.ContentType?.CharSet?.Trim('"');
-        if (!string.IsNullOrWhiteSpace(charset))
-        {
-            try
-            {
-                encoding = Encoding.GetEncoding(charset);
-            }
-            catch (ArgumentException)
-            {
-                // Most compatible Chat Completions services return UTF-8; fall back
-                // gracefully when a provider sends an unknown charset label.
-            }
-        }
-
-        return encoding.GetString(buffer.ToArray());
-    }
 }

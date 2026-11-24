@@ -47,7 +47,7 @@ public sealed partial class EnvironmentRuntimeService
         foreach (var port in portsToCheck)
         {
             var ownedByRunningNginx = isRunning && currentPorts.Contains(port);
-            if (!ownedByRunningNginx && !NginxRuntimeManager.IsPortAvailable(port))
+            if (!ownedByRunningNginx && !SystemProbe.IsPortAvailable(port))
             {
                 throw new InvalidOperationException($"端口 {port} 已被占用，请换一个监听端口。");
             }
@@ -172,7 +172,7 @@ public sealed partial class EnvironmentRuntimeService
         var nginxExe = RequireNginxExe();
         var nginxRoot = Path.GetDirectoryName(nginxExe)!;
 
-        var nginxIsRunning = IsNginxProcessOrServiceRunning(nginxRoot);
+        var nginxIsRunning = NginxConfigurator.IsProcessOrServiceRunning(nginxRoot);
         if (NginxWindowsServiceManager.IsInstalled())
         {
             if (!NginxWindowsServiceManager.IsRegisteredForRoot(nginxRoot))
@@ -258,7 +258,14 @@ public sealed partial class EnvironmentRuntimeService
         NginxConfigurationCoordinator.RunAsync(async () =>
         {
             var transaction = CaptureNginxTransaction(nginxRoot);
-            try { return await ConfigureAndTestNginxCoreAsync(nginxExe, nginxRoot, cancellationToken); }
+            try
+            {
+                return await NginxConfigurator.ConfigureAndTestAsync(
+                    nginxRoot,
+                    token => RunFileAsync(nginxExe, "-t", nginxRoot, false, token),
+                    NginxSavedRulesPolicy.Start,
+                    cancellationToken);
+            }
             catch (Exception error)
             {
                 try { transaction.Rollback(); }
@@ -266,61 +273,6 @@ public sealed partial class EnvironmentRuntimeService
                 throw;
             }
         }, cancellationToken);
-
-    private static async Task<int> ConfigureAndTestNginxCoreAsync(string nginxExe, string nginxRoot, CancellationToken cancellationToken)
-    {
-        var savedOptions = NginxRuntimeManager.LoadOptions();
-        if (savedOptions is { Rules.Count: > 0 })
-        {
-            var normalized = NginxRuntimeManager.NormalizeOptions(savedOptions);
-
-            try
-            {
-                NginxRuntimeManager.CleanConfigFiles(nginxRoot);
-                NginxRuntimeManager.WriteManagedConfig(nginxRoot, normalized);
-                await RunFileAsync(nginxExe, "-t", nginxRoot, false, cancellationToken);
-                NginxRuntimeManager.SaveOptions(normalized);
-                return normalized.ListenPort;
-            }
-            catch (Exception ex) when (NginxRuntimeManager.IsPortBindFailure(ex.Message))
-            {
-                var ports = string.Join("、", normalized.EnabledRules.Select(rule => rule.ListenPort).Distinct().OrderBy(port => port));
-                throw new InvalidOperationException($"Nginx 监听端口被占用，请在“管理”中调整端口后再启动。当前端口：{ports}。", ex);
-            }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException($"Nginx 配置校验失败：{ex.Message}", ex);
-            }
-        }
-
-        Exception? lastError = null;
-        foreach (var port in NginxRuntimeManager.BuildPortCandidates())
-        {
-            if (!NginxRuntimeManager.IsPortAvailable(port))
-            {
-                continue;
-            }
-
-            try
-            {
-                NginxRuntimeManager.CleanConfigFiles(nginxRoot);
-                NginxRuntimeManager.WriteListenPort(nginxRoot, port);
-                await RunFileAsync(nginxExe, "-t", nginxRoot, false, cancellationToken);
-                NginxRuntimeManager.SaveOptions(port);
-                return port;
-            }
-            catch (Exception ex) when (NginxRuntimeManager.IsPortBindFailure(ex.Message))
-            {
-                lastError = ex;
-            }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException($"Nginx 配置校验失败：{ex.Message}", ex);
-            }
-        }
-
-        throw new InvalidOperationException("Nginx 无法找到可用监听端口。请检查 72、80、8088、8080、8090、8099、18080 是否被占用。", lastError);
-    }
 
     private static EnvironmentRuntimeState GetNginxState(ComponentLocator locator)
     {
@@ -331,7 +283,7 @@ public sealed partial class EnvironmentRuntimeService
         }
 
         var nginxRoot = Path.GetDirectoryName(nginxExe)!;
-        var runtimePresent = IsNginxProcessOrServiceRunning(nginxRoot);
+        var runtimePresent = NginxConfigurator.IsProcessOrServiceRunning(nginxRoot);
         var portsHealthy = NginxRuntimeManager.AreConfiguredPortsListening(
             nginxRoot,
             out var configuredPorts,
@@ -354,13 +306,9 @@ public sealed partial class EnvironmentRuntimeService
 
     private static string RequireNginxExe() => FindNginxExe() ?? throw new FileNotFoundException("未找到 nginx.exe。");
 
-    private static bool IsNginxProcessOrServiceRunning(string nginxRoot) =>
-        NginxRuntimeManager.IsRunningUnderRoot(nginxRoot) ||
-        NginxWindowsServiceManager.IsRunningForRoot(nginxRoot);
-
     private static bool IsNginxOperational(string nginxRoot)
     {
-        if (!IsNginxProcessOrServiceRunning(nginxRoot))
+        if (!NginxConfigurator.IsProcessOrServiceRunning(nginxRoot))
         {
             return false;
         }

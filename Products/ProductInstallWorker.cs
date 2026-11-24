@@ -314,16 +314,12 @@ internal static class ProductInstallWorker
     internal static string CreateProgressFile(string directory, string queueId)
     {
         var path = Path.Combine(directory, $"{SafeFileName(queueId)}.progress.json");
-        AtomicFile.WriteAllText(
-            path,
-            JsonSerializer.Serialize(
-                new ProductInstallWorkerProgress(
-                    "waiting",
-                    0,
-                    "等待管理员安装会话启动。",
-                    InstallProgressStage.Preparing,
-                    0),
-                JsonOptions));
+        JsonStateFile.Write(path, new ProductInstallWorkerProgress(
+            "waiting",
+            0,
+            "等待管理员安装会话启动。",
+            InstallProgressStage.Preparing,
+            0));
         return path;
     }
 
@@ -339,41 +335,11 @@ internal static class ProductInstallWorker
         return Path.Combine(directory, $"{sequence:000000}-{SafeFileName(queueId)}{QueueRequestSuffix}");
     }
 
-    public static bool TryReadProgress(string path, out ProductInstallWorkerProgress progress)
-    {
-        try
-        {
-            if (!File.Exists(path))
-            {
-                progress = default!;
-                return false;
-            }
+    public static bool TryReadProgress(string path, out ProductInstallWorkerProgress progress) =>
+        JsonStateFile.TryRead(path, out progress);
 
-            progress = JsonSerializer.Deserialize<ProductInstallWorkerProgress>(
-                File.ReadAllText(path, Encoding.UTF8),
-                JsonOptions)!;
-            return progress is not null;
-        }
-        catch
-        {
-            progress = default!;
-            return false;
-        }
-    }
-
-    public static void DeleteSessionFile(string path)
-    {
-        try
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-        catch
-        {
-        }
-    }
+    public static void DeleteSessionFile(string path) =>
+        PathUtil.TryDeleteFile(path);
 
     internal static void DeleteQueueEnvelopeFiles(string requestPath)
     {
@@ -775,8 +741,7 @@ internal static class ProductInstallWorker
     {
         private readonly string _path;
         private readonly object _sync = new();
-        private DateTime _lastWriteUtc = DateTime.MinValue;
-        private string _lastMessage = string.Empty;
+        private readonly ProgressWriteThrottle _throttle = new(TimeSpan.FromMilliseconds(150));
         private InstallProgressStage _stage = InstallProgressStage.Preparing;
         private double? _stagePercent;
         private string? _speedText;
@@ -853,15 +818,11 @@ internal static class ProductInstallWorker
         {
             lock (_sync)
             {
-                var now = DateTime.UtcNow;
-                if (!force && now - _lastWriteUtc < TimeSpan.FromMilliseconds(150) &&
-                    string.Equals(_lastMessage, message, StringComparison.Ordinal))
+                if (!_throttle.ShouldWrite(message, force))
                 {
                     return;
                 }
 
-                _lastWriteUtc = now;
-                _lastMessage = message;
                 _stage = stage ?? _stage;
                 _stagePercent = stagePercent ?? _stagePercent;
                 _speedText = speedText ?? _speedText;
@@ -879,25 +840,23 @@ internal static class ProductInstallWorker
 
                 try
                 {
-                    AtomicFile.WriteAllText(
+                    JsonStateFile.Write(
                         _path,
-                        JsonSerializer.Serialize(
-                            new ProductInstallWorkerProgress(
-                                state,
-                                Compat.Clamp(percent, 0, 100),
-                                message,
-                                _stage,
-                                _stagePercent,
-                                _speedText,
-                                _bytesReceived,
-                                _totalBytes,
-                                logPath,
-                                resultPath,
-                                resultMessage,
-                                _scannedFiles,
-                                _scannedBytes,
-                                _hasReliableTotal),
-                            JsonOptions));
+                        new ProductInstallWorkerProgress(
+                            state,
+                            Compat.Clamp(percent, 0, 100),
+                            message,
+                            _stage,
+                            _stagePercent,
+                            _speedText,
+                            _bytesReceived,
+                            _totalBytes,
+                            logPath,
+                            resultPath,
+                            resultMessage,
+                            _scannedFiles,
+                            _scannedBytes,
+                            _hasReliableTotal));
                 }
                 catch
                 {

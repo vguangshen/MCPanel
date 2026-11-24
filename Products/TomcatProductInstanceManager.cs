@@ -77,7 +77,7 @@ public sealed class TomcatProductInstanceManager
         }
 
         var port = deployment.Port;
-        var portListening = IsTcpPortListening(port);
+        var portListening = SystemProbe.IsTcpPortListening(port);
         var tomcatHome = FindTomcatRoot();
         var instanceRoot = GetInstanceRoot(productId);
         var instanceProcessIds = Directory.Exists(instanceRoot)
@@ -151,7 +151,7 @@ public sealed class TomcatProductInstanceManager
             info = ProductDeploymentService.LoadTomcatDeploymentInfo(productId) ?? info;
             var instanceRoot = await PrepareInstanceAsync(tomcatHome, info, cancellationToken);
 
-            if (await IsJavaProcessForBaseAsync(instanceRoot, cancellationToken) && IsTcpPortListening(info.Port))
+            if (await IsJavaProcessForBaseAsync(instanceRoot, cancellationToken) && SystemProbe.IsTcpPortListening(info.Port))
             {
                 return $"{productId} 已在端口 {info.Port} 单独运行。";
             }
@@ -171,7 +171,7 @@ public sealed class TomcatProductInstanceManager
             // debug instances and must remain untouched.
             await StopCatalinaBaseAsync(tomcatHome, cancellationToken, Array.Empty<int>());
             await StopInstanceAsync(tomcatHome, instanceRoot, info.Port, cancellationToken, throwOnFailure: true);
-            if (IsTcpPortListening(info.Port))
+            if (SystemProbe.IsTcpPortListening(info.Port))
             {
                 throw new InvalidOperationException($"端口 {info.Port} 已被其他程序占用，无法单独启动 {productId}。");
             }
@@ -263,7 +263,7 @@ public sealed class TomcatProductInstanceManager
                 return $"{productId} 已停止，其他单独运行的应用不受影响。";
             }
 
-            if (!IsTcpPortListening(info.Port))
+            if (!SystemProbe.IsTcpPortListening(info.Port))
             {
                 ClearInstanceProcessId(instanceRoot);
                 ClearInstanceRunMode(instanceRoot);
@@ -418,7 +418,7 @@ public sealed class TomcatProductInstanceManager
             {
                 WriteOperationLog("shared", "按端口终止 Tomcat Java 进程失败：" + error.Message);
             }
-            var remainingPorts = tomcatPorts.Where(IsTcpPortListening).Distinct().ToArray();
+            var remainingPorts = tomcatPorts.Where(SystemProbe.IsTcpPortListening).Distinct().ToArray();
             if (remainingPorts.Length > 0)
             {
                 var message =
@@ -472,7 +472,7 @@ public sealed class TomcatProductInstanceManager
 
             var commandLineHealthy = javaProcesses.Any(process =>
                 ContainsJavaOptionPath(process.CommandLine, "-Dcatalina.base", instanceRoot)) &&
-                ports.Any(IsTcpPortListening);
+                ports.Any(SystemProbe.IsTcpPortListening);
             if (commandLineHealthy || ports.Any(IsJavaPortListening))
             {
                 return true;
@@ -507,7 +507,7 @@ public sealed class TomcatProductInstanceManager
 
     private static bool IsJavaPortListening(int port)
     {
-        if (!IsTcpPortListening(port))
+        if (!SystemProbe.IsTcpPortListening(port))
         {
             return false;
         }
@@ -772,7 +772,7 @@ public sealed class TomcatProductInstanceManager
             WriteOperationLog(Path.GetFileName(instanceRoot), "停止单应用实例失败，保留目录以便稍后重试：" + error.Message);
         }
 
-        if (IsJavaProcessForBase(instanceRoot) || fallbackPorts.Any(IsTcpPortListening))
+        if (IsJavaProcessForBase(instanceRoot) || fallbackPorts.Any(SystemProbe.IsTcpPortListening))
         {
             var portText = fallbackPorts.Length == 0 ? string.Empty : $"端口：{string.Join(", ", fallbackPorts)}。";
             var message = $"Tomcat 单应用实例仍在运行，{portText}已保留实例目录，请先确认 Java 进程停止后重试。";
@@ -793,7 +793,7 @@ public sealed class TomcatProductInstanceManager
         var fallbackPorts = NormalizePorts(fallbackHttpPorts);
         if (!IsJavaProcessForBase(catalinaBase) &&
             !IsShutdownPortListening(catalinaBase) &&
-            !fallbackPorts.Any(IsTcpPortListening))
+            !fallbackPorts.Any(SystemProbe.IsTcpPortListening))
         {
             return;
         }
@@ -827,7 +827,7 @@ public sealed class TomcatProductInstanceManager
 
         if (IsJavaProcessForBase(catalinaBase) ||
             IsShutdownPortListening(catalinaBase) ||
-            fallbackPorts.Any(IsTcpPortListening))
+            fallbackPorts.Any(SystemProbe.IsTcpPortListening))
         {
             throw new InvalidOperationException("Tomcat 单应用进程未能停止，已保留实例目录。请先确认 Java 进程可终止后重试。");
         }
@@ -836,7 +836,7 @@ public sealed class TomcatProductInstanceManager
     private static async Task<bool> TrySendShutdownCommandAsync(string catalinaBase, CancellationToken cancellationToken)
     {
         if (!TryGetShutdownConfiguration(catalinaBase, out var shutdownPort, out var shutdownCommand) ||
-            !IsTcpPortListening(shutdownPort))
+            !SystemProbe.IsTcpPortListening(shutdownPort))
         {
             return false;
         }
@@ -869,7 +869,7 @@ public sealed class TomcatProductInstanceManager
     }
 
     private static bool IsShutdownPortListening(string catalinaBase) =>
-        TryGetShutdownConfiguration(catalinaBase, out var port, out _) && IsTcpPortListening(port);
+        TryGetShutdownConfiguration(catalinaBase, out var port, out _) && SystemProbe.IsTcpPortListening(port);
 
     private static bool TryGetShutdownConfiguration(string catalinaBase, out int port, out string command)
     {
@@ -1263,7 +1263,7 @@ public sealed class TomcatProductInstanceManager
         while (DateTime.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (IsTcpPortListening(port) == listening)
+            if (SystemProbe.IsTcpPortListening(port) == listening)
             {
                 return;
             }
@@ -1275,8 +1275,6 @@ public sealed class TomcatProductInstanceManager
             ? $"Tomcat 产品端口 {port} 未在规定时间内开始监听。"
             : $"Tomcat 产品端口 {port} 未在规定时间内停止。" );
     }
-
-    private static bool IsTcpPortListening(int port) => SystemProbe.GetActiveTcpPorts().Contains(port);
 
     private static string ReadRecentTomcatLog(string instanceRoot)
     {

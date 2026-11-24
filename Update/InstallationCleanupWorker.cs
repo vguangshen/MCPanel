@@ -11,9 +11,8 @@ internal static class InstallationCleanupWorker
 {
     internal const string Argument = "--uninstall-components";
 
-    internal static bool IsUnderRoot(string? path, string root) => !string.IsNullOrWhiteSpace(path) &&
-        (Path.GetFullPath(path!).TrimEnd('\\').Equals(Path.GetFullPath(root).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase) ||
-         Path.GetFullPath(path!).StartsWith(Path.GetFullPath(root).TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase));
+    internal static bool IsUnderRoot(string? path, string root) =>
+        PathUtil.PathsEqual(path, root) || PathUtil.IsPathInside(root, path);
 
     internal static string? ReadServiceImage(string name)
     {

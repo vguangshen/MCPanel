@@ -499,21 +499,6 @@ public sealed partial class EnvironmentRuntimeService
         ProcessRunner.StartDetached(fileName, workingDirectory);
     }
 
-    private static bool IsPortAvailable(int port)
-    {
-        try
-        {
-            var listener = new TcpListener(IPAddress.Any, port);
-            listener.Start();
-            listener.Stop();
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
     private static async Task WaitForTcpPortAsync(string host, int port, TimeSpan timeout, CancellationToken cancellationToken)
     {
         var deadline = DateTime.UtcNow + timeout;

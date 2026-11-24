@@ -6,8 +6,12 @@ namespace MCPanel;
 /// <summary>Shared read-only probes of the local machine.</summary>
 internal static class SystemProbe
 {
-    /// <summary>Ports with an active TCP listener; empty when the table is unavailable.</summary>
-    public static HashSet<int> GetActiveTcpPorts()
+    /// <summary>
+    /// Ports with an active TCP listener. When the table is unavailable this
+    /// returns an empty set, or throws when <paramref name="throwOnError"/> is
+    /// set (port selection must not mistake "unknown" for "free").
+    /// </summary>
+    public static HashSet<int> GetActiveTcpPorts(bool throwOnError = false)
     {
         try
         {
@@ -16,10 +20,46 @@ internal static class SystemProbe
                 .Select(endpoint => endpoint.Port)
                 .ToHashSet();
         }
-        catch
+        catch when (!throwOnError)
         {
             // A probe: callers treat "unknown" as "no listeners seen".
             return new HashSet<int>();
+        }
+    }
+
+    /// <summary>True when something listens on <paramref name="port"/>; false if unknown.</summary>
+    public static bool IsTcpPortListening(int port) => GetActiveTcpPorts().Contains(port);
+
+    /// <summary>
+    /// True when a new service could listen on <paramref name="port"/>: no
+    /// active listener is reported and an exclusive bind on all addresses
+    /// succeeds. Either check alone misses cases (a listener on one address
+    /// only, or a port reserved without a listener).
+    /// </summary>
+    public static bool IsPortAvailable(int port)
+    {
+        if (IsTcpPortListening(port))
+        {
+            return false;
+        }
+
+        try
+        {
+            var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Any, port);
+            try
+            {
+                listener.ExclusiveAddressUse = true;
+                listener.Start();
+                return true;
+            }
+            finally
+            {
+                listener.Stop();
+            }
+        }
+        catch
+        {
+            return false;
         }
     }
 
