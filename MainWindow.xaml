@@ -9,7 +9,7 @@
         Title="MCPanel"
         Icon="Assets/AppIcon/mcpanel-logo.ico"
         Width="1024"
-        Height="656"
+        Height="633"
         MinWidth="600"
         MinHeight="360"
         WindowStartupLocation="CenterScreen"

@@ -5,30 +5,107 @@ using System.Windows.Media;
 
 namespace MCPanel;
 
+/// <summary>
+/// Default main-window bounds built on the golden ratio, so the panel looks
+/// the same on every monitor: a φ:1 window covering 1/φ of the work area,
+/// placed on the upper golden section. All values are in DIPs, so Windows
+/// display scaling is already accounted for.
+/// </summary>
 internal static class ResponsiveWindowSizing
 {
-    public const double MainDesignWidth = 1280;
-    public const double MainDesignHeight = 820;
-    public const double MainDefaultScale = 1.0;
+    /// <summary>φ, the golden ratio.</summary>
+    public const double GoldenRatio = 1.6180339887498949;
 
-    public static void FitToCurrentMonitor(
-        Window window,
-        double designWidth,
-        double designHeight,
-        double workAreaFill = 0.96,
-        double maximumScale = 1.35)
+    /// <summary>Share of the work area the window covers: 1/φ ≈ 61.8%.</summary>
+    public const double GoldenAreaShare = 1d / GoldenRatio;
+
+    /// <summary>Top margin share of the free vertical space: 1/φ² ≈ 38.2%.</summary>
+    public const double GoldenTopShare = 1d - GoldenAreaShare;
+
+    /// <summary>Below this width the panel switches to its compact layouts, so small screens get at least this.</summary>
+    public const double ComfortableMinimumWidth = 1024d;
+
+    /// <summary>The window never touches the work-area edges.</summary>
+    public const double MaximumWorkAreaFill = 0.94d;
+
+    public const double MinimumWindowWidth = 600d;
+    public const double MinimumWindowHeight = 360d;
+
+    /// <summary>
+    /// Golden bounds inside <paramref name="workArea"/> (DIPs): width/height = φ,
+    /// area = workArea / φ, horizontally centred, top at the 38.2% point of the
+    /// remaining height. Small screens are raised to a comfortable width and
+    /// very wide or tall screens are capped, always keeping the φ aspect.
+    /// </summary>
+    public static Rect GoldenBounds(Rect workArea)
     {
+        var workWidth = Math.Max(1d, workArea.Width);
+        var workHeight = Math.Max(1d, workArea.Height);
+
+        // Area share 1/φ with aspect φ: w·h = W·H/φ and w = φ·h  =>  h = sqrt(W·H) / φ.
+        var height = Math.Sqrt(workWidth * workHeight) / GoldenRatio;
+        var width = height * GoldenRatio;
+
+        if (width < ComfortableMinimumWidth)
+        {
+            width = ComfortableMinimumWidth;
+            height = width / GoldenRatio;
+        }
+
+        // Keep the aspect while fitting both dimensions.
+        var fit = Math.Min(1d, Math.Min(workWidth * MaximumWorkAreaFill / width, workHeight * MaximumWorkAreaFill / height));
+        width *= fit;
+        height *= fit;
+
+        // A screen too short for a comfortable golden rectangle (for example
+        // 1366x768 at 125%) gets a usable width rather than a strict φ aspect.
+        var comfortableWidth = Math.Min(ComfortableMinimumWidth, workWidth * MaximumWorkAreaFill);
+        if (width < comfortableWidth)
+        {
+            width = comfortableWidth;
+            height = workHeight * MaximumWorkAreaFill;
+        }
+
+        width = Math.Max(Math.Min(MinimumWindowWidth, workWidth), Math.Floor(width));
+        height = Math.Max(Math.Min(MinimumWindowHeight, workHeight), Math.Floor(height));
+
+        var left = workArea.Left + Math.Max(0d, Math.Round((workWidth - width) / 2d));
+        var top = workArea.Top + Math.Max(0d, Math.Round((workHeight - height) * GoldenTopShare));
+        return new Rect(left, top, width, height);
+    }
+
+    /// <summary>Applies <see cref="GoldenBounds"/> for the monitor the window is on.</summary>
+    public static void FitToCurrentMonitor(Window window)
+    {
+        if (!TryGetWorkArea(window, out var workArea))
+        {
+            return;
+        }
+
+        var bounds = GoldenBounds(workArea);
+        window.MinWidth = Math.Min(MinimumWindowWidth, Math.Floor(workArea.Width * MaximumWorkAreaFill));
+        window.MinHeight = Math.Min(MinimumWindowHeight, Math.Floor(workArea.Height * MaximumWorkAreaFill));
+        window.Width = bounds.Width;
+        window.Height = bounds.Height;
+        window.Left = bounds.Left;
+        window.Top = bounds.Top;
+    }
+
+    /// <summary>The work area (screen minus taskbar) of the window's monitor, in DIPs.</summary>
+    private static bool TryGetWorkArea(Window window, out Rect workArea)
+    {
+        workArea = Rect.Empty;
         var handle = new WindowInteropHelper(window).Handle;
         if (handle == IntPtr.Zero)
         {
-            return;
+            return false;
         }
 
         var monitor = MonitorFromWindow(handle, MonitorDefaultToNearest);
         var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
         if (monitor == IntPtr.Zero || !GetMonitorInfo(monitor, ref info))
         {
-            return;
+            return false;
         }
 
         var fromDevice = Matrix.Identity;
@@ -39,21 +116,8 @@ internal static class ResponsiveWindowSizing
 
         var topLeft = fromDevice.Transform(new Point(info.WorkArea.Left, info.WorkArea.Top));
         var bottomRight = fromDevice.Transform(new Point(info.WorkArea.Right, info.WorkArea.Bottom));
-        var workWidth = Math.Max(1, bottomRight.X - topLeft.X);
-        var workHeight = Math.Max(1, bottomRight.Y - topLeft.Y);
-        var scale = Math.Min(
-            workWidth * workAreaFill / designWidth,
-            workHeight * workAreaFill / designHeight);
-        scale = Math.Max(0.1, Math.Min(maximumScale, scale));
-
-        window.MinWidth = Math.Min(600d, Math.Floor(workWidth * workAreaFill));
-        window.MinHeight = Math.Min(360d, Math.Floor(workHeight * workAreaFill));
-        var width = Math.Max(window.MinWidth, Math.Min(workWidth, Math.Floor(designWidth * scale)));
-        var height = Math.Max(window.MinHeight, Math.Min(workHeight, Math.Floor(designHeight * scale)));
-        window.Width = width;
-        window.Height = height;
-        window.Left = topLeft.X + Math.Max(0, (workWidth - width) / 2);
-        window.Top = topLeft.Y + Math.Max(0, (workHeight - height) / 2);
+        workArea = new Rect(topLeft, bottomRight);
+        return workArea.Width >= 1d && workArea.Height >= 1d;
     }
 
     private const uint MonitorDefaultToNearest = 2;
