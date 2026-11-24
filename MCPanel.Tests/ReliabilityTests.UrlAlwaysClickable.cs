@@ -15,7 +15,7 @@ public sealed partial class ReliabilityTests
         var block = source.Substring(start, end - start);
 
         StringAssert.Contains(block, "!string.IsNullOrWhiteSpace(item.Url)");
-        StringAssert.Contains(block, "Process.Start(new ProcessStartInfo(item.Url) { UseShellExecute = true })");
+        StringAssert.Contains(block, "ShellOpen.TryUrl(item.Url)");
         Assert.IsFalse(block.Contains("item.CanBrowse", StringComparison.Ordinal));
     }
 }

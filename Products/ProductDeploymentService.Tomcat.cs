@@ -268,7 +268,7 @@ public sealed partial class ProductDeploymentService
 
         var docBase = product.ExternalJavaDocBase ?? FindTomcatDocBase(preparedPath)
             ?? throw new InvalidDataException("Tomcat 产品包中未找到 WAR 文件或 WEB-INF 目录，请重新下载完整产品包后重试。");
-        DeleteDirectoryIfExists(Path.Combine(tomcatRoot, "webapps", contextName));
+        FileUtil.DeleteDirectory(Path.Combine(tomcatRoot, "webapps", contextName));
         DeleteFileIfExists(Path.Combine(tomcatRoot, "webapps", $"{contextName}.war"));
         DeleteFileIfExists(GetTomcatContextFile(tomcatRoot, contextName));
 

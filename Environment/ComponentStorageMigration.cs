@@ -212,13 +212,7 @@ internal static class ComponentStorageMigration
                 return false;
             }
 
-            using var leftStream = new FileStream(left, FileMode.Open, FileAccess.Read, FileShare.Read);
-            using var rightStream = new FileStream(right, FileMode.Open, FileAccess.Read, FileShare.Read);
-            using var sha = SHA256.Create();
-            var leftHash = sha.ComputeHash(leftStream);
-            sha.Initialize();
-            var rightHash = sha.ComputeHash(rightStream);
-            return leftHash.SequenceEqual(rightHash);
+            return string.Equals(FileUtil.ComputeSha256(left), FileUtil.ComputeSha256(right), StringComparison.Ordinal);
         }
         catch (IOException)
         {

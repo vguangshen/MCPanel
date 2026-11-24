@@ -37,7 +37,7 @@ public sealed partial class EnvironmentInstaller
         }
 
         var plan = GetSqlServerInstallPlan(downloads, selectedRelease.Id);
-        var credentials = WindowsServiceExists("MSSQLSERVER")
+        var credentials = SystemProbe.WindowsServiceExists("MSSQLSERVER")
             ? SqlServerCredentialStore.Load()
             : SqlServerCredentialStore.CreateNew();
         progress(new InstallProgress(0, $"准备安装 {plan.DisplayName}...", InstallProgressStage.Preparing, 0));
@@ -50,7 +50,7 @@ public sealed partial class EnvironmentInstaller
             plan.UsesSseiInstaller ? 45 : 80,
             cancellationToken,
             expectedProductMajor: plan.ProductMajor);
-        var dataRoot = ComponentPaths.SelectSqlServerDataRoot(WindowsServiceExists("MSSQLSERVER"));
+        var dataRoot = ComponentPaths.SelectSqlServerDataRoot(SystemProbe.WindowsServiceExists("MSSQLSERVER"));
         Directory.CreateDirectory(dataRoot);
 
         var script = Path.Combine(GetTempDirectory(), "install-sqlserver.ps1");

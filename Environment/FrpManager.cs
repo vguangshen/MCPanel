@@ -719,9 +719,7 @@ public sealed class FrpManager : IDisposable
             }
 
             if (release.Sha256 is null) return true;
-            using var stream = File.OpenRead(path);
-            using var sha256 = SHA256.Create();
-            var actualHash = BitConverter.ToString(sha256.ComputeHash(stream)).Replace("-", string.Empty);
+            var actualHash = FileUtil.ComputeSha256(path);
             return string.Equals(actualHash, release.Sha256, StringComparison.OrdinalIgnoreCase);
         }
         catch (InvalidDataException)

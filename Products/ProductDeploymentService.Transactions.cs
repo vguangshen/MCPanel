@@ -54,7 +54,7 @@ public sealed partial class ProductDeploymentService
             try
             {
                 if (!string.IsNullOrWhiteSpace(_backupRoot))
-                    DeleteDirectoryIfExists(_backupRoot!);
+                    FileUtil.DeleteDirectory(_backupRoot!);
                 CleanupStaging();
                 return null;
             }
@@ -72,7 +72,7 @@ public sealed partial class ProductDeploymentService
                 return;
             }
 
-            DeleteDirectoryIfExists(ProductRoot);
+            FileUtil.DeleteDirectory(ProductRoot);
             if (!string.IsNullOrWhiteSpace(_backupRoot) && Directory.Exists(_backupRoot))
             {
                 Directory.Move(_backupRoot, ProductRoot);
@@ -94,7 +94,7 @@ public sealed partial class ProductDeploymentService
         {
             if (!string.IsNullOrWhiteSpace(_stagingContainer))
             {
-                DeleteDirectoryIfExists(_stagingContainer!);
+                FileUtil.DeleteDirectory(_stagingContainer!);
             }
         }
     }

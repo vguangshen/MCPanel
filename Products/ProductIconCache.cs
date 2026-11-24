@@ -182,16 +182,7 @@ public sealed class ProductIconCache : IDisposable
                extension.Equals(".ico", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string Hash(string value)
-    {
-        byte[] bytes;
-        using (var sha256 = SHA256.Create())
-        {
-            bytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(value));
-        }
-
-        return BitConverter.ToString(bytes).Replace("-", string.Empty).Substring(0, 12).ToLowerInvariant();
-    }
+    private static string Hash(string value) => FileUtil.Sha256Hex(value).Substring(0, 12);
 
     private static string IconDirectory => ComponentPaths.ProductIconsRoot;
 }

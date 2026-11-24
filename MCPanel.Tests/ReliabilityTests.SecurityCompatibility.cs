@@ -178,19 +178,19 @@ public sealed partial class ReliabilityTests
             var legacyBytes = System.Text.Encoding.Default.GetBytes(message);
             File.WriteAllBytes(legacy, legacyBytes);
             // On a non-Chinese code page the CJK text round-trips as '?'.
-            Assert.AreEqual(System.Text.Encoding.Default.GetString(legacyBytes), EnvironmentInstaller.ReadTextBestEffort(legacy));
+            Assert.AreEqual(System.Text.Encoding.Default.GetString(legacyBytes), TextFiles.ReadTailBestEffort(legacy));
 
             // UTF-16 log larger than the tail window, with an odd padding so
             // the tail offset would land in the middle of a character.
             var utf16 = Path.Combine(root, "utf16.log");
             var body = new string('x', 2049) + Environment.NewLine + message;
             File.WriteAllText(utf16, body, System.Text.Encoding.Unicode);
-            StringAssert.EndsWith(EnvironmentInstaller.ReadTextBestEffort(utf16, maximumBytes: 1001), message);
+            StringAssert.EndsWith(TextFiles.ReadTailBestEffort(utf16, maximumBytes: 1001), message);
 
             // UTF-8 with BOM, tail cut inside a multi-byte character.
             var utf8 = Path.Combine(root, "utf8.log");
             File.WriteAllText(utf8, new string('中', 1000) + message, new System.Text.UTF8Encoding(true));
-            var tail = EnvironmentInstaller.ReadTextBestEffort(utf8, maximumBytes: 1000);
+            var tail = TextFiles.ReadTailBestEffort(utf8, maximumBytes: 1000);
             StringAssert.EndsWith(tail, message);
             Assert.IsFalse(tail.Contains('\uFFFD'), tail);
         }

@@ -201,12 +201,7 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
             return;
         }
 
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = "explorer.exe",
-            Arguments = $"\"{item.InstallDirectory}\"",
-            UseShellExecute = true
-        });
+        ShellOpen.Folder(item.InstallDirectory);
     }
 
     internal async void EnvironmentRuntime_Click(object sender, RoutedEventArgs e)
@@ -760,11 +755,7 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
 
         try
         {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = logPath,
-                UseShellExecute = true
-            });
+            ShellOpen.File(logPath);
         }
         catch (Exception openError)
         {
@@ -788,11 +779,7 @@ internal async void EnvironmentInstall_Click(object sender, RoutedEventArgs e)
             using var operation = TryBeginComponentOperation(EnvironmentKind.FrpTunnel);
             if (operation is null) return;
             await Task.Run(_frpManager.EnsureManagementServerAsync);
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = _frpManager.ManagementUrl,
-                UseShellExecute = true
-            });
+            ShellOpen.Url(_frpManager.ManagementUrl);
         }
         catch (Exception ex)
         {

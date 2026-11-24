@@ -17,9 +17,7 @@ public sealed partial class ProductDeploymentService
         if (string.IsNullOrWhiteSpace(expected) || expected!.Length != 64 || expected.Any(ch => !Uri.IsHexDigit(ch)))
             throw new InvalidDataException("产品 SHA-256 清单格式无效。");
         if (!File.Exists(path)) throw new InvalidDataException($"产品文件缺失：{path}");
-        using var sha = SHA256.Create();
-        using var stream = File.OpenRead(path);
-        var actual = BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", string.Empty);
+        var actual = FileUtil.ComputeSha256(path);
         if (!actual.Equals(expected, StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException($"产品文件完整性校验失败：{Path.GetFileName(path)}");
     }
@@ -125,30 +123,6 @@ public sealed partial class ProductDeploymentService
         throw new InvalidDataException("产品包解压后没有任何文件，已取消安装。");
     }
 
-    private static void CopyDirectory(string source, string target)
-    {
-        Directory.CreateDirectory(target);
-        foreach (var file in Directory.GetFiles(source))
-        {
-            if ((File.GetAttributes(file) & FileAttributes.ReparsePoint) != 0)
-            {
-                continue;
-            }
-
-            File.Copy(file, Path.Combine(target, Path.GetFileName(file)), overwrite: true);
-        }
-
-        foreach (var directory in Directory.GetDirectories(source))
-        {
-            if ((File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0)
-            {
-                continue;
-            }
-
-            CopyDirectory(directory, Path.Combine(target, Path.GetFileName(directory)));
-        }
-    }
-
     private static void DeleteDownloadedPackage(string packagePath)
     {
         try
@@ -173,38 +147,7 @@ public sealed partial class ProductDeploymentService
         }
     }
 
-    private static void DeleteDirectoryIfExists(string path)
-    {
-        if (!Directory.Exists(path))
-        {
-            return;
-        }
-
-        ClearAttributesRecursively(path);
-        for (var attempt = 0; attempt < 3; attempt++)
-        {
-            try
-            {
-                Directory.Delete(path, recursive: true);
-                return;
-            }
-            catch (IOException) when (attempt < 2)
-            {
-                Thread.Sleep(80);
-            }
-            catch (UnauthorizedAccessException) when (attempt < 2)
-            {
-                ClearAttributesRecursively(path);
-                Thread.Sleep(80);
-            }
-        }
-
-        // Surface the final exception with the exact path.  The caller must not
-        // report a successful uninstall while an SVN working copy remains.
-        Directory.Delete(path, recursive: true);
-    }
-
-    internal static void DeleteDirectoryForTest(string path) => DeleteDirectoryIfExists(path);
+    internal static void DeleteDirectoryForTest(string path) => FileUtil.DeleteDirectory(path);
 
     private static void DeleteFileIfExists(string path)
     {
@@ -212,36 +155,6 @@ public sealed partial class ProductDeploymentService
         {
             File.SetAttributes(path, FileAttributes.Normal);
             File.Delete(path);
-        }
-    }
-
-    private static void ClearAttributesRecursively(string path)
-    {
-        try
-        {
-            if (File.Exists(path))
-            {
-                File.SetAttributes(path, FileAttributes.Normal);
-                return;
-            }
-
-            if (!Directory.Exists(path)) return;
-            foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
-            {
-                try { File.SetAttributes(file, FileAttributes.Normal); } catch { }
-            }
-
-            foreach (var directory in Directory.EnumerateDirectories(path, "*", SearchOption.AllDirectories))
-            {
-                try { File.SetAttributes(directory, FileAttributes.Normal); } catch { }
-            }
-
-            try { File.SetAttributes(path, FileAttributes.Normal); } catch { }
-        }
-        catch
-        {
-            // Directory.Delete below supplies the actionable error if traversal
-            // itself was blocked.
         }
     }
 
@@ -284,7 +197,7 @@ public sealed partial class ProductDeploymentService
 
         foreach (var directory in directories)
         {
-            DeleteDirectoryIfExists(directory);
+            FileUtil.DeleteDirectory(directory);
         }
 
         DeleteFileIfExists(GetIisStateFile(safeName));

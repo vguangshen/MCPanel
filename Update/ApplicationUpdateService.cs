@@ -392,7 +392,7 @@ public sealed partial class ApplicationUpdateService
             string cachedHash;
             try
             {
-                cachedHash = await Task.Run(() => ComputeSha256(packageFile), cancellationToken);
+                cachedHash = await Task.Run(() => FileUtil.ComputeSha256(packageFile), cancellationToken);
             }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
             {
@@ -453,7 +453,7 @@ public sealed partial class ApplicationUpdateService
             }
 
             status?.Report("正在校验 SHA-256...");
-            var actualHash = await Task.Run(() => ComputeSha256(packageFile), cancellationToken);
+            var actualHash = await Task.Run(() => FileUtil.ComputeSha256(packageFile), cancellationToken);
             if (!actualHash.Equals(expectedHash, StringComparison.OrdinalIgnoreCase))
             {
                 File.Delete(packageFile);
@@ -527,7 +527,7 @@ public sealed partial class ApplicationUpdateService
         status?.Report("正在校验本地更新包...");
         // The hash of the exact file the user confirmed is pinned for the
         // elevated updater, which re-verifies it before applying anything.
-        var actual = await Task.Run(() => ComputeSha256(normalizedPackageFile), cancellationToken);
+        var actual = await Task.Run(() => FileUtil.ComputeSha256(normalizedPackageFile), cancellationToken);
         var sidecar = normalizedPackageFile + ".sha256";
         if (File.Exists(sidecar))
         {
@@ -1206,7 +1206,7 @@ internal void LaunchUpdater(
         foreach (var file in Directory.EnumerateFiles(sourceRoot, "*", SearchOption.TopDirectoryOnly))
             File.Copy(file, Path.Combine(destinationRoot, Path.GetFileName(file)), true);
         var runtimes = Path.Combine(sourceRoot, "runtimes");
-        if (Directory.Exists(runtimes)) CopyDirectory(runtimes, Path.Combine(destinationRoot, "runtimes"));
+        if (Directory.Exists(runtimes)) FileUtil.CopyDirectory(runtimes, Path.Combine(destinationRoot, "runtimes"));
     }
 
     private static void CopyReplaceableEntries(string sourceRoot, string destinationRoot)
@@ -1217,7 +1217,7 @@ internal void LaunchUpdater(
             var name = Path.GetFileName(entry);
             if (PreservedTopLevelNames.Contains(name)) continue;
             var destination = Path.Combine(destinationRoot, name);
-            if (Directory.Exists(entry)) CopyDirectory(entry, destination);
+            if (Directory.Exists(entry)) FileUtil.CopyDirectory(entry, destination);
             else File.Copy(entry, destination, true);
         }
     }
@@ -1240,17 +1240,6 @@ internal void LaunchUpdater(
 
         if (isDirectory) Directory.Delete(entry, false);
         else File.Delete(entry);
-    }
-
-    private static void CopyDirectory(string source, string destination)
-    {
-        Directory.CreateDirectory(destination);
-        foreach (var file in Directory.EnumerateFiles(source)) File.Copy(file, Path.Combine(destination, Path.GetFileName(file)), true);
-        foreach (var directory in Directory.EnumerateDirectories(source))
-        {
-            if ((File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0) continue;
-            CopyDirectory(directory, Path.Combine(destination, Path.GetFileName(directory)));
-        }
     }
 
     private static string ResolvePreparedStagingRoot(string payloadDirectory, string stagingParent)
@@ -1540,13 +1529,6 @@ internal void LaunchUpdater(
         if (!Uri.TryCreate(value?.Trim(), UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
             throw new InvalidDataException($"{label}必须是有效的 HTTPS 地址。");
         return uri;
-    }
-
-    private static string ComputeSha256(string file)
-    {
-        using var sha = SHA256.Create();
-        using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read, 1024 * 1024, FileOptions.SequentialScan);
-        return BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", string.Empty).ToLowerInvariant();
     }
 
     private static async Task<string> ReadResponseTextAsync(

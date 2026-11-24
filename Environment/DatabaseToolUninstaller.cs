@@ -224,7 +224,7 @@ internal static class DatabaseToolUninstaller
                 .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             var directoryName = Path.GetFileName(candidate);
             var managedModernInstall = IsSameOrChildPath(candidate, ComponentPaths.SsmsRoot) &&
-                                       TryParseMajorVersion(installedVersion) is >= 21;
+                                       SqlServerInstallationDetector.TryParseMajorVersion(installedVersion) is >= 21;
             if (managedModernInstall ||
                 IsModernSsmsDirectoryName(directoryName))
             {
@@ -278,8 +278,8 @@ internal static class DatabaseToolUninstaller
                         continue;
                     }
 
-                    var major = TryParseMajorVersion(ReadRegistryString(instance, "InstallationVersion")) ??
-                                TryParseMajorVersion(installedVersion) ??
+                    var major = SqlServerInstallationDetector.TryParseMajorVersion(ReadRegistryString(instance, "InstallationVersion")) ??
+                                SqlServerInstallationDetector.TryParseMajorVersion(installedVersion) ??
                                 22;
                     return new SsmsInstallerMetadata(
                         string.IsNullOrWhiteSpace(productId) ? "Microsoft.VisualStudio.Product.Ssms" : productId,
@@ -292,24 +292,13 @@ internal static class DatabaseToolUninstaller
             }
         }
 
-        var parsedMajor = TryParseMajorVersion(installedVersion);
+        var parsedMajor = SqlServerInstallationDetector.TryParseMajorVersion(installedVersion);
         var fallbackMajor = parsedMajor.HasValue && parsedMajor.Value >= 21
             ? parsedMajor.Value
             : 22;
         return new SsmsInstallerMetadata(
             "Microsoft.VisualStudio.Product.Ssms",
             $"SSMS.{fallbackMajor}.SSMS.Release");
-    }
-
-    private static int? TryParseMajorVersion(string? version)
-    {
-        if (string.IsNullOrWhiteSpace(version))
-        {
-            return null;
-        }
-
-        var match = Regex.Match(version, @"(?<!\d)(\d+)", RegexOptions.CultureInvariant);
-        return match.Success && int.TryParse(match.Groups[1].Value, out var major) ? major : null;
     }
 
     private static RegisteredUninstallEntry? FindRegisteredUninstaller(DatabaseToolInstallation installation)

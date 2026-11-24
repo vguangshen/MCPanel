@@ -160,7 +160,7 @@ public sealed class McPanelStoreClient : IDisposable
         }
 
         var stagingDirectory = $"{productDownloadDirectory}.downloading";
-        TryDeleteDirectory(stagingDirectory);
+        FileUtil.TryDeleteDirectory(stagingDirectory);
         Directory.CreateDirectory(stagingDirectory);
         var stagingTarget = Path.Combine(stagingDirectory, SanitizeFileName(fileName!));
         var target = Path.Combine(productDownloadDirectory, SanitizeFileName(fileName!));
@@ -196,12 +196,12 @@ public sealed class McPanelStoreClient : IDisposable
                 incompleteFileMessage: (expected, actual) =>
                     $"产品包下载不完整：应为 {expected} 字节，实际 {actual} 字节。");
             WriteSha256Sidecar(stagingTarget);
-            TryDeleteDirectory(productDownloadDirectory);
+            FileUtil.TryDeleteDirectory(productDownloadDirectory);
             Directory.Move(stagingDirectory, productDownloadDirectory);
         }
         catch
         {
-            TryDeleteDirectory(stagingDirectory);
+            FileUtil.TryDeleteDirectory(stagingDirectory);
             throw;
         }
 
@@ -224,7 +224,7 @@ public sealed class McPanelStoreClient : IDisposable
         CancellationToken cancellationToken)
     {
         var stagingDirectory = $"{targetDirectory}.downloading";
-        TryDeleteDirectory(stagingDirectory);
+        FileUtil.TryDeleteDirectory(stagingDirectory);
         Directory.CreateDirectory(stagingDirectory);
 
         try
@@ -353,7 +353,7 @@ public sealed class McPanelStoreClient : IDisposable
 
             WriteDirectorySha256Manifest(stagingDirectory);
 
-            TryDeleteDirectory(targetDirectory);
+            FileUtil.TryDeleteDirectory(targetDirectory);
             Directory.Move(stagingDirectory, targetDirectory);
             var finalBytes = allLengthsKnown
                 ? knownTotalBytes
@@ -369,7 +369,7 @@ public sealed class McPanelStoreClient : IDisposable
         }
         catch
         {
-            TryDeleteDirectory(stagingDirectory);
+            FileUtil.TryDeleteDirectory(stagingDirectory);
             throw;
         }
     }
@@ -693,9 +693,7 @@ public sealed class McPanelStoreClient : IDisposable
 
     private static void WriteSha256Sidecar(string path)
     {
-        using var sha = SHA256.Create();
-        using var stream = File.OpenRead(path);
-        var hash = BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", string.Empty).ToLowerInvariant();
+        var hash = FileUtil.ComputeSha256(path);
         AtomicFile.WriteAllText(path + ".sha256", $"{hash}  {Path.GetFileName(path)}{Environment.NewLine}");
     }
 
@@ -705,9 +703,7 @@ public sealed class McPanelStoreClient : IDisposable
         foreach (var file in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories)
                      .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
         {
-            using var sha = SHA256.Create();
-            using var stream = File.OpenRead(file);
-            var hash = BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", string.Empty).ToLowerInvariant();
+            var hash = FileUtil.ComputeSha256(file);
             var relative = file.Substring(directory.TrimEnd(Path.DirectorySeparatorChar).Length + 1).Replace('\\', '/');
             lines.Add($"{hash}  {relative}");
         }
@@ -718,20 +714,6 @@ public sealed class McPanelStoreClient : IDisposable
     {
         _soapClient.Dispose();
         _downloadClient.Dispose();
-    }
-
-    private static void TryDeleteDirectory(string path)
-    {
-        try
-        {
-            if (Directory.Exists(path))
-            {
-                Directory.Delete(path, recursive: true);
-            }
-        }
-        catch
-        {
-        }
     }
 
     private async Task<string?> ResolveDownloadUrlAsync(ProductItem product, CancellationToken cancellationToken)

@@ -307,8 +307,8 @@ public sealed class TomcatProductInstanceManager
             await StopInstanceAsync(tomcatHome, instanceRoot, expectedHttpPort, cancellationToken, throwOnFailure: true);
         }
 
-        DeleteDirectory(instanceRoot);
-        DeleteDirectory(GetLegacyInstanceRoot(productId));
+        FileUtil.DeleteDirectory(instanceRoot);
+        FileUtil.DeleteDirectory(GetLegacyInstanceRoot(productId));
     }
 
     public static async Task StopAllProductInstancesAsync(CancellationToken cancellationToken = default)
@@ -534,7 +534,7 @@ public sealed class TomcatProductInstanceManager
         var sourceConf = Path.Combine(tomcatHome, "conf");
         var targetConf = Path.Combine(instanceRoot, "conf");
         Directory.CreateDirectory(targetConf);
-        CopyDirectory(sourceConf, targetConf, skipFileName: "server.xml");
+        FileUtil.CopyDirectory(sourceConf, targetConf, skipTopLevelFile: "server.xml");
         foreach (var directory in new[] { "logs", "temp", "work", "webapps" })
         {
             Directory.CreateDirectory(Path.Combine(instanceRoot, directory));
@@ -1323,25 +1323,6 @@ public sealed class TomcatProductInstanceManager
         return Task.CompletedTask;
     }
 
-    private static void CopyDirectory(string source, string destination, string? skipFileName = null)
-    {
-        Directory.CreateDirectory(destination);
-        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.TopDirectoryOnly))
-        {
-            if (string.Equals(Path.GetFileName(file), skipFileName, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            File.Copy(file, Path.Combine(destination, Path.GetFileName(file)), overwrite: true);
-        }
-
-        foreach (var directory in Directory.EnumerateDirectories(source, "*", SearchOption.TopDirectoryOnly))
-        {
-            CopyDirectory(directory, Path.Combine(destination, Path.GetFileName(directory)));
-        }
-    }
-
     private static string? FindTomcatRoot()
     {
         return new ComponentLocator().FindTomcatRoot(TomcatComponentRequirements.CatalinaScript);
@@ -1376,46 +1357,6 @@ public sealed class TomcatProductInstanceManager
                 yield return instance;
             }
         }
-    }
-
-    private static void DeleteDirectory(string path)
-    {
-        if (!Directory.Exists(path))
-        {
-            return;
-        }
-
-        for (var attempt = 0; attempt < 3; attempt++)
-        {
-            try
-            {
-                foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
-                {
-                    File.SetAttributes(file, FileAttributes.Normal);
-                }
-
-                foreach (var directory in Directory.EnumerateDirectories(path, "*", SearchOption.AllDirectories))
-                {
-                    File.SetAttributes(directory, FileAttributes.Normal);
-                }
-
-                File.SetAttributes(path, FileAttributes.Normal);
-                Directory.Delete(path, recursive: true);
-                return;
-            }
-            catch (IOException) when (attempt < 2)
-            {
-                Thread.Sleep(100);
-            }
-            catch (UnauthorizedAccessException) when (attempt < 2)
-            {
-                Thread.Sleep(100);
-            }
-        }
-
-        // Do not report a successful uninstall while the instance is still on
-        // disk. The caller can show the exact path and allow a retry.
-        Directory.Delete(path, recursive: true);
     }
 
     private static string GetInstanceRoot(string productId) =>
