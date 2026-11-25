@@ -13,9 +13,9 @@
     <NoWarn>$(NoWarn);SYSLIB0039</NoWarn>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
-    <Version>1.4.12</Version>
-    <FileVersion>1.4.12.0</FileVersion>
-    <AssemblyVersion>1.4.12.0</AssemblyVersion>
+    <Version>1.4.13</Version>
+    <FileVersion>1.4.13.0</FileVersion>
+    <AssemblyVersion>1.4.13.0</AssemblyVersion>
   </PropertyGroup>
 
   <ItemGroup>

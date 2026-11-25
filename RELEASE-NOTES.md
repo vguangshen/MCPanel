@@ -1,3 +1,11 @@
+# MCPanel 1.4.13
+
+Java / .NET 产品权限
+- 修复 web 目录及关闭权限继承的产品文件和子目录，补齐 IIS、SQL Server 和已授权的面板操作账户所需的修改权限，解决包括 web.config 保存、临时文件创建和 Java 应用数据写入在内的常见权限遗漏。
+- IIS 产品绑定与独立网站创建时识别实际应用程序池身份，为 MCPanel 管理的对应网站目录授予修改权限。
+- 新安装、SVN 产品更新、IIS / Tomcat 修复绑定时检查产品目录权限；升级后首次交互式打开面板会进行一次性权限迁移，失败可重试并查看 StoreData\\Work\\web-permissions.log。
+- 保留 MCPanel 安装根目录安全加固，不向 Everyone 开放主程序及服务目录；保留显式拒绝规则，不自动修改 web 之外的外部产品目录。
+
 # MCPanel 1.4.12
 
 账号 API
