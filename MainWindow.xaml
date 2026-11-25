@@ -524,11 +524,79 @@
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
-                        <StackPanel>
-                            <TextBlock Text="下载与安装队列" Foreground="{DynamicResource TextBrush}" FontSize="16" FontWeight="SemiBold" />
-                            <TextBlock Text="{Binding InstallationProgress.QueuePanelSummaryText}" Foreground="{DynamicResource MutedBrush}"
-                                       FontSize="11" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" />
-                        </StackPanel>
+                        <Grid x:Name="DownloadQueueHeader">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="下载与安装队列" Foreground="{DynamicResource TextBrush}" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding InstallationProgress.QueuePanelSummaryText}" Foreground="{DynamicResource MutedBrush}"
+                                           FontSize="11" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" />
+                                <TextBlock x:Name="TomcatAutoRestartStatus"
+                                           Text="{Binding InstallationProgress.TomcatRestartStatusText}"
+                                           Visibility="{Binding InstallationProgress.TomcatRestartStatusVisibility}"
+                                           ToolTip="{Binding InstallationProgress.TomcatRestartStatusText}"
+                                           FontSize="11" Margin="0,4,0,0" TextTrimming="CharacterEllipsis">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{DynamicResource TonalTextBrush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding InstallationProgress.IsTomcatRestartStatusWarning}" Value="True">
+                                                    <Setter Property="Foreground" Value="{DynamicResource DialogDangerBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+
+                            <!-- The whole pill is the switch, so the label is clickable too. -->
+                            <ToggleButton x:Name="TomcatAutoRestartToggle" Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Top"
+                                          IsChecked="{Binding InstallationProgress.RestartTomcatAfterQueue, Mode=TwoWay}"
+                                          AutomationProperties.Name="下载队列完成后自动重启 Tomcat"
+                                          ToolTipService.ShowDuration="20000"
+                                          ToolTip="开启后，队列全部处理完成且其中有 Java/Tomcat 产品安装或更新成功时，自动重启正在运行的 Tomcat Server，让新部署的应用生效。Tomcat 未运行时不会自动启动。">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border x:Name="PillRoot" Height="32" Padding="10,0,6,0" CornerRadius="16"
+                                                Background="{DynamicResource SurfaceAltBrush}"
+                                                BorderBrush="{DynamicResource CardLineBrush}" BorderThickness="1" Cursor="Hand">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <local:PanelIcon x:Name="PillIcon" Text="&#xE72C;" FontSize="13" VerticalAlignment="Center"
+                                                                 Foreground="{DynamicResource MutedBrush}" />
+                                                <TextBlock x:Name="PillLabel" Text="完成后重启 Tomcat" FontSize="12" Margin="6,0,8,0" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextBrush}" />
+                                                <Border x:Name="PillTrack" Width="32" Height="18" CornerRadius="9" VerticalAlignment="Center"
+                                                        Background="{DynamicResource DisabledBrush}" BorderBrush="{DynamicResource CardLineBrush}" BorderThickness="1">
+                                                    <Border x:Name="PillThumb" Width="12" Height="12" CornerRadius="6" Margin="2,0"
+                                                            HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                            Background="{DynamicResource MutedBrush}" />
+                                                </Border>
+                                            </StackPanel>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="PillRoot" Property="BorderBrush" Value="{DynamicResource TonalTextBrush}" />
+                                            </Trigger>
+                                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                                <Setter TargetName="PillRoot" Property="BorderBrush" Value="{DynamicResource TonalTextBrush}" />
+                                            </Trigger>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="PillRoot" Property="Background" Value="{DynamicResource TonalBrush}" />
+                                                <Setter TargetName="PillRoot" Property="BorderBrush" Value="{DynamicResource TonalTextBrush}" />
+                                                <Setter TargetName="PillIcon" Property="Foreground" Value="{DynamicResource TonalTextBrush}" />
+                                                <Setter TargetName="PillLabel" Property="Foreground" Value="{DynamicResource TonalTextBrush}" />
+                                                <Setter TargetName="PillTrack" Property="Background" Value="{DynamicResource MemoryBrush}" />
+                                                <Setter TargetName="PillTrack" Property="BorderBrush" Value="{DynamicResource MemoryBrush}" />
+                                                <Setter TargetName="PillThumb" Property="HorizontalAlignment" Value="Right" />
+                                                <Setter TargetName="PillThumb" Property="Background" Value="White" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                        </Grid>
 
                         <Border Grid.Row="1" Margin="0,12,0,8" Padding="3" CornerRadius="8"
                                 Background="{DynamicResource SurfaceAltBrush}" BorderBrush="{DynamicResource CardLineBrush}" BorderThickness="1">

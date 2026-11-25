@@ -289,6 +289,9 @@ public sealed class InstalledProductItem : ObservableObject
 public sealed class InstallationProgressViewModel : ObservableObject
 {
     private bool _isVisible;
+    private bool _restartTomcatAfterQueue;
+    private string _tomcatRestartStatusText = string.Empty;
+    private bool _isTomcatRestartStatusWarning;
     private string _operationTitle = "正在安装产品";
     private string _productName = string.Empty;
     private string _productId = string.Empty;
@@ -378,6 +381,55 @@ public sealed class InstallationProgressViewModel : ObservableObject
                 : $"安装队列：正在处理第 {running.QueuePosition} 项，共 {active.Count} 项";
         }
     }
+    /// <summary>Restart Tomcat once the queue finishes a batch with Tomcat products.</summary>
+    public bool RestartTomcatAfterQueue
+    {
+        get => _restartTomcatAfterQueue;
+        set
+        {
+            if (SetProperty(ref _restartTomcatAfterQueue, value))
+            {
+                RestartTomcatAfterQueueChanged?.Invoke(value);
+            }
+        }
+    }
+
+    /// <summary>Raised when the user flips the switch, so the setting can be saved.</summary>
+    public event Action<bool>? RestartTomcatAfterQueueChanged;
+
+    /// <summary>Loads the saved switch state without raising <see cref="RestartTomcatAfterQueueChanged"/>.</summary>
+    internal void LoadRestartTomcatAfterQueue(bool enabled)
+    {
+        if (_restartTomcatAfterQueue != enabled)
+        {
+            _restartTomcatAfterQueue = enabled;
+            OnPropertyChanged(nameof(RestartTomcatAfterQueue));
+        }
+    }
+
+    /// <summary>Outcome of the last automatic restart, shown under the queue summary.</summary>
+    public string TomcatRestartStatusText
+    {
+        get => _tomcatRestartStatusText;
+        set
+        {
+            if (SetProperty(ref _tomcatRestartStatusText, value))
+            {
+                OnPropertyChanged(nameof(TomcatRestartStatusVisibility));
+            }
+        }
+    }
+
+    public Visibility TomcatRestartStatusVisibility =>
+        string.IsNullOrEmpty(TomcatRestartStatusText) ? Visibility.Collapsed : Visibility.Visible;
+
+    /// <summary>The automatic restart outcome is a problem the user should notice.</summary>
+    public bool IsTomcatRestartStatusWarning
+    {
+        get => _isTomcatRestartStatusWarning;
+        set => SetProperty(ref _isTomcatRestartStatusWarning, value);
+    }
+
     public string QueuePanelSummaryText => ShowCompletedQueue
         ? CompletedQueueCount == 0
             ? "暂无已结束任务记录"

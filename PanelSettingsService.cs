@@ -90,6 +90,16 @@ public sealed class PanelSettingsService
         SaveSettings(settings);
     }
 
+    /// <summary>Restart Tomcat once the download and install queue finishes (off by default).</summary>
+    public bool GetRestartTomcatAfterQueue() => LoadSettings().RestartTomcatAfterQueue;
+
+    public void SetRestartTomcatAfterQueue(bool enabled)
+    {
+        var settings = LoadSettings();
+        settings.RestartTomcatAfterQueue = enabled;
+        SaveSettings(settings);
+    }
+
     public void SetNavicatPath(string path)
     {
         if (string.IsNullOrWhiteSpace(path) ||
@@ -397,5 +407,6 @@ public sealed class PanelSettingsService
         public string ThemeMode { get; set; } = PanelThemeMode.System.ToString();
         public string NavicatPath { get; set; } = string.Empty;
         public string SqlManagementStudioPath { get; set; } = string.Empty;
+        public bool RestartTomcatAfterQueue { get; set; }
     }
 }
