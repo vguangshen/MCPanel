@@ -64,7 +64,7 @@ internal static class NginxConfigurator
             }
         }
 
-        throw new InvalidOperationException("Nginx 无法找到可用监听端口。请检查 72、80、8088、8080、8090、8099、18080 是否被占用。", lastError);
+        throw new InvalidOperationException($"Nginx 无法找到可用监听端口。请检查 {string.Join("、", NginxRuntimeManager.BuildPortCandidates())} 是否被占用。", lastError);
     }
 
     private static async Task<int> ApplySavedRulesAsync(

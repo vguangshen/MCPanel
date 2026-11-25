@@ -320,7 +320,9 @@ public sealed partial class ProductDeploymentService
             if (result.ExitCode == 0)
             {
                 var existingPort = ParseIisHttpBindingPort(result.StandardOutput);
-                if (existingPort.HasValue)
+                // A site left on the Account API port (an earlier install chose
+                // it while the API was off) moves to a free port on redeploy.
+                if (existingPort.HasValue && existingPort.Value != AccountApiManagerService.ReservedPort())
                 {
                     return existingPort.Value;
                 }
@@ -330,10 +332,15 @@ public sealed partial class ProductDeploymentService
         {
         }
 
-        var activePorts = SystemProbe.GetActiveTcpPorts(throwOnError: true);
+        return SelectFreeIisPort(SystemProbe.GetActiveTcpPorts(throwOnError: true), AccountApiManagerService.ReservedPort());
+    }
+
+    /// <summary>First free port of the IIS pool 8088-8188, never the Account API port.</summary>
+    internal static int SelectFreeIisPort(ICollection<int> activePorts, int reservedPort)
+    {
         for (var port = 8088; port <= 8188; port++)
         {
-            if (!activePorts.Contains(port))
+            if (port != reservedPort && !activePorts.Contains(port))
             {
                 return port;
             }

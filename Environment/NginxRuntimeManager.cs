@@ -127,7 +127,9 @@ public static class NginxRuntimeManager
         }
 
         ports.AddRange(PreferredPorts);
-        return ports.Distinct().Where(port => port is > 0 and <= 65535).ToArray();
+        // Never the Account API port, even while the API is switched off.
+        var reserved = AccountApiManagerService.ReservedPort();
+        return ports.Distinct().Where(port => port is > 0 and <= 65535 && port != reserved).ToArray();
     }
 
     public static bool IsPortBindFailure(string text)

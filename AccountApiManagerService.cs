@@ -182,6 +182,7 @@ public sealed class AccountApiManagerService : IDisposable
         }
         else { _lastDatabaseProbe = null; _databaseCheckedAt = null; }
         var logs = await Task.Run(() => ReadRecentLogs(configuration), operationToken);
+        var portConflict = await Task.Run(() => DetectPortConflict(configuration.Port), operationToken);
         return new AccountApiSnapshot
         {
             Configuration = configuration,
@@ -200,7 +201,7 @@ public sealed class AccountApiManagerService : IDisposable
             LogsText = logs,
             DatabaseCheckedAt = _databaseCheckedAt,
             Enabled = IsEnabled,
-            ErrorText = JoinMessages(_initializationError, configurationError, health.Error),
+            ErrorText = JoinMessages(_initializationError, configurationError, portConflict, health.Error),
             CheckedAt = DateTimeOffset.Now
         };
     }
@@ -717,6 +718,59 @@ public sealed class AccountApiManagerService : IDisposable
 
     private static string Value(IReadOnlyDictionary<string, string> values, string section, string key, string fallback) =>
         values.TryGetValue(section + ":" + key, out var value) ? value : fallback;
+
+    /// <summary>
+    /// The Account API port (config.ini, default 8088). It stays reserved
+    /// while the API is switched off, so IIS and Nginx never take it: after a
+    /// full reinstall the API starts disabled, and a product installed
+    /// before it is switched on used to claim 8088.
+    /// </summary>
+    internal static int ReservedPort()
+    {
+        try
+        {
+            var path = AccountApiStorage.ConfigPath;
+            return File.Exists(path)
+                ? ParsePort(Value(ReadIniValues(path, null), "AccountApi:Server", "Port", "8088"))
+                : 8088;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or FormatException)
+        {
+            return 8088;
+        }
+    }
+
+    /// <summary>
+    /// Explains an IIS site or Nginx already listening on the Account API
+    /// port. HTTP.sys lets an IIS `*:port` binding coexist with the API's
+    /// own address, so the API looks healthy locally while requests to other
+    /// host names (localhost, the LAN address) reach IIS instead.
+    /// </summary>
+    internal static string DescribePortConflict(int apiPort, IEnumerable<int> iisPorts, int? nginxPort)
+    {
+        var owners = new List<string>();
+        if (iisPorts.Contains(apiPort)) owners.Add("IIS 网站 MCPanel");
+        if (nginxPort == apiPort) owners.Add("Nginx");
+        return owners.Count == 0
+            ? string.Empty
+            : $"端口 {apiPort} 同时被 {string.Join("、", owners)} 使用，外部访问账号 API 时请求可能被转到这些服务导致连接失败。" +
+              "重新部署任一 IIS 产品或重新安装 Nginx 会自动改用其他端口；也可以在此页修改账号 API 端口。";
+    }
+
+    private static string DetectPortConflict(int apiPort)
+    {
+        try
+        {
+            return DescribePortConflict(
+                apiPort,
+                ProductDeploymentService.LoadIisDeploymentInfos().Select(info => info.Port),
+                NginxRuntimeManager.LoadOptions()?.ListenPort);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        {
+            return string.Empty;
+        }
+    }
 
     private static int ParsePort(string value) =>
         int.TryParse(value, out var port) && port is >= 1 and <= 65535 ? port : 8088;
