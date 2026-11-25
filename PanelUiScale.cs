@@ -4,11 +4,11 @@ using System.Windows.Media;
 namespace MCPanel;
 
 /// <summary>
-/// The interface scale shared by the main window, its pop-ups and the
-/// dialogs. Pop-ups and tool tips are separate windows that a scaled parent
-/// does not scale, so their templates use
-/// <c>LayoutTransform="{DynamicResource UiScaleTransform}"</c>; the main
-/// window and dialogs apply <see cref="Transform"/> in code.
+/// The interface scale shared by the main window, tool tips and dialogs.
+/// The main window and dialogs apply <see cref="Transform"/> in code; tool
+/// tips get it from <c>UiScaleTransform</c> in their implicit style. Popups
+/// (drop-downs, menus) need nothing: WPF already draws a Popup with its
+/// placement target's scale, and adding it again doubled their size.
 /// </summary>
 public static class PanelUiScale
 {
