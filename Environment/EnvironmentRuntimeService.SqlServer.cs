@@ -304,6 +304,8 @@ public sealed partial class EnvironmentRuntimeService
             $ErrorActionPreference = 'Continue'
             $ProgressPreference = 'SilentlyContinue'
             {{WindowsFirewallScript.Functions}}
+            {{SqlServerWebPermissionsScript.Functions}}
+            $webRoot = '{{PathUtil.EscapePowerShellLiteral(ComponentPaths.WebRoot)}}'
             $action = '{{PathUtil.EscapePowerShellLiteral(action)}}'
             $workRoot = Join-Path '{{storeDataRoot}}' 'Work'
             if (!(Test-Path $workRoot)) { New-Item -ItemType Directory -Path $workRoot -Force | Out-Null }
@@ -402,6 +404,7 @@ public sealed partial class EnvironmentRuntimeService
                     }
                     Fail ('MSSQLSERVER 启动超时。请查看日志：' + $log + ' 或 SQL Server 安装日志。')
                 }
+                Grant-McPanelSqlWebAccess $webRoot
             }
 
             function Stop-SqlServer {

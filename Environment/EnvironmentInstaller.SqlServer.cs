@@ -121,6 +121,8 @@ public sealed partial class EnvironmentInstaller
             $ErrorActionPreference='Continue'
             $ProgressPreference='SilentlyContinue'
             {{WindowsFirewallScript.Functions}}
+            {{SqlServerWebPermissionsScript.Functions}}
+            $webRoot='{{PathUtil.EscapePowerShellLiteral(ComponentPaths.WebRoot)}}'
             $installer='{{PathUtil.EscapePowerShellLiteral(installer)}}'
             $dataRoot='{{PathUtil.EscapePowerShellLiteral(dataRoot)}}'
             $saPassword='{{PathUtil.EscapePowerShellLiteral(saPassword)}}'
@@ -298,6 +300,7 @@ public sealed partial class EnvironmentInstaller
                     Configure-SqlServer
                     Start-Service -Name MSSQLSERVER -ErrorAction SilentlyContinue
                     if (Wait-ServiceState MSSQLSERVER Running 60) {
+                        Grant-McPanelSqlWebAccess $webRoot
                         if (!(Ensure-CurrentWindowsSqlLogin)) {
                             Write-Output '现有 SQL Server 已启动，但未能自动修复当前 Windows 登录。'
                         }
@@ -320,6 +323,7 @@ public sealed partial class EnvironmentInstaller
                 Configure-SqlServer
                 Restart-Service -Name MSSQLSERVER -Force -ErrorAction SilentlyContinue
                 if (!(Wait-ServiceState MSSQLSERVER Running 90)) { Fail 'MSSQLSERVER 服务启动超时。' }
+                Grant-McPanelSqlWebAccess $webRoot
                 if (!(Ensure-CurrentWindowsSqlLogin)) { Fail 'SQL Server 已安装，但当前 Windows 用户登录验证失败。' }
                 Write-Output '{{displayName}} 安装完成。'
                 Stop-Transcript | Out-Null
@@ -345,6 +349,8 @@ public sealed partial class EnvironmentInstaller
             $ErrorActionPreference='Continue'
             $ProgressPreference='SilentlyContinue'
             {{WindowsFirewallScript.Functions}}
+            {{SqlServerWebPermissionsScript.Functions}}
+            $webRoot='{{PathUtil.EscapePowerShellLiteral(ComponentPaths.WebRoot)}}'
             $bootstrapper='{{PathUtil.EscapePowerShellLiteral(bootstrapper)}}'
             $mediaRoot='{{PathUtil.EscapePowerShellLiteral(mediaRoot)}}'
             $extractRoot='{{PathUtil.EscapePowerShellLiteral(extractRoot)}}'

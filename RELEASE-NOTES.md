@@ -1,3 +1,9 @@
+# MCPanel 1.4.10
+
+SQL Server
+- 修复 SQL Server 还原第三方应用数据库到 MCPanel web 目录时可能遇到的操作系统错误 5（拒绝访问）。安装 SQL Server 后自动识别实际 MSSQLSERVER 服务账户，授予 web 根目录可继承的修改权限，覆盖后续正常继承权限的产品目录。
+- 已有 SQL Server 环境可通过 MCPanel 启动或重启服务自动修复权限，无需卸载重装；保留其他 ACL 项，修复已关闭继承的现有文件和目录，跳过重解析点，不修改 SQL Server 服务账户，不向 Everyone 授权。授权失败会在操作日志中明确报告。
+
 # MCPanel 1.4.9
 
 下载与安装队列

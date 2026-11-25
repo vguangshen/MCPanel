@@ -408,6 +408,7 @@ try {
         }
 
         if (Wait-ServiceState MSSQLSERVER Running 90) {
+            Grant-McPanelSqlWebAccess $webRoot
             if (!(Ensure-CurrentWindowsSqlLogin)) {
                 Write-Output '现有 SQL Server 已启动，但未能自动修复当前 Windows 登录。'
             }
@@ -526,6 +527,7 @@ try {
     Configure-SqlServer
     Restart-Service -Name MSSQLSERVER -Force -ErrorAction SilentlyContinue
     if (!(Wait-ServiceState MSSQLSERVER Running 120)) { Fail 'MSSQLSERVER 服务启动超时。' }
+    Grant-McPanelSqlWebAccess $webRoot
     if (!(Ensure-CurrentWindowsSqlLogin)) { Fail 'SQL Server 已安装，但当前 Windows 用户登录验证失败。' }
 
     Clear-SqlRestartMarker
