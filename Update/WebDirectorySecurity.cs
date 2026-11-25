@@ -11,7 +11,11 @@ namespace MCPanel;
 internal static class WebDirectorySecurity
 {
     internal const string RepairArgument = "--repair-managed-web-permissions";
-    private const string MigrationFile = "web-permissions-v2.completed";
+    // v3 also grants IUSR on IIS product folders (impersonating ASP.NET sites).
+    private const string MigrationFile = "web-permissions-v3.completed";
+
+    /// <summary>IIS's anonymous user, which impersonating ASP.NET pages run file access as.</summary>
+    internal static readonly SecurityIdentifier AnonymousIisUser = new("S-1-5-17");
     private static string MarkerPath => Path.Combine(ComponentPaths.StoreDataRoot, MigrationFile);
     private static string LogPath => PanelLog.WorkLog("web-permissions.log");
     private const InheritanceFlags DirectoryInheritance =
@@ -146,7 +150,7 @@ internal static class WebDirectorySecurity
             File.SetAccessControl(item.FullName, (FileSecurity)security);
     }
 
-    internal static void MarkMigrationComplete() => AtomicFile.WriteAllText(MarkerPath, "2");
+    internal static void MarkMigrationComplete() => AtomicFile.WriteAllText(MarkerPath, "3");
 
     internal static bool MigrationNeeded => !File.Exists(MarkerPath);
 
@@ -204,7 +208,8 @@ internal static class WebDirectorySecurity
                         : type;
                 var sid = InstallDirectorySecurity.ResolveServiceAccount(account)
                     ?? throw new IOException("无法识别 IIS 应用程序池账户：" + pool);
-                EnsureTreeAccess(physical, new[] { sid }, repairProtectedChildren: true);
+                // The pool identity runs the site; IUSR is who an impersonating page writes as.
+                EnsureTreeAccess(physical, new[] { sid, AnonymousIisUser }, repairProtectedChildren: true);
             }
             catch (Exception error)
             {
