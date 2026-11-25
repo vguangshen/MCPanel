@@ -10,7 +10,12 @@ namespace MCPanel;
 
 internal sealed class SvnProductTransferService
 {
-    private const int MaxSvnTransferAttempts = 3;
+    /// <summary>
+    /// Large products can transfer for close to an hour; a dropped
+    /// connection then resumes from the partial working copy, so a few more
+    /// attempts cost little and save the whole download.
+    /// </summary>
+    internal const int MaxSvnTransferAttempts = 5;
 
     private const string UserName = "_update_server";
     private const string Password = "_update086405849";
@@ -91,9 +96,10 @@ internal sealed class SvnProductTransferService
 
                 if (attempt < MaxSvnTransferAttempts && IsRetryableSvnFailure(exception))
                 {
-                    status?.Invoke($"SVN 传输失败（{attempt}/{MaxSvnTransferAttempts}）：{detail}。保留已下载文件，准备重试...");
+                    var delay = RetryDelay(attempt);
+                    status?.Invoke($"SVN 传输中断（第 {attempt}/{MaxSvnTransferAttempts} 次）：{detail}。已下载的文件会保留，{delay.TotalSeconds:0} 秒后从当前进度继续...");
                     // Cancellation interrupts retry backoff without another polling loop.
-                    if (cancellationToken.WaitHandle.WaitOne(TimeSpan.FromSeconds(attempt * 2)))
+                    if (cancellationToken.WaitHandle.WaitOne(delay))
                     {
                         cancellationToken.ThrowIfCancellationRequested();
                     }
@@ -131,21 +137,75 @@ internal sealed class SvnProductTransferService
         return string.Join(" -> ", details);
     }
 
-    private static bool IsRetryableSvnFailure(SvnException exception)
+    /// <summary>Waits 5, 10, 20 then 30 seconds between attempts.</summary>
+    internal static TimeSpan RetryDelay(int failedAttempt) =>
+        TimeSpan.FromSeconds(Math.Min(30, 5 * (1 << Math.Max(0, Math.Min(failedAttempt - 1, 3)))));
+
+    /// <summary>One exception of a failure chain, as the retry rule sees it.</summary>
+    internal readonly record struct SvnFailureFrame(string TypeName, string Category, int ErrorCode, string Message);
+
+    internal static IReadOnlyList<SvnFailureFrame> DescribeFailureChain(Exception exception)
     {
-        if (exception is not SvnRepositoryIOException)
+        var frames = new List<SvnFailureFrame>();
+        for (Exception? current = exception; current is not null && frames.Count < 8; current = current.InnerException)
+        {
+            var svn = current as SvnException;
+            frames.Add(new SvnFailureFrame(
+                current.GetType().Name,
+                svn?.SvnErrorCategory.ToString() ?? string.Empty,
+                svn?.SubversionErrorCode ?? 0,
+                current.Message ?? string.Empty));
+        }
+
+        return frames;
+    }
+
+    private static bool IsRetryableSvnFailure(SvnException exception) =>
+        IsRetryableSvnFailure(DescribeFailureChain(exception));
+
+    private static readonly Regex PermanentSvnFailure = new(
+        @"\b(?:401|403|404|407|410)\b|authentication failed|authorization failed|access denied|forbidden|certificate|not trusted|" +
+        @"repository not found|path not found|no such revision|not enough space|disk (?:is )?full|no space left",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static readonly Regex TransientSvnFailure = new(
+        @"unexpectedly closed|connection (?:was )?(?:reset|aborted|refused|closed|timed out)|timed? ?out|" +
+        @"unable to connect|error running context|could not read|network|temporarily|unreachable|" +
+        @"\b(?:500|502|503|504)\b|ssl (?:handshake|communication)|end of file|premature",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    // RA (repository access over HTTP/serf), stream and I/O categories cover
+    // dropped connections. SVN_ERR_RA_DAV_REQUEST_FAILED (175002) and
+    // SVN_ERR_RA_DAV_CONN_TIMEOUT (175012) are the usual codes.
+    private static readonly HashSet<string> TransientCategories = new(StringComparer.Ordinal)
+    {
+        "RepositoryAccess", "RepositoryAccessDav", "RepositoryAccessSerf", "RepositoryAccessSvn", "IO", "Stream"
+    };
+
+    private static readonly HashSet<int> TransientErrorCodes = [175002, 175012, 170013];
+
+    /// <summary>
+    /// A failure is worth retrying when anything in its chain is a dropped or
+    /// timed-out connection (by exception type, SVN category, error code or
+    /// message) and nothing in it is permanent: rejected credentials,
+    /// missing paths, untrusted certificates or a full disk. The type alone
+    /// is not enough: a connection the server closed mid-checkout arrives as
+    /// a plain SvnException ("Unable to connect ... The server unexpectedly
+    /// closed the connection"), which used to fail on the first attempt.
+    /// </summary>
+    internal static bool IsRetryableSvnFailure(IReadOnlyList<SvnFailureFrame> frames)
+    {
+        if (frames.Any(frame => PermanentSvnFailure.IsMatch(frame.Message)))
         {
             return false;
         }
 
-        // Repository I/O errors may wrap permanent authorization/HTTP failures.
-        var detail = DescribeSvnFailure(exception);
-        return !Regex.IsMatch(
-            detail,
-            @"\b(?:401|403|404|407|410)\b|authentication failed|authorization failed|access denied|certificate|not trusted|repository not found",
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        return frames.Any(frame =>
+            frame.TypeName == nameof(SvnRepositoryIOException) ||
+            TransientCategories.Contains(frame.Category) ||
+            TransientErrorCodes.Contains(frame.ErrorCode) ||
+            TransientSvnFailure.IsMatch(frame.Message));
     }
-
     private static string Sync(
         Uri repositoryUri,
         string installedDirectory,
