@@ -1,7 +1,9 @@
 using System;
 using System.Linq;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -97,4 +99,52 @@ public sealed partial class ReliabilityTests
             }
         });
     }
-}
+
+    [TestMethod]
+    public void ScaledPopupsAreNotScaledTwice()
+    {
+        // WPF already draws a Popup with its placement target's scale. Adding the
+        // interface scale again made menus and drop-downs twice as large and
+        // pushed them off the window on large screens.
+        foreach (var file in new[] { "MainWindow.xaml", "LogViewerPage.xaml", "Resources/PanelTheme.xaml", "Resources/PanelDialogControls.xaml" })
+        {
+            var xaml = ReadRepositoryFile(file);
+            var popups = xaml.Split(new[] { "<Popup" }, StringSplitOptions.None).Skip(1)
+                .Select(part => part.Substring(0, part.IndexOf("</Popup>", StringComparison.Ordinal)));
+            Assert.IsFalse(popups.Any(popup => popup.Contains("UiScaleTransform")), file + ": popup content must not add the interface scale.");
+        }
+
+        StringAssert.Contains(ReadRepositoryFile("Resources/PanelTheme.xaml"),
+            "<Style TargetType=\"ToolTip\">", "Tool tips do not inherit the scale and keep their own.");
+
+        RunWebsiteUiTest(() =>
+        {
+            SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
+            var window = CreateUiTestWindow();
+            try
+            {
+                window.Width = 900; window.Height = 600;
+                window.Show();
+                WaitOnDispatcher(System.Threading.Tasks.Task.Delay(1500));
+                window.ApplyUiScale(1.5d);
+                ((StackPanel)window.FindName("NavItemsPanel")).Children.OfType<RadioButton>()
+                    .Single(button => (button.CommandParameter as string) == "Sites").IsChecked = true;
+                WaitOnDispatcher(System.Threading.Tasks.Task.Delay(300));
+                var menu = (Popup)window.FindName("PlatformBindingMenu");
+                var button = (FrameworkElement)window.FindName("BindPlatformButton");
+                menu.IsOpen = true;
+                WaitOnDispatcher(System.Threading.Tasks.Task.Delay(300));
+                var content = (FrameworkElement)menu.Child;
+                double ScreenScale(FrameworkElement element) =>
+                    (element.PointToScreen(new Point(element.ActualWidth, 0)).X - element.PointToScreen(new Point(0, 0)).X) / element.ActualWidth;
+                Assert.AreEqual(ScreenScale(button), ScreenScale(content), 0.01d,
+                    "The menu must be drawn at the same scale as the button it opens from.");
+                menu.IsOpen = false;
+            }
+            finally
+            {
+                window.Close();
+                PanelUiScale.Set(1d);
+            }
+        });
+    }}

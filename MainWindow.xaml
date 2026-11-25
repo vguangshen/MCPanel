@@ -1013,7 +1013,7 @@
                             </Button>
                             <Popup x:Name="PlatformBindingMenu" Grid.Column="2" Placement="Bottom" PlacementTarget="{Binding ElementName=BindPlatformButton}"
                                    StaysOpen="False" AllowsTransparency="True" VerticalOffset="6">
-                                <Border LayoutTransform="{DynamicResource UiScaleTransform}" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="8" Padding="6" MinWidth="180">
+                                <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="8" Padding="6" MinWidth="180">
                                     <StackPanel KeyboardNavigation.TabNavigation="Cycle" KeyDown="PlatformBindingMenu_KeyDown">
                                         <Button x:Name="BindJavaPlatformOption" Content="绑定 Java 平台" Style="{StaticResource RoundedRectTonalButton}" Height="36" Margin="0,0,0,4" Click="BindJavaPlatform_Click" />
                                         <Button x:Name="BindDotNetPlatformOption" Content="绑定 .NET 平台" Style="{StaticResource RoundedRectTonalButton}" Height="36" Click="BindIisPlatform_Click" />

@@ -62,8 +62,7 @@
                                    AllowsTransparency="True"
                                    Focusable="False"
                                    IsOpen="{TemplateBinding IsDropDownOpen}">
-                                <Border LayoutTransform="{DynamicResource UiScaleTransform}"
-                                        MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                                <Border MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
                                         Margin="0,4,0,0"
                                         Padding="5"
                                         CornerRadius="8"
