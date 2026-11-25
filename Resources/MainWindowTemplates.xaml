@@ -853,15 +853,36 @@
                     <TextBlock Text="{Binding ProductName}" ToolTip="{Binding ProductName}"
                                Foreground="{DynamicResource TextBrush}" FontSize="12" FontWeight="SemiBold"
                                TextTrimming="CharacterEllipsis" />
-                    <TextBlock FontSize="10" Foreground="{DynamicResource MutedBrush}" Margin="0,3,0,0" TextTrimming="CharacterEllipsis">
-                        <Run Text="{Binding ProductId, Mode=OneWay}" />
-                        <Run Text=" · " />
+                    <TextBlock x:Name="QueueHistoryMessage" FontSize="10" Margin="0,3,0,0" TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding Message}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+                                <Style.Triggers>
+                                    <!-- A failure's reason replaces the old "安装失败" badge, so it stands out in red. -->
+                                    <DataTrigger Binding="{Binding IsFailed}" Value="True">
+                                        <Setter Property="Foreground" Value="{DynamicResource DangerTextBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                        <Run Text="{Binding ProductId, Mode=OneWay}" Foreground="{DynamicResource MutedBrush}" />
+                        <Run Text=" · " Foreground="{DynamicResource MutedBrush}" />
                         <Run Text="{Binding Message, Mode=OneWay}" />
                     </TextBlock>
                 </StackPanel>
                 <Border Grid.Column="2" Height="26" MinWidth="64" Padding="8,0" CornerRadius="13"
                         Background="{DynamicResource SurfaceAltBrush}" BorderBrush="{DynamicResource CardLineBrush}"
                         BorderThickness="1" HorizontalAlignment="Right" VerticalAlignment="Top">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsFailed}" Value="True">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
                     <TextBlock Text="{Binding StateText}" FontSize="10.5" FontWeight="SemiBold"
                                HorizontalAlignment="Center" VerticalAlignment="Center">
                         <TextBlock.Style>
@@ -871,13 +892,31 @@
                                     <DataTrigger Binding="{Binding ProgressText}" Value="完成">
                                         <Setter Property="Foreground" Value="{DynamicResource MemoryBrush}" />
                                     </DataTrigger>
-                                    <DataTrigger Binding="{Binding ProgressText}" Value="失败">
-                                        <Setter Property="Foreground" Value="{DynamicResource DangerTextBrush}" />
-                                    </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </TextBlock.Style>
                     </TextBlock>
+                </Border>
+                <Border Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Top">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsFailed}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                <Button x:Name="QueueRetryButton" Style="{DynamicResource QueueIconButton}" Width="Auto" Height="28" MinWidth="64" Padding="10,0"
+                        Background="{DynamicResource TonalBrush}" Foreground="{DynamicResource TonalTextBrush}"
+                        ToolTip="重新加入安装队列；已下载的文件会保留，从当前进度继续"
+                        AutomationProperties.Name="重试安装" Click="RetryQueuedProduct_Click">
+                    <StackPanel Orientation="Horizontal">
+                        <local:PanelIcon Text="&#xE72C;" FontSize="12" VerticalAlignment="Center" />
+                        <TextBlock Text="重试" FontSize="11.5" FontWeight="SemiBold" Margin="5,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
                 </Border>
                 <Button Grid.Column="3" Content="{Binding RemoveActionGlyph}" ToolTip="删除此记录"
                         AutomationProperties.Name="删除此记录" Style="{DynamicResource QueueDangerIconButton}"

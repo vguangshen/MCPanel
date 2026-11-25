@@ -74,10 +74,10 @@ public sealed partial class ReliabilityTests
     {
         RunWebsiteUiTest(() =>
         {
-            var resources = new ResourceDictionary
-            {
-                Source = new Uri("pack://application:,,,/MCPanel;component/Resources/PanelTheme.xaml")
-            };
+            // LoadComponent works whatever ran before; a pack://application URI needs
+            // another test to have set up the application package first.
+            var resources = (ResourceDictionary)Application.LoadComponent(
+                new Uri("/MCPanel;component/Resources/PanelTheme.xaml", UriKind.Relative));
             var host = new StackPanel { Width = 400 };
             host.Resources.MergedDictionaries.Add(resources);
             var styles = new[] { "TitleBarButton", "ProductToolbarIconButton", "QueueIconButton",

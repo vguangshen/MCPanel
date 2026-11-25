@@ -26,7 +26,8 @@ public sealed partial class ReliabilityTests
         StringAssert.Contains(products, "_model.InstallationProgress.ShowCompletedQueue = false;");
         StringAssert.Contains(templates, "x:Key=\"InstallationQueueHistoryItemTemplate\"");
         StringAssert.Contains(templates, "Value=\"完成\"");
-        StringAssert.Contains(templates, "Value=\"失败\"");
+        StringAssert.Contains(templates, "<DataTrigger Binding=\"{Binding IsFailed}\" Value=\"True\">");
+        StringAssert.Contains(templates, "Click=\"RetryQueuedProduct_Click\"");
         StringAssert.Contains(templates, "Text=\"{Binding CompletionTimeText}\"");
         StringAssert.Contains(templates, "Text=\"{Binding DownloadTimeText}\"");
         StringAssert.Contains(queue, "public DateTime? CompletedAtUtc => _completedAtUtc;");

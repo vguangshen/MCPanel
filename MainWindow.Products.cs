@@ -136,16 +136,55 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
 
     internal void ProductInstall_Click(object sender, RoutedEventArgs e)
     {
-        if (((FrameworkElement)sender).DataContext is not ProductItem product)
+        if (((FrameworkElement)sender).DataContext is ProductItem product)
+        {
+            EnqueueProductInstall(product);
+        }
+    }
+
+    /// <summary>
+    /// 重试 on a failed queue record: queues the same product again through
+    /// the normal install path (environment checks included). The SVN working
+    /// copy left by the failed attempt is kept, so the download resumes.
+    /// </summary>
+    internal void RetryQueuedProduct_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (((FrameworkElement)sender).DataContext is not ProductInstallQueueItemViewModel item)
         {
             return;
         }
 
+        var product = FindProduct(item.ProductId);
+        if (product is null)
+        {
+            MessageBox.Show(
+                $"产品 {item.ProductName}（{item.ProductId}）不在当前产品列表中，请先刷新在线列表后再重试。",
+                "下载队列", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        if (_productInstallQueue.HasActiveOrQueued(product.ProductId))
+        {
+            _model.InstallationProgress.ShowCompletedQueue = false;
+            return;
+        }
+
+        if (EnqueueProductInstall(product))
+        {
+            // Follow the retried task to the 下载中 tab.
+            _model.InstallationProgress.ShowCompletedQueue = false;
+        }
+    }
+
+    /// <summary>Queues an install or update; returns whether it was queued.</summary>
+    private bool EnqueueProductInstall(ProductItem product)
+    {
         if (product.IsBusy ||
             _productInstallQueue.HasActiveOrQueued(product.ProductId) ||
             _productUninstallInProgress)
         {
-            return;
+            return false;
         }
 
         var preflight = ProductEnvironmentPreflight.Check(product, _runtimeService);
@@ -155,7 +194,7 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
             product.IsDownloadProgressIndeterminate = false;
             product.StatusText = preflight.BuildMessage();
             MessageBox.Show(product.StatusText, "产品管理", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
+            return false;
         }
 
         try
@@ -165,6 +204,7 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
             product.IsBusy = false;
             product.IsDownloadProgressIndeterminate = false;
             product.StatusText = $"已加入安装队列，等待第 {item.QueuePosition} 项处理。";
+            return true;
         }
         catch (Exception ex)
         {
@@ -179,6 +219,8 @@ private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
                 MessageBox.Show(product.StatusText, "产品管理", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
+
+        return false;
     }
 
     private void ProductInstallQueue_ItemChanged(ProductInstallQueueItemViewModel item)
