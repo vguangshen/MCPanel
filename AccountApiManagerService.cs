@@ -343,6 +343,12 @@ public sealed class AccountApiManagerService : IDisposable
                 return;
             }
 
+            if (!IsLoopbackAddress(configuration.BindAddress))
+            {
+                // The HTTP.sys reservation and firewall rule are per port.
+                await GrantRemoteAccessAsync(port, cancellationToken);
+            }
+
             var wasRunning = EmbeddedAccountApiRuntime.IsRunning;
             if (wasRunning)
             {
@@ -417,6 +423,97 @@ public sealed class AccountApiManagerService : IDisposable
         finally
         {
             LifecycleGate.Release();
+        }
+    }
+
+    internal const string LocalBindAddress = "127.0.0.1";
+    internal const string RemoteBindAddress = "0.0.0.0";
+
+    /// <summary>
+    /// Lets the cloud reach the API directly (all addresses) or keeps it on
+    /// this machine (127.0.0.1, the default). Allowing remote access first
+    /// reserves the HTTP.sys address for this user and opens the Windows
+    /// Firewall port in one elevated step; without the reservation a normal
+    /// user's listener silently falls back to 127.0.0.1.
+    /// </summary>
+    public async Task SetRemoteAccessAsync(bool allow, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        await LifecycleGate.WaitAsync(cancellationToken);
+        try
+        {
+            _enabled = LoadSettings().Enabled;
+            var configuration = RequireConfiguration();
+            if (allow)
+            {
+                await GrantRemoteAccessAsync(configuration.Port, cancellationToken);
+            }
+
+            EmbeddedAccountApiRuntime.Stop();
+            SetIniValue(configuration.ConfigPath, "AccountApi:Server", "BindAddress", allow ? RemoteBindAddress : LocalBindAddress);
+            ServiceLog.Write("信息", "remote_access", allow
+                ? "已允许远程访问端口 " + configuration.Port + "（HTTP.sys 授权与防火墙规则已配置）"
+                : "已改为仅本机访问");
+            if (_enabled)
+            {
+                var updated = LoadConfiguration();
+                if (!updated.HasSigningSecret) GenerateSigningSecret(updated);
+                EmbeddedAccountApiRuntime.Start(RequireRunnableConfiguration().ConfigPath);
+            }
+        }
+        finally
+        {
+            LifecycleGate.Release();
+        }
+    }
+
+    internal static bool IsLoopbackAddress(string? address)
+    {
+        var value = (address ?? string.Empty).Trim().Trim('[', ']');
+        return value.Length == 0 ||
+            value.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("::1", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("localhost", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>The elevated script that lets this user listen on all addresses and opens the port.</summary>
+    internal static string BuildRemoteAccessScript(int port, string userSid) => $$"""
+        $ErrorActionPreference = 'Stop'
+        {{WindowsFirewallScript.Functions}}
+        $port = {{port}}
+        $url = 'http://+:' + $port + '/'
+        & netsh.exe http delete urlacl url=$url | Out-Null
+        & netsh.exe http add urlacl url=$url 'sddl=D:(A;;GX;;;{{userSid}})' | Out-Host
+        if ($LASTEXITCODE -ne 0) { throw ('HTTP.sys 监听授权失败（netsh 退出码 ' + $LASTEXITCODE + '）：' + $url) }
+        Set-McPanelFirewallPort 'MCPanel Account API' 'TCP' $port
+        exit 0
+        """;
+
+    private static async Task GrantRemoteAccessAsync(int port, CancellationToken cancellationToken)
+    {
+        string userSid;
+        using (var identity = System.Security.Principal.WindowsIdentity.GetCurrent())
+        {
+            userSid = identity.User?.Value ?? throw new InvalidOperationException("无法识别当前 Windows 账户。");
+        }
+
+        Directory.CreateDirectory(ComponentPaths.WorkRoot);
+        var script = Path.Combine(ComponentPaths.WorkRoot, "account-api-remote-access.ps1");
+        AtomicFile.WriteAllText(script, BuildRemoteAccessScript(port, userSid), new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+        ProcessRunResult result;
+        try
+        {
+            result = await ProcessRunner.RunPowerShellFileAsync(script, elevated: true, cancellationToken, captureOutput: true,
+                timeout: TimeSpan.FromMinutes(2));
+        }
+        catch (System.ComponentModel.Win32Exception error) when (error.NativeErrorCode == 1223)
+        {
+            throw new OperationCanceledException("已取消管理员授权，远程访问未开启。", error, cancellationToken);
+        }
+
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException("配置远程访问失败：" + result.CombinedOutput.Trim());
         }
     }
 

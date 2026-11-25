@@ -82,6 +82,8 @@ namespace MarchCenter.AccountApi
                 ServiceLog.Write("警告", "bind_fallback", "当前用户没有外部 HTTP 监听权限，已回退到 127.0.0.1:" + _options.Server.Port);
             }
             _loop = Task.Run((Func<Task>)AcceptLoop);
+            ServiceLog.Write("信息", "start", "已开始监听端口 " + _options.Server.Port + "，配置地址 " + _configuredBindAddress +
+                "，实际地址 " + _effectiveBindAddress + (IsLoopback(_effectiveBindAddress) ? "（仅本机可访问）" : "（允许远程访问）"));
         }
 
         internal static string FormatListenerHost(string value)
@@ -359,6 +361,7 @@ namespace MarchCenter.AccountApi
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            ServiceLog.Write("信息", "stop", "已停止监听端口 " + _options.Server.Port);
             _stop.Cancel();
             try { _listener.Stop(); } catch { }
             try { _listener.Close(); } catch { }

@@ -182,9 +182,21 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="监听地址" Style="{StaticResource AccountCaption}" VerticalAlignment="Center" />
-                        <Button Grid.Column="1"
+                        <Button x:Name="RemoteAccessButton"
+                                Grid.Column="1"
+                                Content="{Binding RemoteAccessActionText}"
+                                Style="{StaticResource AccountLinkButton}"
+                                Height="22"
+                                Padding="7,0"
+                                Margin="6,-3,0,-3"
+                                Click="RemoteAccess_Click"
+                                IsEnabled="{Binding CanEditEndpoint}"
+                                ToolTip="{Binding RemoteAccessToolTip}"
+                                AutomationProperties.Name="{Binding RemoteAccessActionText}" />
+                        <Button Grid.Column="2"
                                 Content="编辑"
                                 Style="{StaticResource AccountLinkButton}"
                                 Height="22"

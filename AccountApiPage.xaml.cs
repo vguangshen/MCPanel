@@ -148,6 +148,16 @@ public partial class AccountApiPage : UserControl, INotifyPropertyChanged, IDisp
     public bool CanImportSettings => !IsBusy && !AccountApiEnabled;
     public bool CanOpenRuntime => _snapshot?.Configuration.RuntimeExists == true;
     public bool CanEditEndpoint => !IsBusy && _snapshot?.Configuration.ConfigExists == true;
+
+    /// <summary>Whether the API is configured to listen on all addresses (remote access).</summary>
+    public bool AllowsRemoteAccess =>
+        _snapshot is not null && !AccountApiManagerService.IsLoopbackAddress(_snapshot.Configuration.BindAddress);
+
+    public string RemoteAccessActionText => AllowsRemoteAccess ? "仅本机" : "允许远程";
+
+    public string RemoteAccessToolTip => AllowsRemoteAccess
+        ? "改为只接受本机连接（127.0.0.1）。云端将无法直接连接。"
+        : "允许云端通过本机 IP 直接连接：配置 HTTP.sys 监听授权并放行 Windows 防火墙端口（需要管理员授权一次）。";
     public bool CanOpenLogs => _snapshot?.Configuration.RuntimeExists == true;
     public string ProviderEmptyText =>
         _snapshot is not null && !_snapshot.Enabled
@@ -247,6 +257,10 @@ public partial class AccountApiPage : UserControl, INotifyPropertyChanged, IDisp
         else if (string.Equals(snapshot.Configuration.BindAddress, "0.0.0.0", StringComparison.Ordinal))
         {
             EndpointText += "（允许外部访问）";
+        }
+        else if (snapshot.Configuration.RuntimeExists && AccountApiManagerService.IsLoopbackAddress(effectiveBindAddress))
+        {
+            EndpointText += "（仅本机）";
         }
         if (!snapshot.Enabled && snapshot.Configuration.RuntimeExists)
         {
@@ -480,6 +494,33 @@ public partial class AccountApiPage : UserControl, INotifyPropertyChanged, IDisp
         await RunOperationAsync(
             "正在修改监听端口…",
             () => _service.SetPortAsync(port));
+    }
+
+    private async void RemoteAccess_Click(object sender, RoutedEventArgs e)
+    {
+        if (IsBusy || _snapshot?.Configuration.ConfigExists != true)
+        {
+            return;
+        }
+
+        var allow = !AllowsRemoteAccess;
+        var port = _snapshot.Configuration.Port;
+        var message = allow
+            ? $"允许云端直接连接本机的账号 API（端口 {port}）？{Environment.NewLine}{Environment.NewLine}" +
+              "MCPanel 会请求一次管理员授权，用于：" + Environment.NewLine +
+              $"· 允许当前账户在所有地址上监听端口 {port}（HTTP.sys）；" + Environment.NewLine +
+              $"· 在 Windows 防火墙中放行入站 TCP {port}。" + Environment.NewLine + Environment.NewLine +
+              "如果服务器在云平台上，还需要在云平台的安全组中放行该端口。请求仍需 HMAC 签名才会被处理。"
+            : "改为只接受本机连接（127.0.0.1）？云端将无法再直接连接账号 API。";
+        if (MessageBox.Show(Window.GetWindow(this), message, "账号 API 远程访问",
+                MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK)
+        {
+            return;
+        }
+
+        await RunOperationAsync(
+            allow ? "正在配置远程访问…" : "正在改为仅本机访问…",
+            () => _service.SetRemoteAccessAsync(allow));
     }
 
     private async void Enabled_Click(object sender, RoutedEventArgs e)
