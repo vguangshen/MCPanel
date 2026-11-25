@@ -1,8 +1,13 @@
 namespace MCPanel;
 
 /// <summary>
-/// Shared by both elevated IIS binding paths. Grant the actual pool identity
-/// only within the managed site's own directory; retain existing ACLs.
+/// Shared by both elevated IIS binding paths. Grants Modify, only within the
+/// managed site's own directory and keeping existing ACLs, to the actual pool
+/// identity and to IUSR (S-1-5-17). Legacy ASP.NET products often impersonate
+/// (&lt;identity impersonate="true"/&gt;), so their setup pages write web.config
+/// as the anonymous user IUSR rather than the pool identity; IUSR used to
+/// write through "Authenticated Users" inherited from the drive, which the
+/// hardened install root no longer passes down.
 /// </summary>
 internal static class ManagedIisPermissionsScript
 {
@@ -42,7 +47,8 @@ internal static class ManagedIisPermissionsScript
                 default { throw ('未知的 IIS 应用程序池身份：' + $identityType) }
             }
 
-            function Set-McPanelIisAcl($item) {
+            $sids = @($sid, 'S-1-5-17') | Select-Object -Unique
+            function Set-McPanelIisAcl($item, $sid) {
                 if (([IO.File]::GetAttributes($item.FullName) -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
                     throw ('拒绝修改重解析点权限：' + $item.FullName)
                 }
@@ -74,7 +80,7 @@ internal static class ManagedIisPermissionsScript
                 & icacls.exe $item.FullName /grant $grant /L | Out-Host
                 if ($LASTEXITCODE -ne 0) { throw ('IIS 网站目录授权失败：' + $item.FullName + ' (icacls ' + $LASTEXITCODE + ')') }
             }
-            Set-McPanelIisAcl $directory
+            foreach ($grantSid in $sids) { Set-McPanelIisAcl $directory $grantSid }
             $pending = New-Object 'System.Collections.Generic.Stack[System.IO.DirectoryInfo]'
             $pending.Push($directory)
             while ($pending.Count -gt 0) {
@@ -82,7 +88,7 @@ internal static class ManagedIisPermissionsScript
                 if (([IO.File]::GetAttributes($current.FullName) -band [IO.FileAttributes]::ReparsePoint) -ne 0) { continue }
                 foreach ($item in (Get-ChildItem -LiteralPath $current.FullName -Force -ErrorAction Stop)) {
                     if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { continue }
-                    if ($item.GetAccessControl().AreAccessRulesProtected) { Set-McPanelIisAcl $item }
+                    if ($item.GetAccessControl().AreAccessRulesProtected) { foreach ($grantSid in $sids) { Set-McPanelIisAcl $item $grantSid } }
                     if ($item.PSIsContainer) { $pending.Push($item) }
                 }
             }
