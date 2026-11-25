@@ -922,7 +922,7 @@
                         AutomationProperties.Name="删除此记录" Style="{DynamicResource QueueDangerIconButton}"
                         IsEnabled="{Binding CanRemove}" VerticalAlignment="Top" Click="RemoveQueuedProduct_Click" />
                 <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3"
-                           Text="{Binding CompletionTimeText}" ToolTip="{Binding CompletionTimeText}"
+                           Text="{Binding HistoryFooterText}" ToolTip="{Binding HistoryFooterText}"
                            Foreground="{DynamicResource MutedBrush}" FontSize="9.5"
                            HorizontalAlignment="Right" VerticalAlignment="Bottom"
                            Margin="10,5,0,0" TextTrimming="CharacterEllipsis" />
