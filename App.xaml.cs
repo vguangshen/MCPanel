@@ -21,6 +21,7 @@ public partial class App : Application
     private MainWindow? _mainWindow => _windowActivation.CurrentWindow as MainWindow;
     private bool _isExiting;
     private int _uiGeneration;
+    private bool _webPermissionMigrationAttempted;
 
     internal bool IsExiting => _isExiting;
     internal bool HasTrayIcon => _trayIcon is not null;
@@ -63,6 +64,12 @@ public partial class App : Application
             {
                 ShutdownMode = ShutdownMode.OnExplicitShutdown;
                 Shutdown(InstallDirectorySecurity.RunFromInstaller());
+                return;
+            }
+            if (e.Args.Contains(WebDirectorySecurity.RepairArgument, StringComparer.OrdinalIgnoreCase))
+            {
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                Shutdown(WebDirectorySecurity.RunRepair());
                 return;
             }
             if (e.Args.Contains(InstallationCleanupWorker.Argument, StringComparer.OrdinalIgnoreCase))
@@ -326,6 +333,28 @@ public partial class App : Application
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
             });
+        _ = RepairWebPermissionsAfterUpgradeAsync();
+    }
+
+    private async Task RepairWebPermissionsAfterUpgradeAsync()
+    {
+        if (_webPermissionMigrationAttempted || !WebDirectorySecurity.MigrationNeeded)
+            return;
+        // The current executable may still be the old one during an update.
+        if (UpdaterProgress.DescribeRunningUpdate(ComponentPaths.ApplicationRoot) is not null)
+            return;
+        _webPermissionMigrationAttempted = true;
+        try
+        {
+            await WebDirectorySecurity.RepairAsync();
+        }
+        catch (Exception error)
+        {
+            WriteLifecycleError("升级后网站目录权限修复失败", error);
+            if (!_isExiting && !Dispatcher.HasShutdownStarted)
+                MessageBox.Show("MCPanel 未能完成网站目录权限修复。请以管理员身份重新打开 MCPanel 重试，"
+                    + "或在产品管理中修复绑定。\n\n" + error.Message, "网站目录权限", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     private void MainWindow_Closed(object? sender, EventArgs e)
