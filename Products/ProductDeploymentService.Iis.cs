@@ -16,6 +16,7 @@ public sealed partial class ProductDeploymentService
     {
         if (product.IsExternalPlatform)
         {
+            await WebDirectorySecurity.EnsureManagedProductAccessAsync(installedPath, cancellationToken);
             var externalResult = await DeployToIisAsync(product, installedPath, cancellationToken);
             await NginxProductProxyService.TrySyncAsync(cancellationToken);
             return externalResult;
@@ -25,6 +26,7 @@ public sealed partial class ProductDeploymentService
             throw new DirectoryNotFoundException($"产品安装目录不存在：{installedPath}");
         }
 
+        await WebDirectorySecurity.EnsureManagedProductAccessAsync(installedPath, cancellationToken);
         var configuration = ProductConfigurationService.Apply(product, installedPath, installedPath, isTomcatProduct: false);
         var result = await DeployToIisAsync(product, installedPath, cancellationToken);
         if (configuration.Changed)
@@ -200,6 +202,8 @@ public sealed partial class ProductDeploymentService
             $enable32Bit={{(enable32Bit ? "$true" : "$false")}}
             $port={{port}}
             $appName="$siteName$appPath"
+            $managedWebRoot='{{PathUtil.EscapePowerShellLiteral(ComponentPaths.WebRoot)}}'
+            {{ManagedIisPermissionsScript.Functions}}
 
             function Invoke-AppCmd {
                 param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Arguments)
@@ -212,6 +216,7 @@ public sealed partial class ProductDeploymentService
                 Invoke-AppCmd add apppool "/name:$poolName"
             }
             Invoke-AppCmd set apppool "$poolName" "/managedRuntimeVersion:$managedRuntimeVersion" "/managedPipelineMode:$managedPipelineMode" "/enable32BitAppOnWin64:$enable32Bit" /startMode:AlwaysRunning
+            Grant-McPanelIisProductAccess $managedWebRoot $appRoot $poolName $appcmd
 
             $siteNames = @(& $appcmd list site /text:name)
             if ($siteNames -notcontains $siteName) {

@@ -115,6 +115,8 @@ public sealed partial class ProductDeploymentService
             : null;
         try
         {
+            if (kind == ProductRuntimeKind.Iis || kind == ProductRuntimeKind.Tomcat)
+                await WebDirectorySecurity.EnsureManagedProductAccessAsync(transaction.ProductRoot, cancellationToken);
             var configuration = ProductConfigurationService.Apply(
                 product,
                 transaction.ProductRoot,

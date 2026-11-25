@@ -86,6 +86,17 @@ internal static class ProductInstallWorker
                     stoppedTomcatForUpdate = true;
                 }
 
+                if (request.IsUpdate)
+                {
+                    var existingPath = ProductInstallPathResolver.ResolveProductDirectory(product);
+                    if (Directory.Exists(existingPath))
+                    {
+                        reporter.Write("running", 0, "正在检查已有产品目录权限...",
+                            stage: InstallProgressStage.Preparing, stagePercent: 0);
+                        await WebDirectorySecurity.EnsureManagedProductAccessAsync(existingPath, cancellation.Token);
+                    }
+                }
+
                 reporter.Write(
                     "running",
                     0,

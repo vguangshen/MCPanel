@@ -21,6 +21,7 @@ public sealed partial class ProductDeploymentService
     {
         if (product.IsExternalPlatform)
         {
+            await WebDirectorySecurity.EnsureManagedProductAccessAsync(installedPath, cancellationToken);
             var externalResult = await DeployToTomcatAsync(product, installedPath, installedPath, cancellationToken);
             await NginxProductProxyService.TrySyncAsync(cancellationToken);
             return externalResult;
@@ -30,6 +31,7 @@ public sealed partial class ProductDeploymentService
             throw new DirectoryNotFoundException($"产品安装目录不存在：{installedPath}");
         }
 
+        await WebDirectorySecurity.EnsureManagedProductAccessAsync(installedPath, cancellationToken);
         var configuration = ProductConfigurationService.Apply(product, installedPath, installedPath, isTomcatProduct: true);
         var result = await DeployToTomcatAsync(product, installedPath, installedPath, cancellationToken);
         if (configuration.Changed)

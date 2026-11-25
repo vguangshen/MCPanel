@@ -51,6 +51,7 @@ internal static class InstallDirectorySecurity
     internal static void Harden(string installRoot, SecurityIdentifier? owner)
     {
         var root = ValidateInstallRoot(installRoot);
+        WebDirectorySecurity.RejectReparseAncestors(root);
         var security = Directory.GetAccessControl(root, AccessControlSections.Access);
         security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
         foreach (var group in BroadWriterGroups)
@@ -69,7 +70,7 @@ internal static class InstallDirectorySecurity
         // SetAccessControl persists by name (SetNamedSecurityInfo), which
         // propagates the new inheritable entries to the existing tree.
         Directory.SetAccessControl(root, security);
-        EnsureWebAccess(root, WebServiceAccounts());
+        EnsureWebAccess(root, WebServiceAccounts(), repairProtectedChildren: true);
     }
 
     /// <summary>
@@ -174,41 +175,18 @@ internal static class InstallDirectorySecurity
     }
 
     /// <summary>
-    /// Grants each account Modify on web\ (inherited by everything below).
-    /// Only writes when a grant is missing: re-applying an ACL to web\ walks
-    /// the whole product tree.
+    /// Grant only the managed web tree to the runtime accounts and existing
+    /// panel operators. Upgrade repair also fixes protected descendants.
     /// </summary>
-    internal static void EnsureWebAccess(string installRoot, IEnumerable<SecurityIdentifier> accounts)
+    internal static void EnsureWebAccess(string installRoot, IEnumerable<SecurityIdentifier> accounts,
+        bool repairProtectedChildren = false)
     {
-        var webRoot = Path.Combine(ValidateInstallRoot(installRoot), "web");
+        var root = ValidateInstallRoot(installRoot);
+        WebDirectorySecurity.RejectReparseAncestors(root);
+        var webRoot = Path.Combine(root, "web");
         Directory.CreateDirectory(webRoot);
-        var security = Directory.GetAccessControl(webRoot, AccessControlSections.Access);
-        var rules = security.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>().ToArray();
-        var changed = false;
-        foreach (var account in accounts.Distinct())
-        {
-            // SYSTEM and Administrators already have full control from the root.
-            if (account.Equals(LocalSystem) || account.Equals(Administrators))
-            {
-                continue;
-            }
-
-            var present = rules.Any(rule =>
-                rule.AccessControlType == AccessControlType.Allow &&
-                account.Equals(rule.IdentityReference) &&
-                (rule.FileSystemRights & FileSystemRights.Modify) == FileSystemRights.Modify &&
-                (rule.InheritanceFlags & ContainerAndObject) == ContainerAndObject);
-            if (!present)
-            {
-                security.AddAccessRule(Allow(account, FileSystemRights.Modify | FileSystemRights.Synchronize));
-                changed = true;
-            }
-        }
-
-        if (changed)
-        {
-            Directory.SetAccessControl(webRoot, security);
-        }
+        WebDirectorySecurity.EnsureTreeAccess(webRoot,
+            WebDirectorySecurity.IncludePanelOperators(root, accounts), repairProtectedChildren);
     }
 
     private static void AddAccount(List<SecurityIdentifier> accounts, SecurityIdentifier? account)
@@ -308,7 +286,7 @@ internal static class InstallDirectorySecurity
 
             using var identity = WindowsIdentity.GetCurrent();
             Harden(ComponentPaths.ApplicationRoot, identity.User);
-            return 0;
+            return WebDirectorySecurity.RunRepair();
         }
         catch (Exception error)
         {

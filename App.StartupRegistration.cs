@@ -38,6 +38,8 @@ public partial class App
             string.Equals(argument, "--wait-update-plan", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(argument, "--apply-update", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(argument, InstallerRegistration.RegisterArgument, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(argument, InstallationCleanupWorker.Argument, StringComparison.OrdinalIgnoreCase));
+            string.Equals(argument, InstallationCleanupWorker.Argument, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(argument, WebDirectorySecurity.RepairArgument, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(argument, InstallDirectorySecurity.Argument, StringComparison.OrdinalIgnoreCase));
     }
 }

@@ -378,6 +378,9 @@ public sealed class CustomWebsiteService
             $pfxPath='{{EscapePowerShell(pfxPath ?? string.Empty)}}'
             $protectedPassword='{{protectedPassword}}'
             $resultFile='{{EscapePowerShell(resultFile)}}'
+            $managedWebRoot='{{EscapePowerShell(ComponentPaths.WebRoot)}}'
+            $appcmd=Join-Path $env:windir 'System32\inetsrv\appcmd.exe'
+            {{ManagedIisPermissionsScript.Functions}}
 
             # Record ownership only after proving that neither resource existed.
             if (-not ${{allowExistingSite.ToString().ToLowerInvariant()}}) {
@@ -392,6 +395,8 @@ public sealed class CustomWebsiteService
             if (-not (Test-Path "IIS:\AppPools\$poolName")) { New-WebAppPool -Name $poolName | Out-Null }
             Set-ItemProperty "IIS:\AppPools\$poolName" -Name managedRuntimeVersion -Value $runtime
             Set-ItemProperty "IIS:\AppPools\$poolName" -Name enable32BitAppOnWin64 -Value ${{definition.Enable32Bit.ToString().ToLowerInvariant()}}
+
+            Grant-McPanelIisProductAccess $managedWebRoot $siteRoot $poolName $appcmd
 
             $firstDomain=$domains[0]
             New-Website -Name $siteName -PhysicalPath $siteRoot -Port $httpPort -IPAddress '*' -HostHeader $firstDomain -ApplicationPool $poolName | Out-Null
