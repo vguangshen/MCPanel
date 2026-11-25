@@ -200,7 +200,7 @@ public sealed partial class ReliabilityTests
                     Assert.IsNotNull(container, "已完成任务必须生成历史记录行。");
                     Assert.AreEqual(0, FindVisualChildren<ProgressBar>(container!).Count(),
                         "已完成历史应使用紧凑记录样式，不再显示无意义的进度条。");
-                    var removeButton = FindVisualChildren<Button>(container!).Single();
+                    var removeButton = FindVisualChildren<Button>(container!).Single(candidate => AutomationProperties.GetName(candidate) == "删除此记录");
                     Assert.AreEqual("删除此记录", AutomationProperties.GetName(removeButton));
                     Assert.AreEqual(32d, removeButton.ActualWidth, 0.1d);
                     Assert.AreEqual(32d, removeButton.ActualHeight, 0.1d);
@@ -290,7 +290,7 @@ public sealed partial class ReliabilityTests
                 itemsControl.UpdateLayout();
                 var container = itemsControl.ItemContainerGenerator.ContainerFromItem(item);
                 Assert.IsNotNull(container, "已完成页面必须生成删除路由测试项。");
-                var removeButton = FindVisualChildren<Button>(container!).Single();
+                var removeButton = FindVisualChildren<Button>(container!).Single(candidate => AutomationProperties.GetName(candidate) == "删除此记录");
                 Assert.AreEqual("删除此记录", AutomationProperties.GetName(removeButton));
 
                 removeButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));

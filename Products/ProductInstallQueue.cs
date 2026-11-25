@@ -987,8 +987,12 @@ public sealed class ProductInstallQueueItemViewModel : ObservableObject
             OnPropertyChanged(nameof(ProgressText));
             OnPropertyChanged(nameof(IsProgressIndeterminate));
             OnPropertyChanged(nameof(TransferText));
+            OnPropertyChanged(nameof(IsFailed));
         }
     }
+
+    /// <summary>A failed record offers 重试 instead of a status badge.</summary>
+    public bool IsFailed => State == ProductInstallQueueStatus.Failed;
 
     public double Progress
     {

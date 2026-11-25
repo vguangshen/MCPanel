@@ -47,6 +47,9 @@ public partial class MainWindowTemplates : ResourceDictionary
     private void RemoveQueuedProduct_Click(object sender, RoutedEventArgs e) =>
         GetOwner(sender)?.RemoveQueuedProduct_Click(sender, e);
 
+    private void RetryQueuedProduct_Click(object sender, RoutedEventArgs e) =>
+        GetOwner(sender)?.RetryQueuedProduct_Click(sender, e);
+
     private void EnvironmentOpenDirectory_Click(object sender, RoutedEventArgs e) =>
         GetOwner(sender)?.EnvironmentOpenDirectory_Click(sender, e);
 
