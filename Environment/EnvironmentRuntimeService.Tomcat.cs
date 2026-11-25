@@ -13,29 +13,44 @@ namespace MCPanel;
 public sealed partial class EnvironmentRuntimeService
 {
     /// <summary>
-    /// Puts the JVM's console output in UTF-8 to match the launcher's
-    /// <c>chcp 65001</c>: <c>sun.std*.encoding</c> for Java 8-17 and
-    /// <c>std*.encoding</c> for Java 18+. Without it Java 8 prints
-    /// application output in the ANSI code page (GBK), which shows as
-    /// mojibake. Only the console streams change; file.encoding and so the
-    /// products' own file handling stay as they were. Set through
-    /// JAVA_TOOL_OPTIONS because the JVM reads it directly, whatever the
-    /// customised catalina.bat does with JAVA_OPTS.
-    /// </summary>
-    internal const string TomcatConsoleUtf8JavaOptions =
-        "-Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8";
-
-    /// <summary>
-    /// Writes a launcher as BOM-free UTF-8 with CRLF line ends. cmd.exe does
-    /// not understand a BOM: on a GBK console it read the first line as a
-    /// garbled, unknown command, so the window showed an error and, with
-    /// echo never turned off, printed every following command.
+    /// Writes a launcher that leaves the console in the system's default code
+    /// page (GBK on Chinese Windows), as a plain Tomcat start does, so Tomcat
+    /// and the products print exactly as they always have. Forcing UTF-8
+    /// (chcp 65001 plus UTF-8 Java console options) mixed encodings and made
+    /// Chinese output worse.
+    ///
+    /// cmd.exe reads a .cmd file in that code page, so the script is written
+    /// in it (CRLF, never with a BOM: cmd would run the BOM as part of a
+    /// command). Only when the Tomcat path has characters the code page
+    /// cannot represent is it written as UTF-8 that switches to code page
+    /// 65001 first, so the path still resolves.
     /// </summary>
     internal static void WriteTomcatLauncher(string path, string script) =>
-        AtomicFile.WriteAllText(
-            path,
-            script.Replace("\r\n", "\n").Replace("\n", "\r\n"),
-            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        WriteTomcatLauncher(path, script, (int)GetOEMCP());
+
+    internal static void WriteTomcatLauncher(string path, string script, int consoleCodePage)
+    {
+        script = script.Replace("\r\n", "\n").Replace("\n", "\r\n");
+        try
+        {
+            var console = Encoding.GetEncoding(consoleCodePage, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
+            AtomicFile.WriteAllText(path, script, console);
+            return;
+        }
+        catch (Exception error) when (error is EncoderFallbackException or ArgumentException or NotSupportedException)
+        {
+            // Fall through: write UTF-8 and switch the window to it.
+        }
+
+        const string echoOff = "@echo off\r\n";
+        var utf8Script = script.StartsWith(echoOff, StringComparison.OrdinalIgnoreCase)
+            ? echoOff + "chcp 65001 >nul\r\n" + script.Substring(echoOff.Length)
+            : "@chcp 65001 >nul\r\n" + script;
+        AtomicFile.WriteAllText(path, utf8Script, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+    }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    private static extern uint GetOEMCP();
 
     internal static void LaunchTomcatStartConsole(string tomcatRoot)
     {
@@ -59,8 +74,6 @@ public sealed partial class EnvironmentRuntimeService
             launcher,
             $"""
             @echo off
-            chcp 65001 >nul
-            set "JAVA_TOOL_OPTIONS=%JAVA_TOOL_OPTIONS% {TomcatConsoleUtf8JavaOptions}"
             title MCPanel Tomcat Startup
             set "CATALINA_HOME={root}"
             set "CATALINA_BASE={root}"
@@ -98,8 +111,6 @@ public sealed partial class EnvironmentRuntimeService
             launcher,
             $"""
             @echo off
-            chcp 65001 >nul
-            set "JAVA_TOOL_OPTIONS=%JAVA_TOOL_OPTIONS% {TomcatConsoleUtf8JavaOptions}"
             title MCPanel Tomcat Server
             set "CATALINA_HOME={root}"
             set "CATALINA_BASE={root}"
