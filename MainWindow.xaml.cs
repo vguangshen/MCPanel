@@ -204,7 +204,8 @@ public partial class MainWindow : Window
         _model.StoreDataRoot = _settingsService.StoreDataRoot;
         _model.IsStartupEnabled = _settingsService.IsStartupEnabled();
         RefreshDatabaseToolState();
-        var updateResult = _applicationUpdateService.ConsumeLastUpdateResult();
+        var updateResult = UpdaterProgress.DescribeRunningUpdate(ComponentPaths.ApplicationRoot) ??
+            _applicationUpdateService.ConsumeLastUpdateResult();
         if (!string.IsNullOrWhiteSpace(updateResult))
         {
             _model.SettingsStatus = updateResult;

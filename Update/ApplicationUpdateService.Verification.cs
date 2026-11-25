@@ -29,6 +29,14 @@ public sealed partial class ApplicationUpdateService
 
         try
         {
+            if (InstallDirectorySecurity.IsHardened(plan.InstallDirectory))
+            {
+                // Already locked down (by the installer or an earlier update):
+                // only make sure the services under web\ can still write there.
+                InstallDirectorySecurity.EnsureWebAccess(plan.InstallDirectory, InstallDirectorySecurity.WebServiceAccounts());
+                return null;
+            }
+
             var owner = InstallDirectorySecurity.TryGetProcessUser(plan.ParentProcessId);
             InstallDirectorySecurity.Harden(plan.InstallDirectory, owner);
             return null;
