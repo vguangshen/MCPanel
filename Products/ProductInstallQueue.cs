@@ -462,6 +462,8 @@ internal sealed class ProductInstallQueueService : IDisposable
 
             if (isTerminal)
             {
+                // Older records have no saved total; the final progress file still does.
+                item.RestoreTransferredBytes(persisted.TransferredBytes ?? progress?.BytesReceived ?? 0);
                 item.SetResult(
                     recoveredTerminalProgress?.ResultPath ?? persisted.ResultPath,
                     recoveredTerminalProgress?.LogPath ?? persisted.LogPath);
@@ -816,7 +818,8 @@ internal sealed class ProductInstallQueueService : IDisposable
                     {
                         IsRemovalRequested = item.IsRemovalRequested,
                         CompletedAtUtc = item.CompletedAtUtc,
-                        RequestedAtUtc = item.RequestedAtUtc
+                        RequestedAtUtc = item.RequestedAtUtc,
+                        TransferredBytes = item.TransferredBytes > 0 ? item.TransferredBytes : null
                     })
                     .ToList());
             AtomicFile.WriteAllText(
@@ -932,6 +935,7 @@ public sealed class ProductInstallQueueItemViewModel : ObservableObject
     private bool _isRemovalRequested;
     private bool _hasReliableTotal;
     private long _bytesReceived;
+    private long _transferredBytes;
     private long? _totalBytes;
     private string? _speedText;
     private int _scannedFiles;
@@ -1072,6 +1076,34 @@ public sealed class ProductInstallQueueItemViewModel : ObservableObject
     public string DownloadTimeText => RequestedAtUtc is DateTime requestedAtUtc
         ? $"下载时间 · {requestedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm}"
         : "下载时间未记录";
+    /// <summary>
+    /// Bytes this task transferred (the most the worker reported; a counter
+    /// that later reads lower never shrinks it). Kept for finished records.
+    /// </summary>
+    public long TransferredBytes => _transferredBytes;
+
+    internal void RestoreTransferredBytes(long bytes)
+    {
+        if (bytes > _transferredBytes)
+        {
+            _transferredBytes = bytes;
+            OnPropertyChanged(nameof(TransferredBytes));
+            OnPropertyChanged(nameof(HistoryFooterText));
+        }
+    }
+
+    /// <summary>Bottom-right line of a finished record: total transferred, then timing.</summary>
+    public string HistoryFooterText
+    {
+        get
+        {
+            var completion = CompletionTimeText;
+            return IsTerminal && _transferredBytes > 0
+                ? $"共传输 {ProductTransferFormatting.FormatBytes(_transferredBytes)} · {completion}"
+                : completion;
+        }
+    }
+
     public string CompletionTimeText
     {
         get
@@ -1202,6 +1234,7 @@ public sealed class ProductInstallQueueItemViewModel : ObservableObject
                 _completedAtUtc = DateTime.UtcNow;
                 OnPropertyChanged(nameof(CompletedAtUtc));
                 OnPropertyChanged(nameof(CompletionTimeText));
+                OnPropertyChanged(nameof(HistoryFooterText));
             }
 
             SetPaused(false);
@@ -1250,6 +1283,7 @@ public sealed class ProductInstallQueueItemViewModel : ObservableObject
         _stage = update.Stage;
         _hasReliableTotal = update.HasReliableTotal && update.TotalBytes is > 0;
         _bytesReceived = update.BytesReceived;
+        RestoreTransferredBytes(update.BytesReceived);
         _totalBytes = update.TotalBytes;
         _speedText = update.SpeedText;
         _scannedFiles = update.ScannedFiles;
@@ -1338,4 +1372,5 @@ internal sealed record ProductInstallQueuePersistedItem(
     public bool IsRemovalRequested { get; init; }
     public DateTime? CompletedAtUtc { get; init; }
     public DateTime? RequestedAtUtc { get; init; }
+    public long? TransferredBytes { get; init; }
 }
