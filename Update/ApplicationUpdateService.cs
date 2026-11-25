@@ -794,6 +794,7 @@ internal void LaunchUpdater(
 
             if (DateTime.UtcNow >= deadline)
             {
+                UpdaterProgress.Log(installDirectory, "管理员更新授权等待超时（6 小时内未收到更新计划），更新未执行。");
                 return 3;
             }
 
@@ -853,18 +854,24 @@ internal void LaunchUpdater(
 
             planValidated = true;
 
+            UpdaterProgress.Report(plan.InstallDirectory, $"开始更新到 {plan.TargetVersion}：正在检查安装目录权限");
             // Close the install folder to other local users first, so nothing
             // they control can change between verification and apply.
             var previousStagingRoot = plan.StagingRoot;
             var hardeningWarning = TryHardenInstallDirectory(plan);
+            if (hardeningWarning is not null) UpdaterProgress.Log(plan.InstallDirectory, hardeningWarning);
+            UpdaterProgress.Report(plan.InstallDirectory, "正在校验并解压更新包");
             StageVerifiedPayload(plan, expectedHash);
             if (!PathUtil.PathsEqual(previousStagingRoot, plan.StagingRoot))
             {
                 TryDeleteDirectory(previousStagingRoot);
             }
 
+            UpdaterProgress.Report(plan.InstallDirectory, "正在等待原 MCPanel 退出");
             await WaitForParentAndStopInstalledProcessesAsync(plan);
+            UpdaterProgress.Report(plan.InstallDirectory, "正在替换程序文件");
             ApplyTransaction(plan);
+            UpdaterProgress.Log(plan.InstallDirectory, $"程序文件已更新到 {plan.TargetVersion}，正在重启 MCPanel");
             WriteResult(
                 plan.InstallDirectory,
                 true,
@@ -877,6 +884,8 @@ internal void LaunchUpdater(
                 try { if (File.Exists(plan.PackageFile)) File.Delete(plan.PackageFile); } catch { }
             }
 
+            // The new MCPanel must not read this updater's status as still running.
+            UpdaterProgress.Finish(plan.InstallDirectory);
             Exception? restartError = null;
             try
             {
@@ -888,6 +897,7 @@ internal void LaunchUpdater(
             catch (Exception error)
             {
                 restartError = error;
+                UpdaterProgress.Log(plan.InstallDirectory, "自动重启失败：" + error.Message);
                 WriteResult(
                     plan.InstallDirectory,
                     true,
@@ -898,11 +908,21 @@ internal void LaunchUpdater(
         }
         catch (Exception ex)
         {
-            if (planValidated && plan is not null)
+            // Record every failure, including ones before the plan was trusted,
+            // so the next start explains why MCPanel is still on the old version.
+            var installRoot = planValidated && plan is not null
+                ? plan.InstallDirectory
+                : UpdaterProgress.IsInstallRoot(expectedInstallDirectory) ? expectedInstallDirectory : null;
+            UpdaterProgress.Log(installRoot, "更新失败，原程序未修改：" + ex);
+            if (installRoot is not null)
             {
-                WriteResult(plan.InstallDirectory, false, ex.ToString(), plan.TargetVersion);
+                WriteResult(installRoot, false, ex.Message, plan?.TargetVersion ?? string.Empty);
             }
             return 2;
+        }
+        finally
+        {
+            UpdaterProgress.Finish(plan?.InstallDirectory ?? expectedInstallDirectory);
         }
     }
 
@@ -1297,7 +1317,8 @@ internal void LaunchUpdater(
             foreach (var directory in Directory.EnumerateDirectories(updaterRoot))
             {
                 if (!Guid.TryParseExact(Path.GetFileName(directory), "N", out _) ||
-                    PathUtil.PathsEqual(directory, currentRoot))
+                    PathUtil.PathsEqual(directory, currentRoot) ||
+                    IsUpdaterRunning(directory))
                 {
                     continue;
                 }
@@ -1308,6 +1329,34 @@ internal void LaunchUpdater(
         catch
         {
             // Stale helper cleanup is best effort and must never affect startup.
+        }
+    }
+
+    /// <summary>
+    /// True while an updater still runs from this folder. A MCPanel started by
+    /// hand during a long update used to delete it, taking files the running
+    /// updater still needed and breaking the update.
+    /// </summary>
+    internal static bool IsUpdaterRunning(string helperDirectory)
+    {
+        var helperExe = Path.Combine(helperDirectory, "MCPanel.exe");
+        if (!File.Exists(helperExe))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var probe = new FileStream(helperExe, FileMode.Open, FileAccess.Read, FileShare.None);
+            return false;
+        }
+        catch (IOException)
+        {
+            return true; // a running program's image is locked
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return true; // started elevated: leave it alone
         }
     }
 

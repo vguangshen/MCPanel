@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using Microsoft.Win32;
 
 namespace MCPanel;
 
@@ -68,12 +69,166 @@ internal static class InstallDirectorySecurity
         // SetAccessControl persists by name (SetNamedSecurityInfo), which
         // propagates the new inheritable entries to the existing tree.
         Directory.SetAccessControl(root, security);
+        EnsureWebAccess(root, WebServiceAccounts());
+    }
 
-        var webRoot = Path.Combine(root, "web");
+    /// <summary>
+    /// True when the root is already locked down: inheritance is off, no broad
+    /// group can write, and Administrators and SYSTEM have full control. Then
+    /// an update skips <see cref="Harden"/>, which re-applies permissions to
+    /// every file below (minutes on large product trees, with MCPanel closed).
+    /// </summary>
+    internal static bool IsHardened(string installRoot)
+    {
+        var security = Directory.GetAccessControl(ValidateInstallRoot(installRoot), AccessControlSections.Access);
+        if (!security.AreAccessRulesProtected)
+        {
+            return false;
+        }
+
+        var rules = security.GetAccessRules(true, false, typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>().ToArray();
+        const FileSystemRights writeRights = FileSystemRights.WriteData | FileSystemRights.AppendData |
+            FileSystemRights.Delete | FileSystemRights.ChangePermissions | FileSystemRights.TakeOwnership;
+        bool Grants(SecurityIdentifier sid, FileSystemRights rights) => rules.Any(rule =>
+            rule.AccessControlType == AccessControlType.Allow &&
+            sid.Equals(rule.IdentityReference) &&
+            (rule.FileSystemRights & rights) == rights &&
+            (rule.InheritanceFlags & ContainerAndObject) == ContainerAndObject);
+        return !rules.Any(rule => rule.AccessControlType == AccessControlType.Allow &&
+                   BroadWriterGroups.Contains((SecurityIdentifier)rule.IdentityReference) &&
+                   (rule.FileSystemRights & writeRights) != 0) &&
+               Grants(Administrators, FileSystemRights.FullControl) &&
+               Grants(LocalSystem, FileSystemRights.FullControl);
+    }
+
+    /// <summary>
+    /// Accounts that run software from web\ and must be able to write there:
+    /// IIS application pools, and the SQL Server service, which restores product
+    /// databases under web\. Before the install root was hardened they wrote
+    /// through "Authenticated Users: Modify" inherited from the drive; without
+    /// these grants products under web\ fail with permission errors.
+    /// </summary>
+    internal static IReadOnlyList<SecurityIdentifier> WebServiceAccounts()
+    {
+        var accounts = new List<SecurityIdentifier> { IisUsers };
+        try
+        {
+            using var services = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services");
+            foreach (var name in services?.GetSubKeyNames() ?? [])
+            {
+                if (!name.Equals("MSSQLSERVER", StringComparison.OrdinalIgnoreCase) &&
+                    !name.StartsWith("MSSQL$", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                using var service = services!.OpenSubKey(name);
+                AddAccount(accounts, ResolveServiceAccount(service?.GetValue("ObjectName") as string));
+                // SQL Server setup also grants its per-service SID on data folders.
+                AddAccount(accounts, TryTranslate(@"NT SERVICE\" + name));
+            }
+        }
+        catch (Exception error) when (error is System.Security.SecurityException or UnauthorizedAccessException or IOException)
+        {
+            // IIS access is still granted; a later repair can add SQL Server.
+        }
+
+        return accounts;
+    }
+
+    /// <summary>The SID of a service's logon account (sc.exe "obj=" / ObjectName).</summary>
+    internal static SecurityIdentifier? ResolveServiceAccount(string? account)
+    {
+        var name = (account ?? string.Empty).Trim();
+        if (name.Length == 0)
+        {
+            return null;
+        }
+
+        if (name.Equals("LocalSystem", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals(@"NT AUTHORITY\SYSTEM", StringComparison.OrdinalIgnoreCase))
+        {
+            return LocalSystem;
+        }
+
+        if (name.Equals("NetworkService", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals(@"NT AUTHORITY\NETWORK SERVICE", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals(@"NT AUTHORITY\NetworkService", StringComparison.OrdinalIgnoreCase))
+        {
+            return new SecurityIdentifier(WellKnownSidType.NetworkServiceSid, null);
+        }
+
+        if (name.Equals("LocalService", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals(@"NT AUTHORITY\LOCAL SERVICE", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals(@"NT AUTHORITY\LocalService", StringComparison.OrdinalIgnoreCase))
+        {
+            return new SecurityIdentifier(WellKnownSidType.LocalServiceSid, null);
+        }
+
+        if (name.StartsWith(@".\", StringComparison.Ordinal))
+        {
+            name = Environment.MachineName + @"\" + name.Substring(2);
+        }
+
+        return TryTranslate(name);
+    }
+
+    /// <summary>
+    /// Grants each account Modify on web\ (inherited by everything below).
+    /// Only writes when a grant is missing: re-applying an ACL to web\ walks
+    /// the whole product tree.
+    /// </summary>
+    internal static void EnsureWebAccess(string installRoot, IEnumerable<SecurityIdentifier> accounts)
+    {
+        var webRoot = Path.Combine(ValidateInstallRoot(installRoot), "web");
         Directory.CreateDirectory(webRoot);
-        var webSecurity = Directory.GetAccessControl(webRoot, AccessControlSections.Access);
-        webSecurity.AddAccessRule(Allow(IisUsers, FileSystemRights.Modify | FileSystemRights.Synchronize));
-        Directory.SetAccessControl(webRoot, webSecurity);
+        var security = Directory.GetAccessControl(webRoot, AccessControlSections.Access);
+        var rules = security.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>().ToArray();
+        var changed = false;
+        foreach (var account in accounts.Distinct())
+        {
+            // SYSTEM and Administrators already have full control from the root.
+            if (account.Equals(LocalSystem) || account.Equals(Administrators))
+            {
+                continue;
+            }
+
+            var present = rules.Any(rule =>
+                rule.AccessControlType == AccessControlType.Allow &&
+                account.Equals(rule.IdentityReference) &&
+                (rule.FileSystemRights & FileSystemRights.Modify) == FileSystemRights.Modify &&
+                (rule.InheritanceFlags & ContainerAndObject) == ContainerAndObject);
+            if (!present)
+            {
+                security.AddAccessRule(Allow(account, FileSystemRights.Modify | FileSystemRights.Synchronize));
+                changed = true;
+            }
+        }
+
+        if (changed)
+        {
+            Directory.SetAccessControl(webRoot, security);
+        }
+    }
+
+    private static void AddAccount(List<SecurityIdentifier> accounts, SecurityIdentifier? account)
+    {
+        if (account is not null && !accounts.Contains(account))
+        {
+            accounts.Add(account);
+        }
+    }
+
+    private static SecurityIdentifier? TryTranslate(string account)
+    {
+        try
+        {
+            return (SecurityIdentifier)new NTAccount(account).Translate(typeof(SecurityIdentifier));
+        }
+        catch (Exception error) when (error is IdentityNotMappedException or SystemException)
+        {
+            return null;
+        }
     }
 
     /// <summary>
